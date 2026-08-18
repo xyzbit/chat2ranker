@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-08-18-rank-control-and-execution-planes.md
+2026-08-18-rank-control-and-execution-planes.md: 68b5666df1514b791983ecc37cbc2fd151724645
+2026-08-18-rank-control-and-execution-planes.zh.md: 37c5ea7138bd6b0cd9a0bcdcc00b9f57b24466e6

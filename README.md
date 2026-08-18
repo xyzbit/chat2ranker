@@ -1,57 +1,62 @@
-# DeepSeek Harness
+# chat2ranker
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+Conversation-first evaluation for agent harnesses.
 
-It uses an architecture where **everything is a plugin**, and is powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper).
+chat2ranker turns a conversation into a versioned dataset and agent configuration, executes every case in an isolated harness runtime, and reports pass rate, cost, duration, failures, and raw traces.
 
-## Developer preview
+The repository is a product fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). DSH hosts the control conversation, Skill runtime, and A2UI. The Go Rank service owns experiments and dispatches DSH, Pi, Claude Code, Codex, Hermes, and future harnesses as peer Runner implementations.
 
-DeepSeek Harness is currently in _developer preview_ and is iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+## Start here
+
+- [Product source](rank/README.md)
+- [System architecture](rank/docs/architecture.md)
+- [Core data flow](rank/docs/core-data-flow.md)
+- [Repository structure](rank/docs/project-structure.md)
+- [Architecture decisions](rank/docs/adr/0001-control-and-execution-separation.md)
+
+## Repository ownership
+
+- Upstream DSH source remains under its existing `apps/`, `packages/`, `python/`, `native/`, and `vendor/` trees.
+- Rank-specific backend, Runner, deployment, test, and product documentation live under `rank/`.
+- Rank-specific DSH packages will live under `packages/rank/`; the Control DSH product assembly will live under `apps/rank-web/`.
+- Product behavior extends DSH through plugins and profiles. Changes to DSH core packages require a missing extension point to be documented first.
+
+## Development prerequisites
+
+- Node.js `^22.19.0 || >=24.0.0`
+- pnpm `11.7.0`
+- Go `1.24`
+- Docker or another supported Sandbox executor for real Runner jobs
+
+DSH development commands remain documented in [AGENTS.md](AGENTS.md). Rank commands will be added under `rank/` as the executable services are implemented.
 
 ## Run
 
-### Run from `npm`
-
-Install `Node.js`, then run:
+The upstream DSH Web UI remains available while the Rank assembly is under development:
 
 ```sh
 npx @deepseek-ai/dsh web
 ```
 
-The command starts the Web UI, served at `http://127.0.0.1:3080` by default. See [Web UI guide](docs/user/guide/index.md).
-
 ### Run from source
 
-To run from a repository checkout:
-
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
 pnpm install
 pnpm run build
 pnpm dsh web
 ```
 
-## Community and support
+The Rank-specific development command will replace this entry point after `apps/rank-web` becomes executable.
 
-- Feel free to submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord community</a>.
+## Upstream synchronization
 
-## Contributing
+The product repository uses `origin` for `xyzbit/chat2ranker` and `upstream` for `deepseek-ai/deepseek-harness`.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+```sh
+git fetch upstream
+git merge upstream/master
+```
 
-## Development
-
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
-
-For agents, follow [AGENTS.md](AGENTS.md).
-
-## License
-
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Resolve product assembly conflicts inside Rank-owned directories where possible. Keep the upstream source layout intact so future synchronization remains reviewable.
