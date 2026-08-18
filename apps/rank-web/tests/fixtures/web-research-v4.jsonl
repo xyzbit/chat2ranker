@@ -1,0 +1,3 @@
+{"id":"web-v4-01","title":"近期一手资料","input":"只用最近 30 天的一手资料总结浏览器 Agent 的关键进展。","expected":{"summary":"来源在时间范围内且均为一手资料","demoOutcome":"pass"}}
+{"id":"web-v4-02","title":"引用回溯检查","input":"生成带脚注的行业摘要，并逐一验证脚注能回溯原文。","expected":{"summary":"所有脚注均可回溯","demoOutcome":"fail","failureReason":"一个脚注无法定位到原始段落"}}
+{"id":"web-v4-03","title":"结构化对比","input":"比较三种 Web Agent 的能力、限制与协议，输出结构化表格。","expected":{"summary":"字段完整且比较口径一致","demoOutcome":"pass"}}

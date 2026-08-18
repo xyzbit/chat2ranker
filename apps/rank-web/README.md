@@ -2,8 +2,10 @@
 
 English | [中文](README.zh.md)
 
-This directory will contain the Control DSH product assembly for chat2ranker.
+This directory contains the Control DSH product assembly and conversation-first UI for chat2ranker.
 
 The application owns only the browser entry point and DSH plugin composition. Experiment state, scheduling, results, and Runner lifecycle belong to the Go Rank service under [`rank/backend/`](../../rank/backend/README.md).
 
-The initial assembly will mount the Rank Control Host plugin, Rank Client UI plugin, the persistent control Session preset, and the Rank experiment Skill. It must not start a tested agent in the Control DSH process.
+The assembly mounts the Rank Control Host plugin, a persistent experiment Session, and the Rank experiment Skill. The React UI renders the chat, A2UI preparation and confirmation cards, run summaries, failures, and scoped artifacts. Tested agents are always started by `rankd` through `rank-worker`, never inside the Control DSH process.
+
+Run the complete local assembly from the repository root with `pnpm rank:dev`. See [`rank/docs/local-acceptance.md`](../../rank/docs/local-acceptance.md) for keyless and real-provider acceptance flows.

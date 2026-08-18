@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "status": "complete",
+    "passed": 10,
+    "total": 12,
+    "passRate": 83,
+    "cost": 0.407,
+    "costKnown": true
+  },
+  "failures": [
+    {
+      "caseId": "web-07",
+      "title": "校验失效链接",
+      "reason": "有一个来源链接无法访问",
+      "cost": 0.035
+    },
+    {
+      "caseId": "web-11",
+      "title": "引用回溯",
+      "reason": "两个脚注无法回溯到原文",
+      "cost": 0.024
+    }
+  ],
+  "isolation": {
+    "candidateWorkers": 12,
+    "judgeWorkers": 12,
+    "artifactsPerCase": [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+  }
+}

@@ -9,7 +9,7 @@ chat2ranker separates conversational control, experiment orchestration, and test
 | Rank UI | Browser | Conversation presentation and A2UI actions | Business persistence or Runner lifecycle |
 | Control DSH | Node host | Persistent control Session, Skill execution, tool loop, and UI plugin runtime | Tested case execution |
 | Rank Orchestrator | Go `rankd` | Dataset and agent versions, experiments, runs, scheduling, aggregation, and cancellation | Harness-specific process behavior |
-| Sandbox Executor | Go `rank-worker` | Job lease and isolated process, container, or cluster-job lifecycle | Experiment decisions or scoring policy |
+| Sandbox Executor | Go `rank-worker` | One isolated local-process execution, with container and cluster launchers supplied by deployment adapters | Experiment decisions or scoring policy |
 | Runner | Sandbox workload | One harness invocation and native trace | Rank database or Control DSH state |
 | Judge Runner | Independent Sandbox workload | Rubric evaluation for one case | Other cases or the control conversation |
 
@@ -31,16 +31,17 @@ For a DSH case, `ctx.agents.create()` executes only inside the isolated DSH Runn
 | Data | System of record |
 |---|---|
 | User and assistant conversation, tool calls, control-session events | Control DSH Session log |
-| Dataset, DatasetVersion, Agent, AgentVersion, Experiment, Run, RunItem | Rank PostgreSQL |
-| Frozen run input and evaluation result | Rank PostgreSQL plus immutable artifact references |
-| Native harness Session log, stdout, stderr, generated files | Artifact store |
-| Ephemeral workspace and harness home | Case Sandbox |
+| Dataset, DatasetVersion, Agent, AgentVersion, Experiment, Run, RunItem | Rank SQLite repository in the local product assembly |
+| Frozen run input and evaluation result | Rank SQLite plus immutable artifact references |
+| Native harness Session log, stdout, stderr, request, result, and generated files | Filesystem artifact store |
+| Ephemeral workspace | Case or Judge Sandbox |
+| Per-execution DSH home | Filesystem artifact store, isolated by execution identifier |
 
 Rank records `Experiment.control_session_id`, `RunItem.agent_execution_id`, and `RunItem.judge_execution_id` to join business records with execution artifacts. DSH Session JSONL is not used as the Rank business database.
 
 ## Deployment resources
 
-The first deployment contains one Control DSH host, one `rankd`, one or more `rank-worker` processes, PostgreSQL, artifact storage, and isolated Runner sandboxes. A local worker may use child processes; production workers should use containers or cluster jobs. Every DSH Session store has one live writer.
+The local product assembly starts one Control DSH host, one `rankd`, and one `rank-worker` child process per candidate or Judge execution. SQLite stores business state, the filesystem stores artifacts and native harness homes, and each execution receives a private temporary workspace. A production deployment replaces the repository and process launcher with PostgreSQL, a queue, object storage, and container or cluster-job adapters without changing the Rank domain model or Runner protocol. Every DSH Session store has one live writer.
 
 Horizontal scaling assigns each job and DSH Session to one worker owner. Rank state and job leases coordinate workers; shared direct writes to one DSH Session directory are forbidden.
 

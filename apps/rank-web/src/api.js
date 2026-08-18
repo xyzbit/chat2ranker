@@ -1,0 +1,42 @@
+async function request(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: { "content-type": "application/json", ...options.headers },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.error?.message || `请求失败 (${response.status})`);
+    error.code = payload.error?.code;
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+export const rankApi = {
+  bootstrap: () => request("/api/bootstrap"),
+  createExperiment: (input = {}) => request("/api/experiments", { method: "POST", body: JSON.stringify(input) }),
+  getExperiment: (id) => request(`/api/experiments/${encodeURIComponent(id)}`),
+  updateExperiment: (id, patch) => request(`/api/experiments/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  sendMessage: async (id, content) => {
+    const payload = await request(`/control/v1/experiments/${encodeURIComponent(id)}/messages`, { method: "POST", body: JSON.stringify({ content }) });
+    return payload.experiment;
+  },
+  executeCommand: (id, action, payload = {}, idempotencyKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`) => request(`/api/experiments/${encodeURIComponent(id)}/commands`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey, "X-Rank-Action-Token": action.token },
+    body: JSON.stringify({ type: action.command, actionToken: action.token, payload, idempotencyKey }),
+  }),
+  createDataset: (input) => request("/api/datasets", { method: "POST", body: JSON.stringify(input) }),
+  createDatasetVersion: (familyId, input) => request(`/api/dataset-families/${encodeURIComponent(familyId)}/versions`, { method: "POST", body: JSON.stringify(input) }),
+  createAgent: (input) => request("/api/agents", { method: "POST", body: JSON.stringify(input) }),
+  createAgentVersion: (familyId, input) => request(`/api/agent-families/${encodeURIComponent(familyId)}/versions`, { method: "POST", body: JSON.stringify(input) }),
+  startRun: (id, idempotencyKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`) => request(`/api/experiments/${encodeURIComponent(id)}/runs`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ idempotencyKey }),
+  }),
+  getRun: (id) => request(`/api/runs/${encodeURIComponent(id)}`),
+  getArtifact: (runId, caseId, path) => request(`/api/runs/${encodeURIComponent(runId)}/artifacts?caseId=${encodeURIComponent(caseId)}&path=${encodeURIComponent(path)}`),
+  cancelRun: (id) => request(`/api/runs/${encodeURIComponent(id)}/cancel`, { method: "POST", body: "{}" }),
+};
