@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>chat2ranker · System architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Inter:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --paper: #fafaf8;
+      --surface: #ffffff;
+      --ink: #17181b;
+      --muted: #85878d;
+      --line: #e6e6e2;
+      --line-strong: #d8d9d6;
+      --accent: #514fdb;
+      --accent-tint: #efefff;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, system-ui, sans-serif;
+    }
+    main {
+      width: min(100%, 1360px);
+      margin: 0 auto;
+      padding: 48px 40px 40px;
+    }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font: 600 11px/1.4 "Geist Mono", monospace;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font: 400 clamp(32px, 4vw, 48px)/1 "Instrument Serif", serif;
+      letter-spacing: -0.02em;
+    }
+    .lede {
+      max-width: 760px;
+      margin: 16px 0 32px;
+      color: #5f6167;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+    .diagram-shell {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      background: var(--surface);
+    }
+    svg {
+      display: block;
+      width: 100%;
+      min-width: 960px;
+      height: auto;
+    }
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      margin-top: 16px;
+      color: var(--muted);
+      font: 500 10px/1.6 "Geist Mono", monospace;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Architecture · current state</p>
+    <h1>Conversation controls the experiment; Rank controls execution.</h1>
+    <p class="lede">Control DSH keeps the product conversation and renders A2UI. The Go control plane freezes versions, schedules work, and aggregates results. Every tested harness and Judge runs outside Control DSH in an isolated Sandbox.</p>
+
+    <div class="diagram-shell">
+      <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rank-architecture-title rank-architecture-desc">
+        <title id="rank-architecture-title">chat2ranker system architecture</title>
+        <desc id="rank-architecture-desc">Three runtime zones show the browser and Control DSH, the Go Rank control plane with PostgreSQL and artifact references, and isolated peer harness and Judge runners managed by rank-worker.</desc>
+        <defs>
+          <pattern id="rank-arch-dots" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="12" cy="12" r="1" fill="rgba(23,24,27,0.07)"/>
+          </pattern>
+          <marker id="rank-arch-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#85878d"/>
+          </marker>
+          <marker id="rank-arch-arrow-accent" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#514fdb"/>
+          </marker>
+        </defs>
+
+        <rect width="1280" height="720" fill="#fafaf8"/>
+        <rect width="1280" height="720" fill="url(#rank-arch-dots)"/>
+
+        <!-- Runtime zones -->
+        <rect x="40" y="40" width="1200" height="152" rx="8" fill="rgba(23,24,27,0.018)" stroke="rgba(23,24,27,0.12)" stroke-width="1" stroke-dasharray="4 4"/>
+        <rect x="56" y="44" width="168" height="16" rx="2" fill="#fafaf8"/>
+        <text x="140" y="56" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="1.6">EXPERIENCE PLANE</text>
+
+        <rect x="40" y="224" width="1200" height="200" rx="8" fill="rgba(81,79,219,0.018)" stroke="rgba(23,24,27,0.12)" stroke-width="1" stroke-dasharray="4 4"/>
+        <rect x="56" y="228" width="180" height="16" rx="2" fill="#fafaf8"/>
+        <text x="146" y="240" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="1.6">RANK CONTROL PLANE</text>
+
+        <rect x="40" y="456" width="1200" height="160" rx="8" fill="rgba(23,24,27,0.018)" stroke="rgba(23,24,27,0.12)" stroke-width="1" stroke-dasharray="4 4"/>
+        <rect x="56" y="460" width="188" height="16" rx="2" fill="#fafaf8"/>
+        <text x="150" y="472" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="1.6">ISOLATED EXECUTION</text>
+
+        <!-- Connectors are drawn before nodes -->
+        <line x1="280" y1="124" x2="440" y2="124" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
+        <rect x="324" y="116" width="72" height="16" rx="2" fill="#fafaf8"/>
+        <text x="360" y="128" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">CHAT + A2UI</text>
+
+        <line x1="640" y1="172" x2="640" y2="268" stroke="#514fdb" stroke-width="2" marker-end="url(#rank-arch-arrow-accent)"/>
+        <rect x="596" y="204" width="88" height="16" rx="2" fill="#fafaf8"/>
+        <text x="640" y="216" text-anchor="middle" fill="#514fdb" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">VERSIONED API</text>
+
+        <line x1="440" y1="324" x2="300" y2="324" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
+        <rect x="348" y="316" width="44" height="16" rx="2" fill="#fafaf8"/>
+        <text x="370" y="328" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">SQL</text>
+
+        <line x1="840" y1="324" x2="940" y2="324" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
+        <rect x="864" y="316" width="52" height="16" rx="2" fill="#fafaf8"/>
+        <text x="890" y="328" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">REFS</text>
+
+        <line x1="640" y1="380" x2="640" y2="500" stroke="#514fdb" stroke-width="2" marker-end="url(#rank-arch-arrow-accent)"/>
+        <rect x="596" y="432" width="88" height="16" rx="2" fill="#fafaf8"/>
+        <text x="640" y="444" text-anchor="middle" fill="#514fdb" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">JOB + LEASE</text>
+
+        <line x1="440" y1="536" x2="360" y2="536" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
+        <rect x="364" y="528" width="72" height="16" rx="2" fill="#fafaf8"/>
+        <text x="400" y="540" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">START CASE</text>
+
+        <line x1="840" y1="552" x2="940" y2="552" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
+        <rect x="848" y="544" width="84" height="16" rx="2" fill="#fafaf8"/>
+        <text x="890" y="556" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">START JUDGE</text>
+
+        <path d="M300,508 V416 Q300,408 308,408 H632 a8,8 0 0,1 16,0 H1062 Q1070,408 1070,400 V368" fill="none" stroke="#85878d" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#rank-arch-arrow)"/>
+        <rect x="760" y="400" width="96" height="16" rx="2" fill="#fafaf8"/>
+        <text x="808" y="412" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">NATIVE TRACE</text>
+
+        <!-- Experience nodes -->
+        <rect x="80" y="88" width="200" height="72" rx="8" fill="#ffffff" stroke="#d8d9d6" stroke-width="1.5"/>
+        <rect x="92" y="100" width="44" height="16" rx="4" fill="#f4f4f1"/>
+        <text x="114" y="112" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">UI</text>
+        <text x="180" y="128" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Rank UI</text>
+        <text x="180" y="148" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">Browser · conversation · A2UI</text>
+
+        <rect x="440" y="76" width="400" height="96" rx="8" fill="#efefff" stroke="#514fdb" stroke-width="2"/>
+        <rect x="452" y="88" width="76" height="16" rx="4" fill="rgba(81,79,219,0.12)"/>
+        <text x="490" y="100" text-anchor="middle" fill="#514fdb" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">CONTROL</text>
+        <text x="640" y="124" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="20" font-weight="600">Control DSH</text>
+        <text x="640" y="148" text-anchor="middle" fill="#5f6167" font-family="'Geist Mono', monospace" font-size="12">persistent Session · Skill · tool loop · UI plugin</text>
+
+        <!-- Rank control-plane nodes -->
+        <rect x="80" y="280" width="220" height="88" rx="8" fill="#ffffff" stroke="#d8d9d6" stroke-width="1.5"/>
+        <rect x="92" y="292" width="52" height="16" rx="4" fill="#f4f4f1"/>
+        <text x="118" y="304" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">STATE</text>
+        <text x="190" y="328" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Rank PostgreSQL</text>
+        <text x="190" y="348" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">versions · runs · scores · leases</text>
+
+        <rect x="440" y="268" width="400" height="112" rx="8" fill="#efefff" stroke="#514fdb" stroke-width="2"/>
+        <rect x="452" y="280" width="92" height="16" rx="4" fill="rgba(81,79,219,0.12)"/>
+        <text x="498" y="292" text-anchor="middle" fill="#514fdb" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">ORCHESTRATOR</text>
+        <text x="640" y="324" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="20" font-weight="600">rankd</text>
+        <text x="640" y="348" text-anchor="middle" fill="#5f6167" font-family="'Geist Mono', monospace" font-size="12">freeze · schedule · cancel · aggregate</text>
+        <text x="640" y="364" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">Go service · owner of experiment control flow</text>
+
+        <rect x="940" y="280" width="260" height="88" rx="8" fill="#ffffff" stroke="#d8d9d6" stroke-width="1.5"/>
+        <rect x="952" y="292" width="68" height="16" rx="4" fill="#f4f4f1"/>
+        <text x="986" y="304" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">ARTIFACT</text>
+        <text x="1070" y="328" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Artifact Store</text>
+        <text x="1070" y="348" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">native traces · files · stdout · stderr</text>
+
+        <!-- Execution nodes -->
+        <rect x="80" y="508" width="280" height="80" rx="8" fill="#ffffff" stroke="#d8d9d6" stroke-width="1.5"/>
+        <rect x="92" y="520" width="64" height="16" rx="4" fill="#f4f4f1"/>
+        <text x="124" y="532" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">HARNESS</text>
+        <text x="220" y="552" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Peer Runner</text>
+        <text x="220" y="572" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">DSH · Pi · Claude Code · Codex · Hermes</text>
+
+        <rect x="440" y="500" width="400" height="96" rx="8" fill="#ffffff" stroke="#17181b" stroke-width="1.5"/>
+        <rect x="452" y="512" width="64" height="16" rx="4" fill="#f4f4f1"/>
+        <text x="484" y="524" text-anchor="middle" fill="#17181b" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">WORKER</text>
+        <text x="640" y="548" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="20" font-weight="600">rank-worker</text>
+        <text x="640" y="572" text-anchor="middle" fill="#5f6167" font-family="'Geist Mono', monospace" font-size="12">process · container · Kubernetes Job</text>
+        <text x="640" y="588" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">materializes one isolated workspace per execution</text>
+
+        <rect x="940" y="508" width="260" height="80" rx="8" fill="#ffffff" stroke="#d8d9d6" stroke-width="1.5"/>
+        <rect x="952" y="520" width="52" height="16" rx="4" fill="#f4f4f1"/>
+        <text x="978" y="532" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">JUDGE</text>
+        <text x="1070" y="552" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Judge Runner</text>
+        <text x="1070" y="572" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">separate Sandbox · scoped visibility</text>
+
+        <!-- Legend -->
+        <line x1="40" y1="648" x2="1240" y2="648" stroke="#d8d9d6" stroke-width="1"/>
+        <text x="40" y="672" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="1.6">LEGEND</text>
+        <rect x="136" y="660" width="16" height="12" rx="2" fill="#efefff" stroke="#514fdb" stroke-width="1"/>
+        <text x="164" y="672" fill="#5f6167" font-family="Inter, sans-serif" font-size="12">Control owner</text>
+        <rect x="304" y="660" width="16" height="12" rx="2" fill="#ffffff" stroke="#d8d9d6" stroke-width="1"/>
+        <text x="332" y="672" fill="#5f6167" font-family="Inter, sans-serif" font-size="12">Runtime component</text>
+        <rect x="520" y="660" width="16" height="12" rx="2" fill="none" stroke="#85878d" stroke-width="1" stroke-dasharray="4 4"/>
+        <text x="548" y="672" fill="#5f6167" font-family="Inter, sans-serif" font-size="12">Process / trust zone</text>
+        <line x1="760" y1="668" x2="800" y2="668" stroke="#514fdb" stroke-width="2" marker-end="url(#rank-arch-arrow-accent)"/>
+        <text x="816" y="672" fill="#5f6167" font-family="Inter, sans-serif" font-size="12">Primary control flow</text>
+        <line x1="1032" y1="668" x2="1072" y2="668" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
+        <text x="1088" y="672" fill="#5f6167" font-family="Inter, sans-serif" font-size="12">Data / artifact</text>
+      </svg>
+    </div>
+
+    <footer>
+      <span>chat2ranker · architecture v0.1</span>
+      <span>Control DSH and tested DSH never share runtime state</span>
+    </footer>
+  </main>
+</body>
+</html>

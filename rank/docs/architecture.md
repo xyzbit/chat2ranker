@@ -46,8 +46,7 @@ Horizontal scaling assigns each job and DSH Session to one worker owner. Rank st
 
 ## Related references
 
+- [System architecture diagram](diagrams/system-architecture.html)
 - [Core data flow](core-data-flow.md)
 - [Repository structure](project-structure.md)
 - [Control and execution separation](adr/0001-control-and-execution-separation.md)
-
-Standalone architecture and data-flow diagrams are stored in `rank/docs/diagrams/` after the project diagram profile is selected.

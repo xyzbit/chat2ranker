@@ -44,4 +44,4 @@ The terminal result contains final output, exit code, duration, token usage, nor
 
 The Judge receives only the case input, rubric, permitted tested output, reference data, and explicitly selected trace fields. It cannot read the control conversation, other cases, mutable dataset drafts, or credentials. Judge execution uses a separate Sandbox and execution identifier.
 
-The standalone visual is stored in `rank/docs/diagrams/core-data-flow.html` after the project diagram profile is selected.
+The [standalone core data-flow diagram](diagrams/core-data-flow.html) shows these steps by owning runtime role.
