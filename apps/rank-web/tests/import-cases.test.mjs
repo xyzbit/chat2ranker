@@ -5,7 +5,7 @@ import { parseImportedCases } from "../src/import-cases.js";
 test("normalizes JSON arrays and cases envelopes", () => {
   const list = parseImportedCases("cases.json", JSON.stringify([{ id: 7, name: "Search", prompt: "Find sources", assertion: "has citations" }]));
   const envelope = parseImportedCases("cases.json", JSON.stringify({ cases: ["Open the page"] }));
-  assert.deepEqual(list[0], { id: "7", title: "Search", input: "Find sources", expected: "has citations" });
+  assert.deepEqual(list[0], { id: "7", title: "Search", input: "Find sources", expected: { summary: "has citations" } });
   assert.equal(envelope[0].input, "Open the page");
 });
 
@@ -19,7 +19,7 @@ test("parses quoted CSV fields", () => {
   const cases = parseImportedCases("cases.csv", 'title,input,expected\n"Search, then summarize","Find A, B and C","has citations"');
   assert.equal(cases[0].title, "Search, then summarize");
   assert.equal(cases[0].input, "Find A, B and C");
-  assert.equal(cases[0].expected, "has citations");
+  assert.deepEqual(cases[0].expected, { summary: "has citations" });
 });
 
 test("turns non-empty TXT lines into cases and rejects invalid imports", () => {

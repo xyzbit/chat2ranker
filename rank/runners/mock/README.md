@@ -2,4 +2,4 @@
 
 English | [中文](README.zh.md)
 
-The Mock Runner will implement the complete Runner protocol without a model or external harness. It is the first end-to-end target for scheduling, cancellation, timeout, event ordering, artifact retention, and result aggregation tests.
+The Mock Harness Adapter implements the complete Execution Service contract without a model or external harness. It is the deterministic end-to-end target for submission, cancellation, timeout, artifact retention, judging, and Rank result aggregation tests.

@@ -97,6 +97,16 @@ test("Control DSH resumes one persistent experiment session and executes Rank to
     }, control);
     assert.equal(selected.experiment.datasetVersionId, "dataset-web-research-v3");
     assert.ok(selected.experiment.controlEvents.some((event) => event.type === "a2ui/select_dataset"));
+    const createdDataset = await waitJSON(`${controlURL}/control/v1/experiments/${created.id}/messages`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content: "创建测试集 {\"name\":\"对话采集集\",\"source\":\"conversation\",\"cases\":[{\"id\":\"chat-1\",\"title\":\"对话用例\",\"input\":\"完成一次检索\",\"expected\":{\"demoOutcome\":\"pass\"}}]}" }),
+    }, control);
+    assert.equal(createdDataset.experiment.dataset.name, "对话采集集");
+    assert.ok(createdDataset.experiment.controlEvents.some((event) => event.type === "control/create_dataset"));
+    const createdAgent = await waitJSON(`${controlURL}/control/v1/experiments/${created.id}/messages`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content: "创建 Agent {\"name\":\"对话 Demo\",\"runnerType\":\"mock\",\"tools\":[\"web_search\"]}" }),
+    }, control);
+    assert.equal(createdAgent.experiment.agent.name, "对话 Demo");
+    assert.ok(createdAgent.experiment.controlEvents.some((event) => event.type === "control/create_agent"));
     const before = await waitJSON(`${controlURL}/control/v1/experiments/${created.id}/session`, {}, control);
     assert.equal(before.sessionId, created.controlSessionId);
     assert.ok(before.eventCount > 0);

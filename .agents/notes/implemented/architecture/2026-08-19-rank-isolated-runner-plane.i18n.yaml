@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-19-rank-isolated-runner-plane.md
-2026-08-19-rank-isolated-runner-plane.md: 41ba2614d8eca07b9117ef62f3b3a3a14bb62623
-2026-08-19-rank-isolated-runner-plane.zh.md: bdf32f5e13a9c06bbaca2a6bd53f16dd8b66f263
+2026-08-19-rank-isolated-runner-plane.md: 1c5983323c8ae3aba3d02c683a9e8dc78670f9f0
+2026-08-19-rank-isolated-runner-plane.zh.md: ac710a95c9e220abbadc8a8a71b4ab513da997e0

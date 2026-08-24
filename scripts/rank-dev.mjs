@@ -8,7 +8,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const variableRoot = resolve(root, "rank/var");
 const binaryRoot = resolve(variableRoot, "bin");
 const rankdBinary = resolve(binaryRoot, "rankd");
-const workerBinary = resolve(binaryRoot, "rank-worker");
+const executiondBinary = resolve(binaryRoot, "executiond");
+const workerBinary = resolve(binaryRoot, "execution-worker");
 const controlToken = process.env.RANK_CONTROL_TOKEN || `local-${randomBytes(24).toString("hex")}`;
 const actionSecret = process.env.RANK_ACTION_SECRET || `local-${randomBytes(24).toString("hex")}`;
 const children = new Set();
@@ -35,6 +36,20 @@ function launch(name, command, args, options = {}) {
   return child;
 }
 
+async function waitFor(url, name) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch {
+      // The service can refuse connections while its listener is starting.
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  }
+  throw new Error(`${name} did not become ready at ${url}`);
+}
+
 let stopping = false;
 async function stop(code) {
   if (stopping) return;
@@ -57,26 +72,37 @@ try {
 } catch {
   await run("pnpm", ["run", "build:lib"]);
 }
-await run("go", ["build", "-o", rankdBinary, "./cmd/rankd"], { cwd: resolve(root, "rank/backend") });
-await run("go", ["build", "-o", workerBinary, "./cmd/rank-worker"], { cwd: resolve(root, "rank/backend") });
+await Promise.all([
+  run("go", ["build", "-o", rankdBinary, "./cmd/rankd"], { cwd: resolve(root, "rank/backend") }),
+  run("go", ["build", "-o", executiondBinary, "./cmd/executiond"], { cwd: resolve(root, "execution/backend") }),
+  run("go", ["build", "-o", workerBinary, "./cmd/execution-worker"], { cwd: resolve(root, "execution/backend") }),
+]);
 
 const sharedEnv = {
   ...process.env,
   RANK_REPO_ROOT: root,
-  RANK_WORKER_BIN: workerBinary,
+  EXECUTION_WORKER_BIN: workerBinary,
+  EXECUTION_REPO_ROOT: root,
+  RANK_EXECUTION_URL: "http://127.0.0.1:8790",
   RANK_CONTROL_TOKEN: controlToken,
   RANK_ACTION_SECRET: actionSecret,
   RANK_API_URL: "http://127.0.0.1:8787",
   RANK_CONTROL_URL: "http://127.0.0.1:8788",
 };
 
-launch("rankd", rankdBinary, [
-  "-addr", "127.0.0.1:8787",
-  "-db", resolve(variableRoot, "rank.db"),
+launch("executiond", executiondBinary, [
+  "-addr", "127.0.0.1:8790",
+  "-db", resolve(variableRoot, "execution.db"),
   "-worker", workerBinary,
   "-repo-root", root,
   "-artifacts", resolve(variableRoot, "artifacts"),
   "-sandboxes", resolve(variableRoot, "sandboxes"),
+], { env: sharedEnv });
+await waitFor("http://127.0.0.1:8790/v1/health", "executiond");
+launch("rankd", rankdBinary, [
+  "-addr", "127.0.0.1:8787",
+  "-db", resolve(variableRoot, "rank.db"),
+  "-execution-url", "http://127.0.0.1:8790",
 ], { env: sharedEnv });
 launch("control-dsh", process.execPath, ["apps/rank-web/control-host/src/main.mjs"], { env: { ...sharedEnv, RANK_DSH_HOME: resolve(variableRoot, "dsh-control") } });
 launch("rank-web", "pnpm", ["--filter", "@xyzbit/chat2ranker-web", "dev", "--host", "127.0.0.1", "--port", "4173"], { env: sharedEnv });

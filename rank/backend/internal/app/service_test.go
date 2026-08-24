@@ -71,6 +71,54 @@ func TestControlCommandsAreSessionBoundStructuredAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestControlSessionCreatesAndSelectsVersionedAssets(t *testing.T) {
+	service, store, _ := testService(t, false)
+	defer store.Close()
+	ctx := context.Background()
+	experiment, err := service.CreateExperiment(ctx, "Chat assets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	datasetCommand, err := service.ApplyControlCommand(ctx, app.ControlCommandInput{
+		ExperimentID: experiment.ID, ControlSessionID: experiment.ControlSessionID,
+		IdempotencyKey: "create-dataset-1", Type: app.ControlCreateDataset,
+		Payload: json.RawMessage(`{"name":"对话测试集","source":"conversation","cases":[{"id":"chat-1","title":"对话用例","input":"完成任务","expected":{"demoOutcome":"pass"}}]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var datasetResult struct {
+		DatasetVersionID string `json:"datasetVersionId"`
+	}
+	if err := json.Unmarshal(datasetCommand.Result, &datasetResult); err != nil {
+		t.Fatal(err)
+	}
+	agentCommand, err := service.ApplyControlCommand(ctx, app.ControlCommandInput{
+		ExperimentID: experiment.ID, ControlSessionID: experiment.ControlSessionID,
+		IdempotencyKey: "create-agent-1", Type: app.ControlCreateAgent,
+		Payload: json.RawMessage(`{"name":"对话 Agent","runnerType":"mock","tools":["web_search"]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var agentResult struct {
+		AgentVersionID string `json:"agentVersionId"`
+	}
+	if err := json.Unmarshal(agentCommand.Result, &agentResult); err != nil {
+		t.Fatal(err)
+	}
+	view, err := service.GetExperiment(ctx, experiment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.DatasetVersionID != datasetResult.DatasetVersionID || view.AgentVersionID != agentResult.AgentVersionID || view.Dataset.Version != 1 || view.Agent.Version != 1 {
+		t.Fatalf("control-created assets were not selected: %#v", view)
+	}
+	if len(view.ControlEvents) != 2 || view.ControlEvents[0].Type != "control/create_dataset" || view.ControlEvents[1].Type != "control/create_agent" {
+		t.Fatalf("unexpected control asset events: %#v", view.ControlEvents)
+	}
+}
+
 func TestControlTranscriptReconciliationIsIdempotent(t *testing.T) {
 	service, store, _ := testService(t, false)
 	defer store.Close()
@@ -162,7 +210,7 @@ func TestStartRunIsTransactionalAndIdempotent(t *testing.T) {
 	if first.ID != second.ID {
 		t.Fatalf("duplicate start created %s and %s", first.ID, second.ID)
 	}
-	if first.DatasetSnapshot.ID != "dataset-web-research-v3" || first.AgentSnapshot.ID != "agent-research-demo-v1" || first.Total != 12 {
+	if first.DatasetSnapshot.ID != "dataset-web-research-v3" || first.AgentSnapshot.ID != "agent-research-demo-v1" || first.EvaluatorSnapshot.ID == "" || first.TrialCount != 5 || first.Total != 60 {
 		t.Fatalf("run did not freeze selected versions: %#v", first)
 	}
 	items, err := store.ListRunItems(context.Background(), first.ID)
@@ -171,6 +219,13 @@ func TestStartRunIsTransactionalAndIdempotent(t *testing.T) {
 	}
 	if len(items) != 12 {
 		t.Fatalf("expected 12 RunItems, got %d", len(items))
+	}
+	trials, err := store.ListRunTrials(context.Background(), first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trials) != 60 {
+		t.Fatalf("expected 60 independent trials, got %d", len(trials))
 	}
 }
 
@@ -183,7 +238,7 @@ func TestDemoRunCompletesAndAggregatesResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := waitComplete(t, service, created.ID)
-	if run.Status != domain.RunComplete || run.Passed != 10 || run.Total != 12 || run.PassRate != 83 || len(run.Results) != 12 || run.Cost <= 0 {
+	if run.Status != domain.RunComplete || run.Passed != 50 || run.Total != 60 || run.PassRate != 83 || run.ReliableCases != 10 || run.CaseCount != 12 || run.PassHat3 != 83.3 || len(run.Results) != 12 || run.Cost <= 0 {
 		t.Fatalf("unexpected completed run: status=%s passed=%d/%d rate=%d results=%d cost=%f", run.Status, run.Passed, run.Total, run.PassRate, len(run.Results), run.Cost)
 	}
 	view, err := service.GetExperiment(context.Background(), experiment.ID)

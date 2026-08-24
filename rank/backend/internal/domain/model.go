@@ -21,17 +21,57 @@ type DatasetFamily struct {
 }
 
 type DatasetVersion struct {
-	ID          string          `json:"id"`
-	FamilyID    string          `json:"familyId"`
-	Name        string          `json:"name"`
-	Version     int             `json:"version"`
-	Source      string          `json:"source"`
-	Description string          `json:"description"`
-	Schema      json.RawMessage `json:"schema,omitempty"`
-	Rubric      json.RawMessage `json:"rubric,omitempty"`
-	Cases       []Case          `json:"cases"`
-	CreatedAt   time.Time       `json:"createdAt"`
-	CaseCount   int             `json:"caseCount"`
+	ID          string           `json:"id"`
+	FamilyID    string           `json:"familyId"`
+	Name        string           `json:"name"`
+	Version     int              `json:"version"`
+	Source      string           `json:"source"`
+	Description string           `json:"description"`
+	Schema      json.RawMessage  `json:"schema,omitempty"`
+	Rubric      json.RawMessage  `json:"rubric,omitempty"`
+	Evaluator   EvaluatorVersion `json:"evaluator"`
+	Cases       []Case           `json:"cases"`
+	CreatedAt   time.Time        `json:"createdAt"`
+	CaseCount   int              `json:"caseCount"`
+}
+
+type DeterministicCriterion struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Operator string `json:"operator"`
+	Value    any    `json:"value,omitempty"`
+	Required bool   `json:"required"`
+}
+
+type RubricCriterion struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	Weight      float64 `json:"weight"`
+	Threshold   float64 `json:"threshold"`
+	Critical    bool    `json:"critical"`
+}
+
+type JudgeConfig struct {
+	Harness string `json:"harness"`
+	Model   string `json:"model,omitempty"`
+}
+
+type PassPolicy struct {
+	RubricThreshold float64 `json:"rubricThreshold"`
+}
+
+// EvaluatorVersion is the immutable scoring policy bound to one dataset
+// version. A Run freezes a copy before any Trial starts.
+type EvaluatorVersion struct {
+	ID            string                   `json:"id"`
+	Version       int                      `json:"version"`
+	Name          string                   `json:"name"`
+	Deterministic []DeterministicCriterion `json:"deterministic"`
+	Rubric        []RubricCriterion        `json:"rubric"`
+	Judge         JudgeConfig              `json:"judge"`
+	PassPolicy    PassPolicy               `json:"passPolicy"`
+	CreatedAt     time.Time                `json:"createdAt"`
 }
 
 type DatasetAsset struct {
@@ -51,16 +91,19 @@ type AgentFamily struct {
 }
 
 type AgentVersion struct {
-	ID          string    `json:"id"`
-	FamilyID    string    `json:"familyId"`
-	Name        string    `json:"name"`
-	Handle      string    `json:"handle"`
-	Version     int       `json:"version"`
-	RunnerType  string    `json:"runnerType"`
-	Description string    `json:"description"`
-	Model       string    `json:"model"`
-	Tools       []string  `json:"tools"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID           string    `json:"id"`
+	FamilyID     string    `json:"familyId"`
+	Name         string    `json:"name"`
+	Handle       string    `json:"handle"`
+	Version      int       `json:"version"`
+	RunnerType   string    `json:"runnerType"`
+	Description  string    `json:"description"`
+	Model        string    `json:"model"`
+	Preset       string    `json:"preset,omitempty"`
+	SystemPrompt string    `json:"systemPrompt,omitempty"`
+	Tools        []string  `json:"tools"`
+	Skills       []string  `json:"skills"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 type RuntimeAvailability struct {
@@ -161,11 +204,64 @@ type CaseResult struct {
 	JudgeExecutionID string        `json:"judgeExecutionId,omitempty"`
 	Usage            Usage         `json:"usage,omitempty"`
 	Artifacts        []ArtifactRef `json:"artifacts,omitempty"`
+	TrialCount       int           `json:"trialCount"`
+	ValidTrials      int           `json:"validTrials"`
+	PassCount        int           `json:"passCount"`
+	PassRate         int           `json:"passRate"`
+	Reliable         bool          `json:"reliable"`
+	CandidateCost    float64       `json:"candidateCost"`
+	EvaluationCost   float64       `json:"evaluationCost"`
+	Trials           []TrialResult `json:"trials"`
+}
+
+type CriterionResult struct {
+	CriterionID string   `json:"criterionId"`
+	Kind        string   `json:"kind"`
+	Name        string   `json:"name"`
+	Status      string   `json:"status"`
+	Passed      *bool    `json:"passed,omitempty"`
+	Score       *float64 `json:"score,omitempty"`
+	Reason      string   `json:"reason"`
+	Required    bool     `json:"required,omitempty"`
+	Critical    bool     `json:"critical,omitempty"`
+	Weight      float64  `json:"weight,omitempty"`
+	ExecutionID string   `json:"executionId,omitempty"`
+}
+
+type TrialResult struct {
+	ID                   string            `json:"id"`
+	RunID                string            `json:"runId"`
+	CaseID               string            `json:"caseId"`
+	TrialIndex           int               `json:"trialIndex"`
+	Status               string            `json:"status"`
+	FailureClass         string            `json:"failureClass,omitempty"`
+	Valid                bool              `json:"valid"`
+	Passed               bool              `json:"passed"`
+	Score                float64           `json:"score"`
+	Output               string            `json:"output"`
+	Reason               string            `json:"reason"`
+	CandidateCost        float64           `json:"candidateCost"`
+	EvaluationCost       float64           `json:"evaluationCost"`
+	Cost                 float64           `json:"cost"`
+	CostKnown            bool              `json:"costKnown"`
+	DurationMs           int64             `json:"durationMs"`
+	Attempts             int               `json:"attempts"`
+	CandidateExecutionID string            `json:"candidateExecutionId,omitempty"`
+	JudgeExecutionIDs    []string          `json:"judgeExecutionIds"`
+	Usage                Usage             `json:"usage,omitempty"`
+	Artifacts            []ArtifactRef     `json:"artifacts,omitempty"`
+	Criteria             []CriterionResult `json:"criteria"`
+	CreatedAt            time.Time         `json:"createdAt"`
+	StartedAt            *time.Time        `json:"startedAt,omitempty"`
+	CompletedAt          *time.Time        `json:"completedAt,omitempty"`
 }
 
 type Usage struct {
-	InputTokens  int64 `json:"inputTokens,omitempty"`
-	OutputTokens int64 `json:"outputTokens,omitempty"`
+	InputTokens      int64 `json:"inputTokens,omitempty"`
+	OutputTokens     int64 `json:"outputTokens,omitempty"`
+	CacheReadTokens  int64 `json:"cacheReadTokens,omitempty"`
+	CacheWriteTokens int64 `json:"cacheWriteTokens,omitempty"`
+	ReasoningTokens  int64 `json:"reasoningTokens,omitempty"`
 }
 
 type ArtifactRef struct {
@@ -176,11 +272,13 @@ type ArtifactRef struct {
 }
 
 type RunEvent struct {
-	ID               int64     `json:"-"`
+	ID               int64     `json:"sequence"`
 	RunID            string    `json:"-"`
 	Type             string    `json:"type"`
 	At               time.Time `json:"at"`
 	CaseID           string    `json:"caseId,omitempty"`
+	TrialID          string    `json:"trialId,omitempty"`
+	TrialIndex       int       `json:"trialIndex,omitempty"`
 	Status           string    `json:"status,omitempty"`
 	DatasetVersionID string    `json:"datasetVersionId,omitempty"`
 	AgentVersionID   string    `json:"agentVersionId,omitempty"`
@@ -192,37 +290,53 @@ type RunEvent struct {
 }
 
 type Run struct {
-	ID              string         `json:"id"`
-	ExperimentID    string         `json:"experimentId"`
-	IdempotencyKey  string         `json:"-"`
-	Status          string         `json:"status"`
-	DatasetSnapshot DatasetVersion `json:"datasetSnapshot"`
-	AgentSnapshot   AgentVersion   `json:"agentSnapshot"`
-	Concurrency     int            `json:"concurrency"`
-	CreatedAt       time.Time      `json:"createdAt"`
-	StartedAt       *time.Time     `json:"startedAt,omitempty"`
-	CompletedAt     *time.Time     `json:"completedAt,omitempty"`
-	DurationMs      int64          `json:"durationMs"`
-	Passed          int            `json:"passed"`
-	Total           int            `json:"total"`
-	PassRate        int            `json:"passRate"`
-	Cost            float64        `json:"cost"`
-	CostKnown       bool           `json:"costKnown"`
-	Error           string         `json:"error,omitempty"`
-	Results         []CaseResult   `json:"results"`
-	Events          []RunEvent     `json:"events"`
+	ID                 string           `json:"id"`
+	ExperimentID       string           `json:"experimentId"`
+	IdempotencyKey     string           `json:"-"`
+	Status             string           `json:"status"`
+	DatasetSnapshot    DatasetVersion   `json:"datasetSnapshot"`
+	AgentSnapshot      AgentVersion     `json:"agentSnapshot"`
+	EvaluatorSnapshot  EvaluatorVersion `json:"evaluatorSnapshot"`
+	TrialCount         int              `json:"trialCount"`
+	Concurrency        int              `json:"concurrency"`
+	CreatedAt          time.Time        `json:"createdAt"`
+	StartedAt          *time.Time       `json:"startedAt,omitempty"`
+	CompletedAt        *time.Time       `json:"completedAt,omitempty"`
+	DurationMs         int64            `json:"durationMs"`
+	Passed             int              `json:"passed"`
+	Total              int              `json:"total"`
+	PassRate           int              `json:"passRate"`
+	ScheduledTrials    int              `json:"scheduledTrials"`
+	CompletedTrials    int              `json:"completedTrials"`
+	ValidTrials        int              `json:"validTrials"`
+	InfraFailures      int              `json:"infraFailures"`
+	GradingFailures    int              `json:"gradingFailures"`
+	ReliableCases      int              `json:"reliableCases"`
+	CaseCount          int              `json:"caseCount"`
+	PassHat3           float64          `json:"passHat3"`
+	EvaluationComplete bool             `json:"evaluationComplete"`
+	Cost               float64          `json:"cost"`
+	CandidateCost      float64          `json:"candidateCost"`
+	EvaluationCost     float64          `json:"evaluationCost"`
+	CostKnown          bool             `json:"costKnown"`
+	Error              string           `json:"error,omitempty"`
+	Results            []CaseResult     `json:"results"`
+	Events             []RunEvent       `json:"events"`
 }
 
 type RunSummary struct {
-	ID          string     `json:"id"`
-	Status      string     `json:"status"`
-	Passed      int        `json:"passed"`
-	Total       int        `json:"total"`
-	PassRate    int        `json:"passRate"`
-	Cost        float64    `json:"cost"`
-	DurationMs  int64      `json:"durationMs"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	CompletedAt *time.Time `json:"completedAt,omitempty"`
+	ID            string     `json:"id"`
+	Status        string     `json:"status"`
+	Passed        int        `json:"passed"`
+	Total         int        `json:"total"`
+	PassRate      int        `json:"passRate"`
+	TrialCount    int        `json:"trialCount"`
+	ReliableCases int        `json:"reliableCases"`
+	CaseCount     int        `json:"caseCount"`
+	Cost          float64    `json:"cost"`
+	DurationMs    int64      `json:"durationMs"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	CompletedAt   *time.Time `json:"completedAt,omitempty"`
 }
 
 type RunItem struct {
@@ -234,6 +348,21 @@ type RunItem struct {
 	Status      string
 	ResultKey   string
 	Result      *CaseResult
+	CreatedAt   time.Time
+	StartedAt   *time.Time
+	CompletedAt *time.Time
+}
+
+type RunTrial struct {
+	ID          string
+	RunID       string
+	ItemID      string
+	CaseID      string
+	TrialIndex  int
+	Ordinal     int
+	Status      string
+	ResultKey   string
+	Result      *TrialResult
 	CreatedAt   time.Time
 	StartedAt   *time.Time
 	CompletedAt *time.Time
@@ -258,6 +387,15 @@ const (
 	ItemRunning   = "running"
 	ItemComplete  = "complete"
 	ItemCancelled = "cancelled"
+
+	TrialQueued    = "queued"
+	TrialRunning   = "running"
+	TrialComplete  = "complete"
+	TrialCancelled = "cancelled"
+
+	FailureQuality = "quality_failed"
+	FailureInfra   = "infra_failed"
+	FailureGrading = "grading_failed"
 )
 
 func IsActiveRun(status string) bool {

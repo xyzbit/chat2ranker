@@ -2,7 +2,12 @@ module github.com/xyzbit/chat2ranker/rank/backend
 
 go 1.24.0
 
-require modernc.org/sqlite v1.45.0
+require (
+	github.com/xyzbit/chat2ranker/execution/backend v0.0.0
+	modernc.org/sqlite v1.45.0
+)
+
+replace github.com/xyzbit/chat2ranker/execution/backend => ../../execution/backend
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

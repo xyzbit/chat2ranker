@@ -40,11 +40,16 @@ function normalizeRow(row, index) {
   if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error(`第 ${index + 1} 条用例格式无效`);
   const input = row.input ?? row.prompt ?? row.task;
   if (input == null || !String(input).trim()) throw new Error(`第 ${index + 1} 条用例缺少 input、prompt 或 task`);
+  let expected = row.expected ?? row.assertion ?? { summary: "任务成功完成" };
+  if (typeof expected === "string" && expected.trim().startsWith("{")) {
+    try { expected = JSON.parse(expected); } catch { /* Treat non-JSON assertions as summaries. */ }
+  }
+  if (!expected || typeof expected !== "object" || Array.isArray(expected)) expected = { summary: String(expected || "任务成功完成") };
   return {
     id: row.id == null ? undefined : String(row.id),
     title: String(row.title ?? row.name ?? `用例 ${index + 1}`),
     input: String(input),
-    expected: row.expected ?? row.assertion ?? { summary: "任务成功完成" },
+    expected,
   };
 }
 

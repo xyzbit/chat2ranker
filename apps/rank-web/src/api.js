@@ -31,12 +31,13 @@ export const rankApi = {
   createDatasetVersion: (familyId, input) => request(`/api/dataset-families/${encodeURIComponent(familyId)}/versions`, { method: "POST", body: JSON.stringify(input) }),
   createAgent: (input) => request("/api/agents", { method: "POST", body: JSON.stringify(input) }),
   createAgentVersion: (familyId, input) => request(`/api/agent-families/${encodeURIComponent(familyId)}/versions`, { method: "POST", body: JSON.stringify(input) }),
-  startRun: (id, idempotencyKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`) => request(`/api/experiments/${encodeURIComponent(id)}/runs`, {
+  startRun: (id, trialCount = 5, idempotencyKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`) => request(`/api/experiments/${encodeURIComponent(id)}/runs`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
-    body: JSON.stringify({ idempotencyKey }),
+    body: JSON.stringify({ idempotencyKey, trialCount }),
   }),
   getRun: (id) => request(`/api/runs/${encodeURIComponent(id)}`),
+  runEventsURL: (id, after = 0) => `/api/runs/${encodeURIComponent(id)}/events?after=${encodeURIComponent(after)}`,
   getArtifact: (runId, caseId, path) => request(`/api/runs/${encodeURIComponent(runId)}/artifacts?caseId=${encodeURIComponent(caseId)}&path=${encodeURIComponent(path)}`),
   cancelRun: (id) => request(`/api/runs/${encodeURIComponent(id)}/cancel`, { method: "POST", body: "{}" }),
 };

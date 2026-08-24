@@ -17,6 +17,8 @@ import (
 const (
 	ControlSelectDataset = "select_dataset"
 	ControlSelectAgent   = "select_agent"
+	ControlCreateDataset = "create_dataset"
+	ControlCreateAgent   = "create_agent"
 	ControlPrepareRun    = "prepare_run"
 	ControlStartRun      = "start_run"
 )
@@ -89,7 +91,7 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 		return domain.ControlCommand{}, problem(400, "invalid_control_command", "实验、Session 和幂等键不能为空")
 	}
 	switch input.Type {
-	case ControlSelectDataset, ControlSelectAgent, ControlPrepareRun, ControlStartRun:
+	case ControlSelectDataset, ControlSelectAgent, ControlCreateDataset, ControlCreateAgent, ControlPrepareRun, ControlStartRun:
 	default:
 		return domain.ControlCommand{}, problem(400, "unknown_control_command", "不支持的实验命令")
 	}
@@ -157,12 +159,79 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 			}
 			result["agentVersionId"] = agent.ID
 			result["label"] = fmt.Sprintf("%s v%d", agent.Handle, agent.Version)
+		case ControlCreateDataset:
+			var value struct {
+				Name        string          `json:"name"`
+				Source      string          `json:"source"`
+				Description string          `json:"description"`
+				Schema      json.RawMessage `json:"schema"`
+				Rubric      json.RawMessage `json:"rubric"`
+				Cases       []domain.Case   `json:"cases"`
+			}
+			if err := json.Unmarshal(payload, &value); err != nil {
+				return problem(400, "invalid_dataset", "测试集参数无效")
+			}
+			family, dataset, buildErr := s.newDataset(CreateDatasetInput{Name: value.Name, Source: value.Source, Description: value.Description, Schema: value.Schema, Rubric: value.Rubric, Cases: value.Cases})
+			if buildErr != nil {
+				return buildErr
+			}
+			if err := repo.CreateDatasetFamily(ctx, family, dataset); err != nil {
+				return err
+			}
+			experiment.DatasetVersionID = dataset.ID
+			experiment.UpdatedAt = now
+			if err := repo.UpdateExperimentControl(ctx, experiment); err != nil {
+				return err
+			}
+			result["datasetVersionId"] = dataset.ID
+			result["label"] = fmt.Sprintf("%s v%d", dataset.Name, dataset.Version)
+			result["caseCount"] = len(dataset.Cases)
+		case ControlCreateAgent:
+			var value struct {
+				Name         string   `json:"name"`
+				Handle       string   `json:"handle"`
+				RunnerType   string   `json:"runnerType"`
+				Model        string   `json:"model"`
+				Preset       string   `json:"preset"`
+				SystemPrompt string   `json:"systemPrompt"`
+				Description  string   `json:"description"`
+				Tools        []string `json:"tools"`
+				Skills       []string `json:"skills"`
+			}
+			if err := json.Unmarshal(payload, &value); err != nil {
+				return problem(400, "invalid_agent", "Agent 参数无效")
+			}
+			family, agent, buildErr := s.newAgent(CreateAgentInput{Name: value.Name, Handle: value.Handle, RunnerType: value.RunnerType, Model: value.Model, Preset: value.Preset, SystemPrompt: value.SystemPrompt, Description: value.Description, Tools: value.Tools, Skills: value.Skills})
+			if buildErr != nil {
+				return buildErr
+			}
+			if err := repo.CreateAgentFamily(ctx, family, agent); err != nil {
+				return err
+			}
+			experiment.AgentVersionID = agent.ID
+			experiment.UpdatedAt = now
+			if err := repo.UpdateExperimentControl(ctx, experiment); err != nil {
+				return err
+			}
+			result["agentVersionId"] = agent.ID
+			result["label"] = fmt.Sprintf("%s v%d", agent.Handle, agent.Version)
 		case ControlPrepareRun, ControlStartRun:
 			if experiment.DatasetVersionID == "" || experiment.AgentVersionID == "" {
 				return problem(409, "experiment_not_ready", "请先选择测试集和 Agent")
 			}
+			var value struct {
+				TrialCount int `json:"trialCount"`
+			}
+			if err := json.Unmarshal(payload, &value); err != nil {
+				return problem(400, "invalid_run_options", "运行参数无效")
+			}
+			trialCount, normalizeErr := normalizeTrialCount(value.TrialCount)
+			if normalizeErr != nil {
+				return normalizeErr
+			}
 			result["datasetVersionId"] = experiment.DatasetVersionID
 			result["agentVersionId"] = experiment.AgentVersionID
+			result["trialCount"] = trialCount
 			result["state"] = "confirmation_required"
 		}
 		resultJSON, marshalErr := json.Marshal(result)
@@ -170,7 +239,11 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 			return marshalErr
 		}
 		created = domain.ControlCommand{ID: newID("cmd"), ExperimentID: input.ExperimentID, ControlSessionID: input.ControlSessionID, IdempotencyKey: input.IdempotencyKey, Type: input.Type, Payload: payload, Result: resultJSON, CreatedAt: now}
-		event := domain.ControlEvent{ExperimentID: input.ExperimentID, ControlSessionID: input.ControlSessionID, CommandID: created.ID, Type: "a2ui/" + input.Type, Payload: resultJSON, CreatedAt: now}
+		eventType := "a2ui/" + input.Type
+		if input.Type == ControlCreateDataset || input.Type == ControlCreateAgent {
+			eventType = "control/" + input.Type
+		}
+		event := domain.ControlEvent{ExperimentID: input.ExperimentID, ControlSessionID: input.ControlSessionID, CommandID: created.ID, Type: eventType, Payload: resultJSON, CreatedAt: now}
 		return repo.CreateControlCommand(ctx, created, event)
 	})
 	return created, err

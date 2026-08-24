@@ -28,11 +28,13 @@ func problem(status int, code, message string) error {
 
 type Options struct {
 	Runners       RunnerRegistry
+	Artifacts     ArtifactReader
 	Workers       bool
 	Clock         func() time.Time
 	WorkerLatency time.Duration
 	ActionSecret  string
-	ArtifactRoot  string
+	JudgeHarness  string
+	JudgeModel    string
 }
 
 type Service struct {
@@ -42,7 +44,9 @@ type Service struct {
 	now           func() time.Time
 	workerLatency time.Duration
 	actionSecret  []byte
-	artifactRoot  string
+	artifacts     ArtifactReader
+	judgeHarness  string
+	judgeModel    string
 	mu            sync.Mutex
 	cancels       map[string]context.CancelFunc
 }
@@ -60,7 +64,10 @@ func NewService(repo domain.Repository, options Options) *Service {
 	if strings.TrimSpace(options.ActionSecret) == "" {
 		options.ActionSecret = "rank-local-action-secret"
 	}
-	return &Service{repo: repo, runners: options.Runners, workers: options.Workers, now: options.Clock, workerLatency: options.WorkerLatency, actionSecret: []byte(options.ActionSecret), artifactRoot: options.ArtifactRoot, cancels: map[string]context.CancelFunc{}}
+	if strings.TrimSpace(options.JudgeHarness) == "" {
+		options.JudgeHarness = "dsh"
+	}
+	return &Service{repo: repo, runners: options.Runners, artifacts: options.Artifacts, workers: options.Workers, now: options.Clock, workerLatency: options.WorkerLatency, actionSecret: []byte(options.ActionSecret), judgeHarness: options.JudgeHarness, judgeModel: options.JudgeModel, cancels: map[string]context.CancelFunc{}}
 }
 
 func newID(prefix string) string {
@@ -171,13 +178,22 @@ func normalizeCases(cases []domain.Case) ([]domain.Case, error) {
 }
 
 func (s *Service) CreateDataset(ctx context.Context, input CreateDatasetInput) (domain.DatasetVersion, error) {
+	family, version, err := s.newDataset(input)
+	if err != nil {
+		return domain.DatasetVersion{}, err
+	}
+	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.CreateDatasetFamily(ctx, family, version) })
+	return version, err
+}
+
+func (s *Service) newDataset(input CreateDatasetInput) (domain.DatasetFamily, domain.DatasetVersion, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
-		return domain.DatasetVersion{}, problem(400, "invalid_name", "请输入测试集名称")
+		return domain.DatasetFamily{}, domain.DatasetVersion{}, problem(400, "invalid_name", "请输入测试集名称")
 	}
 	cases, err := normalizeCases(input.Cases)
 	if err != nil {
-		return domain.DatasetVersion{}, err
+		return domain.DatasetFamily{}, domain.DatasetVersion{}, err
 	}
 	now, familyID := s.now().UTC(), newID("dataset")
 	description := strings.TrimSpace(input.Description)
@@ -186,8 +202,8 @@ func (s *Service) CreateDataset(ctx context.Context, input CreateDatasetInput) (
 	}
 	family := domain.DatasetFamily{ID: familyID, Name: name, Description: description, LatestVersionID: familyID + "-v1", CreatedAt: now}
 	version := domain.DatasetVersion{ID: family.LatestVersionID, FamilyID: familyID, Name: name, Version: 1, Source: input.Source, Description: description, Schema: defaultJSON(input.Schema), Rubric: defaultJSON(input.Rubric), Cases: cases, CreatedAt: now, CaseCount: len(cases)}
-	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.CreateDatasetFamily(ctx, family, version) })
-	return version, err
+	version.Evaluator = evaluatorForDataset(version)
+	return family, version, nil
 }
 
 func defaultJSON(value json.RawMessage) json.RawMessage {
@@ -231,14 +247,15 @@ func (s *Service) CreateDatasetVersion(ctx context.Context, familyID string, inp
 			description = "从 " + input.Source + " 创建"
 		}
 		created = domain.DatasetVersion{ID: fmt.Sprintf("%s-v%d", familyID, next), FamilyID: familyID, Name: family.Name, Version: next, Source: input.Source, Description: description, Schema: defaultJSON(input.Schema), Rubric: defaultJSON(input.Rubric), Cases: cases, CreatedAt: s.now().UTC(), CaseCount: len(cases)}
+		created.Evaluator = evaluatorForDataset(created)
 		return repo.CreateDatasetVersion(ctx, created)
 	})
 	return created, err
 }
 
 type CreateAgentInput struct {
-	Name, Handle, RunnerType, Model, Description string
-	Tools                                        []string
+	Name, Handle, RunnerType, Model, Preset, SystemPrompt, Description string
+	Tools, Skills                                                      []string
 }
 
 func normalizeTools(tools []string) []string {
@@ -255,15 +272,24 @@ func normalizeTools(tools []string) []string {
 }
 
 func (s *Service) CreateAgent(ctx context.Context, input CreateAgentInput) (domain.AgentVersionView, error) {
+	family, version, err := s.newAgent(input)
+	if err != nil {
+		return domain.AgentVersionView{}, err
+	}
+	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.CreateAgentFamily(ctx, family, version) })
+	return domain.AgentVersionView{AgentVersion: version, Runtime: s.probe(ctx, version)}, err
+}
+
+func (s *Service) newAgent(input CreateAgentInput) (domain.AgentFamily, domain.AgentVersion, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
-		return domain.AgentVersionView{}, problem(400, "invalid_name", "请输入 Agent 名称")
+		return domain.AgentFamily{}, domain.AgentVersion{}, problem(400, "invalid_name", "请输入 Agent 名称")
 	}
 	if input.RunnerType == "" {
 		input.RunnerType = "dsh"
 	}
 	if s.runners[input.RunnerType] == nil {
-		return domain.AgentVersionView{}, problem(400, "unknown_runner", "未知 Runner："+input.RunnerType)
+		return domain.AgentFamily{}, domain.AgentVersion{}, problem(400, "unknown_runner", "未知 Runner："+input.RunnerType)
 	}
 	now, familyID := s.now().UTC(), newID("agent")
 	handle := strings.TrimSpace(input.Handle)
@@ -280,9 +306,8 @@ func (s *Service) CreateAgent(ctx context.Context, input CreateAgentInput) (doma
 		input.Description = "自定义 Agent 配置"
 	}
 	family := domain.AgentFamily{ID: familyID, Name: name, Handle: handle, Description: input.Description, LatestVersionID: familyID + "-v1", CreatedAt: now}
-	version := domain.AgentVersion{ID: family.LatestVersionID, FamilyID: familyID, Name: name, Handle: handle, Version: 1, RunnerType: input.RunnerType, Description: input.Description, Model: input.Model, Tools: normalizeTools(input.Tools), CreatedAt: now}
-	err := s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.CreateAgentFamily(ctx, family, version) })
-	return domain.AgentVersionView{AgentVersion: version, Runtime: s.probe(ctx, version)}, err
+	version := domain.AgentVersion{ID: family.LatestVersionID, FamilyID: familyID, Name: name, Handle: handle, Version: 1, RunnerType: input.RunnerType, Description: input.Description, Model: input.Model, Preset: strings.TrimSpace(input.Preset), SystemPrompt: strings.TrimSpace(input.SystemPrompt), Tools: normalizeTools(input.Tools), Skills: normalizeTools(input.Skills), CreatedAt: now}
+	return family, version, nil
 }
 
 func (s *Service) CreateAgentVersion(ctx context.Context, familyID string, input CreateAgentInput) (domain.AgentVersionView, error) {
@@ -322,7 +347,7 @@ func (s *Service) CreateAgentVersion(ctx context.Context, familyID string, input
 		if len(versions) > 0 {
 			next = versions[0].Version + 1
 		}
-		created = domain.AgentVersion{ID: fmt.Sprintf("%s-v%d", familyID, next), FamilyID: familyID, Name: family.Name, Handle: family.Handle, Version: next, RunnerType: input.RunnerType, Description: input.Description, Model: input.Model, Tools: normalizeTools(input.Tools), CreatedAt: s.now().UTC()}
+		created = domain.AgentVersion{ID: fmt.Sprintf("%s-v%d", familyID, next), FamilyID: familyID, Name: family.Name, Handle: family.Handle, Version: next, RunnerType: input.RunnerType, Description: input.Description, Model: input.Model, Preset: strings.TrimSpace(input.Preset), SystemPrompt: strings.TrimSpace(input.SystemPrompt), Tools: normalizeTools(input.Tools), Skills: normalizeTools(input.Skills), CreatedAt: s.now().UTC()}
 		return repo.CreateAgentVersion(ctx, created)
 	})
 	return domain.AgentVersionView{AgentVersion: created, Runtime: s.probe(ctx, created)}, err

@@ -80,38 +80,43 @@ func TestRepositoryContractPersistsSnapshotsAndIdempotentCallbacks(t *testing.T)
 	ctx := context.Background()
 	dataset, agent, experiment := fixture(t, store)
 	now := time.Now().UTC()
-	run := domain.Run{ID: "run-contract", ExperimentID: experiment.ID, IdempotencyKey: "start-1", Status: domain.RunQueued, DatasetSnapshot: dataset, AgentSnapshot: agent, Concurrency: 1, CreatedAt: now, Total: 1, CostKnown: true}
+	run := domain.Run{ID: "run-contract", ExperimentID: experiment.ID, IdempotencyKey: "start-1", Status: domain.RunQueued, DatasetSnapshot: dataset, AgentSnapshot: agent, TrialCount: 1, Concurrency: 1, CreatedAt: now, Total: 1, ScheduledTrials: 1, CaseCount: 1, CostKnown: true}
 	item := domain.RunItem{ID: "item-contract", RunID: run.ID, CaseID: "case-1", Title: "One", Ordinal: 0, Status: domain.ItemQueued, CreatedAt: now}
+	trial := domain.RunTrial{ID: "trial-contract", RunID: run.ID, ItemID: item.ID, CaseID: item.CaseID, TrialIndex: 1, Ordinal: 0, Status: domain.TrialQueued, CreatedAt: now}
 	if err := store.WithinTx(ctx, func(repo domain.Repository) error {
-		return repo.CreateRun(ctx, run, []domain.RunItem{item}, domain.RunEvent{RunID: run.ID, Type: "run.created", At: now, DatasetVersionID: dataset.ID, AgentVersionID: agent.ID})
+		return repo.CreateRun(ctx, run, []domain.RunItem{item}, []domain.RunTrial{trial}, domain.RunEvent{RunID: run.ID, Type: "run.created", At: now, DatasetVersionID: dataset.ID, AgentVersionID: agent.ID})
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.WithinTx(ctx, func(repo domain.Repository) error {
-		claimed, err := repo.ClaimRunItem(ctx, run.ID, item.ID, now)
+		claimed, err := repo.ClaimRunTrial(ctx, run.ID, trial.ID, now)
 		if err != nil {
 			return err
 		}
 		if !claimed {
 			t.Fatal("item was not claimed")
 		}
-		result := domain.CaseResult{CaseID: item.CaseID, Title: item.Title, Passed: true, Cost: .02, Score: 1, Output: "done", Reason: "ok"}
-		inserted, err := repo.CompleteRunItem(ctx, item.ID, "callback-1", result, now, []domain.RunEvent{{RunID: run.ID, Type: "case.completed", CaseID: item.CaseID, At: now}})
+		result := domain.TrialResult{ID: trial.ID, RunID: run.ID, CaseID: item.CaseID, TrialIndex: 1, Status: domain.TrialComplete, Valid: true, Passed: true, Cost: .02, CostKnown: true, Score: 1, Output: "done", Reason: "ok", CreatedAt: now}
+		inserted, err := repo.CompleteRunTrial(ctx, trial.ID, "callback-1", result, now, []domain.RunEvent{{RunID: run.ID, Type: "trial.completed", CaseID: item.CaseID, TrialID: trial.ID, TrialIndex: 1, At: now}})
 		if err != nil {
 			return err
 		}
 		if !inserted {
 			t.Fatal("first callback was not inserted")
 		}
-		replayed, err := repo.CompleteRunItem(ctx, item.ID, "callback-1", result, now, nil)
+		replayed, err := repo.CompleteRunTrial(ctx, trial.ID, "callback-1", result, now, nil)
 		if err != nil {
 			return err
 		}
 		if replayed {
 			t.Fatal("replayed callback inserted a second result")
 		}
-		if _, err = repo.CompleteRunItem(ctx, item.ID, "different-key", result, now, nil); !errors.Is(err, domain.ErrConflict) {
+		if _, err = repo.CompleteRunTrial(ctx, trial.ID, "different-key", result, now, nil); !errors.Is(err, domain.ErrConflict) {
 			t.Fatalf("different callback key should conflict: %v", err)
+		}
+		aggregate := domain.CaseResult{CaseID: item.CaseID, Title: item.Title, Passed: true, Reliable: true, TrialCount: 1, ValidTrials: 1, PassCount: 1, PassRate: 100, Cost: .02, CostKnown: true, Score: 1, Output: "done", Reason: "1/1 次均通过"}
+		if err := repo.SaveRunItemAggregate(ctx, item.ID, aggregate, now); err != nil {
+			return err
 		}
 		return nil
 	}); err != nil {

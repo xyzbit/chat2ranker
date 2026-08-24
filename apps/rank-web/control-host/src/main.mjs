@@ -36,7 +36,7 @@ async function bootHarness() {
     ...profile.layers.flatMap((layer) => layer.patches),
     ...profile.patches,
     { id: "agent-default-model", config: { provider: demo ? "rank-demo" : "deepseek-official", model: demo ? "rank-demo" : (process.env.RANK_CONTROL_MODEL || "deepseek-v4-flash") } },
-    { id: "system-prompt", config: { persona: "You are the Rank experiment control agent. Maintain the dataset and Agent configuration through Rank tools. Never claim that a run started unless the user explicitly used the run-confirmation action." } },
+    { id: "system-prompt", config: { persona: "You are the Rank experiment control agent. Use Rank tools to list, create, and select immutable dataset and Agent versions. You may use browser, web, and file tools to prepare cases, then save them with rank_create_dataset. Keep replies concise. Never claim that a run started unless the user explicitly used the run-confirmation action." } },
     { id: "sandbox-policy", config: { mode: "read-only", workspaceRoot: projectRoot } },
     { id: "skill-filesystem", config: { customSkillDirs: [resolve(projectRoot, "rank/assets/skills")] } },
     { insert: [{

@@ -121,7 +121,7 @@ func TestHTTPContractRunsAgainstSQLiteRankd(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if completed.Status != domain.RunComplete || completed.Passed != 10 || completed.Total != 12 {
+	if completed.Status != domain.RunComplete || completed.Passed != 50 || completed.Total != 60 || completed.ReliableCases != 10 || completed.CaseCount != 12 {
 		t.Fatalf("unexpected completed run: %#v", completed)
 	}
 }

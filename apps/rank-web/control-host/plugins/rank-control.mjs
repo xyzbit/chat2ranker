@@ -26,6 +26,12 @@ function textOf(message) {
   return message?.content?.filter((block) => block.type === "text").map((block) => block.text).join("") || "";
 }
 
+function jsonObjectIn(text) {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  try { return JSON.parse(text.slice(start)); } catch { return null; }
+}
+
 class RankDemoAdapter extends LlmAdapter {
   #counter = 0;
 
@@ -43,8 +49,15 @@ class RankDemoAdapter extends LlmAdapter {
       const text = textOf(last);
       const dataset = text.match(/dataset-[a-zA-Z0-9-]+/i)?.[0];
       const agent = text.match(/agent-[a-zA-Z0-9-]+/i)?.[0];
+      const embedded = jsonObjectIn(text);
       const callId = CallId(`rank-demo-${++this.#counter}`);
-      if (dataset && /测试集|dataset/i.test(text)) {
+      if (/列出|有哪些|可选|list/i.test(text) && /测试集|dataset|agent/i.test(text)) {
+        chunks = toolChunks(callId, "rank_list_assets", {});
+      } else if (/创建|新建|create/i.test(text) && /测试集|dataset/i.test(text) && embedded?.cases) {
+        chunks = toolChunks(callId, "rank_create_dataset", embedded);
+      } else if (/创建|新建|create/i.test(text) && /agent/i.test(text) && embedded?.name) {
+        chunks = toolChunks(callId, "rank_create_agent", embedded);
+      } else if (dataset && /测试集|dataset/i.test(text)) {
         chunks = toolChunks(callId, "rank_select_dataset", { datasetVersionId: dataset });
       } else if (agent && /agent/i.test(text)) {
         chunks = toolChunks(callId, "rank_select_agent", { agentVersionId: agent });
@@ -105,6 +118,63 @@ export default class RankControl extends Service {
       });
       return response.command?.result || { accepted: true, command: type };
     };
+    agentCtx.tools.register({
+      name: "rank_list_assets",
+      description: "List reusable Rank dataset and Agent versions before choosing or creating an asset.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      output: objectOutput,
+      execute: async (_args, exec) => {
+        const bootstrap = await requestJSON(`${this.apiURL}/api/bootstrap`, { signal: exec.signal });
+        return {
+          datasets: bootstrap.datasets.map((dataset) => ({ id: dataset.id, name: dataset.name, version: dataset.version, caseCount: dataset.caseCount, source: dataset.source })),
+          agents: bootstrap.agents.map((agent) => ({ id: agent.id, handle: agent.handle, version: agent.version, runnerType: agent.runnerType, model: agent.model, preset: agent.preset || "", skills: agent.skills || [], available: agent.runtime?.available === true, unavailableReason: agent.runtime?.reason || "" })),
+        };
+      },
+    });
+    agentCtx.tools.register({
+      name: "rank_create_dataset",
+      description: "Create and select a reusable immutable DatasetVersion from cases prepared in the conversation.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          source: { type: "string" },
+          description: { type: "string" },
+          schema: { type: "object", additionalProperties: true },
+          rubric: { type: "object", additionalProperties: true },
+          cases: {
+            type: "array", minItems: 1, maxItems: 200,
+            items: {
+              type: "object",
+              properties: { id: { type: "string" }, title: { type: "string" }, input: { type: "string" }, expected: { type: "object", additionalProperties: true } },
+              required: ["input"], additionalProperties: false,
+            },
+          },
+        },
+        required: ["name", "cases"],
+        additionalProperties: false,
+      },
+      output: objectOutput,
+      execute: (args, exec) => command("create_dataset", args, exec),
+    });
+    agentCtx.tools.register({
+      name: "rank_create_agent",
+      description: "Create and select the first immutable version of a Rank Agent configuration.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string" }, handle: { type: "string" },
+          runnerType: { type: "string", enum: ["dsh", "pi", "claude-code", "codex", "hermes", "mock"] },
+          model: { type: "string" }, preset: { type: "string" }, systemPrompt: { type: "string" }, description: { type: "string" },
+          tools: { type: "array", items: { type: "string" } },
+          skills: { type: "array", items: { type: "string" } },
+        },
+        required: ["name", "runnerType"],
+        additionalProperties: false,
+      },
+      output: objectOutput,
+      execute: (args, exec) => command("create_agent", args, exec),
+    });
     agentCtx.tools.register({
         name: "rank_select_dataset",
         description: "Select one existing immutable DatasetVersion for the current Rank experiment.",

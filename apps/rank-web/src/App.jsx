@@ -39,6 +39,27 @@ function formatDuration(ms = 0) {
   return `${minutes}m ${Math.round((ms % 60_000) / 1000)}s`;
 }
 
+function formatCost(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "—";
+  if (amount > 0 && amount < 0.0001) return `$${amount.toFixed(6)}`;
+  if (amount > 0 && amount < 0.01) return `$${amount.toFixed(4)}`;
+  return `$${amount.toFixed(2)}`;
+}
+
+function eventLabel(type) {
+  const labels = {
+    "run.created": "创建运行", "run.status": "运行状态", "run.recovered": "恢复运行", "run.completed": "运行完成",
+    "trial.started": "开始 Trial", "trial.retry": "重试 Trial", "trial.completed": "Trial 完成", "trial.invalid": "Trial 无效",
+    "case.started": "开始用例", "candidate.queued": "Agent 排队", "candidate.running": "Agent 启动", "candidate.harness.started": "Harness 启动",
+    "candidate.harness.output": "Agent 输出", "candidate.harness.stdout": "Agent 输出", "candidate.harness.stderr": "Agent 日志", "candidate.completed": "Agent 完成", "candidate.failed": "Agent 失败",
+    "judge.queued": "评分排队", "judge.running": "评分启动", "judge.harness.started": "Judge 启动", "judge.harness.output": "Judge 输出",
+    "judge.harness.stdout": "Judge 输出", "judge.harness.stderr": "Judge 日志", "judge.completed": "评分执行完成", "judge.failed": "评分失败", "judge.verdict": "评分结论",
+    "artifact.available": "产物可用", "case.completed": "用例完成", "agent.message": "Agent 消息",
+  };
+  return labels[type] || type;
+}
+
 function Avatar({ role = "assistant" }) {
   return (
     <span className={`avatar avatar-${role}`} aria-hidden="true">
@@ -112,9 +133,9 @@ function SetupCard({ experiment, onPickDataset, onPickAgent }) {
   );
 }
 
-function ReadyCard({ experiment, agentRuntime, onPickDataset, onPickAgent, onStart, busy }) {
+function ReadyCard({ experiment, agentRuntime, trialCount, onTrialCount, onPickDataset, onPickAgent, onStart, busy }) {
   const unavailable = agentRuntime && !agentRuntime.available;
-  const estimate = experiment.agent.runnerType === "mock" ? `预计 $${(experiment.dataset.caseCount * 0.027).toFixed(2)}` : "按运行时实际计费";
+  const estimate = experiment.agent.runnerType === "mock" ? `预计 $${(experiment.dataset.caseCount * trialCount * 0.034).toFixed(2)}` : "按运行时实际计费";
   return (
     <A2UIRow>
       <section className="ready-card" aria-label="确认运行">
@@ -134,9 +155,16 @@ function ReadyCard({ experiment, agentRuntime, onPickDataset, onPickAgent, onSta
             <em>{experiment.agent.runnerType}</em>
           </button>
         </div>
+        <div className="trial-choice" aria-label="每个用例运行次数">
+          <span><strong>重复运行</strong><small>独立上下文，避免偶然结果</small></span>
+          <div>
+            <button type="button" className={trialCount === 1 ? "selected" : ""} onClick={() => onTrialCount(1)}>快速 · 1 次</button>
+            <button type="button" className={trialCount === 5 ? "selected" : ""} onClick={() => onTrialCount(5)}>可靠 · 5 次</button>
+          </div>
+        </div>
         {unavailable && <div className="runtime-warning"><WarningCircle size={17} />{agentRuntime.reason}</div>}
         <footer>
-          <span><Coins size={16} /> {estimate} · 并发 3</span>
+          <span><Coins size={16} /> {estimate} · {experiment.dataset.caseCount * trialCount} 个 Trial · 并发 5</span>
           <button type="button" className="primary-action" onClick={onStart} disabled={busy || unavailable}>
             {busy ? <CircleNotch size={18} className="spin" /> : <Play size={18} weight="fill" />}
             {busy ? "正在创建" : "开始运行"}
@@ -151,6 +179,9 @@ function RunSteps({ run }) {
   const states = ["prepare", "run", "score"];
   const activeIndex = run.status === "queued" || run.status === "preparing" ? 0 : run.status === "running" ? 1 : 2;
   const complete = run.status === "complete";
+  const multiTrial = Number(run.scheduledTrials) > 0;
+  const completed = multiTrial ? (run.completedTrials || 0) : run.results.length;
+  const scheduled = multiTrial ? (run.scheduledTrials || run.total) : run.total;
   const labels = ["准备数据", "Agent 运行", "评分"];
   return (
     <div className="run-steps">
@@ -164,7 +195,7 @@ function RunSteps({ run }) {
               {done ? <Check size={12} weight="bold" /> : active ? <CircleNotch size={12} className="spin" /> : null}
             </span>
             <strong>{labels[index]}</strong>
-            <time>{done ? "完成" : active ? (index === 1 ? `${run.results.length}/${run.total}` : "进行中") : "待开始"}</time>
+            <time>{done ? "完成" : active ? (index === 1 ? `${completed}/${scheduled}` : "进行中") : "待开始"}</time>
           </div>
         );
       })}
@@ -176,10 +207,14 @@ function RunCard({ run, onCancel }) {
   const [showFailures, setShowFailures] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [artifactView, setArtifactView] = useState(null);
-  const failures = run.results.filter((item) => !item.passed);
+  const multiTrial = Number(run.scheduledTrials) > 0;
+  const failures = run.results.filter((item) => multiTrial ? !item.reliable : !item.passed);
   const complete = run.status === "complete";
   const active = ACTIVE_STATES.has(run.status);
-  const progress = run.total ? Math.round((run.results.length / run.total) * 100) : 0;
+  const scheduled = multiTrial ? (run.scheduledTrials || run.total) : run.total;
+  const completedTrials = multiTrial ? (run.completedTrials || 0) : run.results.length;
+  const progress = scheduled ? Math.round((completedTrials / scheduled) * 100) : 0;
+  const latestProgress = [...run.events].reverse().find((event) => event.caseId || event.status);
   const statusLabel = { queued: "排队中", preparing: "准备中", running: "运行中", scoring: "评分中", complete: "完成", failed: "失败", cancelled: "已停止" }[run.status] || run.status;
   return (
     <A2UIRow>
@@ -194,12 +229,14 @@ function RunCard({ run, onCancel }) {
           </header>
           {active && <div className="run-progress"><span style={{ width: `${Math.max(4, progress)}%` }} /></div>}
           <div className="metrics">
-            <div className="metric"><strong>{run.results.length ? `${run.passed}/${run.total}` : `—/${run.total}`}</strong><span>通过用例</span></div>
+            <div className="metric"><strong>{complete ? `${run.passed}/${run.total}` : `${completedTrials}/${scheduled}`}</strong><span>{complete ? (multiTrial ? "通过 Trial" : "通过用例") : (multiTrial ? "完成 Trial" : "完成用例")}</span></div>
             <div className="metric"><strong className={complete ? "success" : ""}>{complete ? `${run.passRate}%` : `${progress}%`}</strong><span>{complete ? "通过率" : "进度"}</span></div>
-            <div className="metric"><strong>{run.costKnown === false ? "未提供" : run.cost == null ? "—" : `$${Number(run.cost).toFixed(2)}`}</strong><span>总成本</span></div>
-            <div className="metric"><strong>{formatDuration(run.durationMs || Date.now() - new Date(run.createdAt).getTime())}</strong><span>总耗时</span></div>
+            <div className="metric"><strong>{complete ? (multiTrial ? `${run.reliableCases}/${run.caseCount}` : formatDuration(run.durationMs)) : (multiTrial ? `×${run.trialCount}` : "×1")}</strong><span>{complete ? (multiTrial ? "稳定用例" : "总耗时") : "每用例运行"}</span></div>
+            <div className="metric"><strong>{run.costKnown === false ? "未提供" : run.cost == null ? "—" : formatCost(run.cost)}</strong><span>总成本</span></div>
           </div>
           <RunSteps run={run} />
+          {complete && multiTrial && run.evaluationComplete === false && <div className="run-warning"><WarningCircle size={15} />有 {run.infraFailures + run.gradingFailures} 个异常 Trial 未计入质量分母</div>}
+          {active && latestProgress && <div className="live-event"><CircleNotch size={13} className="spin" /><code>{eventLabel(latestProgress.type)}</code><span>{latestProgress.caseId || latestProgress.status}{latestProgress.reason ? ` · ${latestProgress.reason}` : ""}</span></div>}
           {active && <div className="run-controls"><button type="button" onClick={() => onCancel(run.id)}><Stop size={15} weight="fill" />停止运行</button></div>}
           {(run.status === "failed" || run.status === "cancelled") && <div className="run-error">{run.error || "运行已停止"}</div>}
         </section>
@@ -218,7 +255,7 @@ function RunCard({ run, onCancel }) {
             {failures.map((failure) => (
               <div className="failure-item" key={failure.caseId}>
                 <span className="failure-number">{failure.caseId}</span>
-                <span className="failure-copy"><strong>{failure.title}</strong><small>{failure.reason}</small></span>
+                <span className="failure-copy"><strong>{failure.title}</strong><small>{multiTrial ? `${failure.passCount}/${failure.validTrials} 次通过 · ` : ""}{failure.reason}</small></span>
                 <span className="failure-cost">{failure.costKnown === false ? "成本未知" : failure.cost == null ? "—" : `$${failure.cost.toFixed(3)}`}</span>
                 {failure.artifacts?.length > 0 && <button type="button" className="trace-action" onClick={async () => {
                   const artifact = failure.artifacts.find((item) => item.kind === "trace") || failure.artifacts.find((item) => item.kind === "result") || failure.artifacts[0];
@@ -230,6 +267,13 @@ function RunCard({ run, onCancel }) {
                     setArtifactView({ title: `${failure.title} · ${artifact.kind}`, error: artifactError.message });
                   }
                 }}>查看轨迹</button>}
+                {failure.trials?.length > 0 && <details className="trial-details">
+                  <summary>查看 {failure.trials.length} 次运行</summary>
+                  <div>{failure.trials.map((trial) => <span key={trial.id} className={trial.valid ? (trial.passed ? "pass" : "fail") : "invalid"}>
+                    <strong>#{trial.trialIndex} {trial.valid ? (trial.passed ? "通过" : "未通过") : "无效"}</strong>
+                    <small>{trial.reason}</small>
+                  </span>)}</div>
+                </details>}
               </div>
             ))}
           </div>
@@ -243,7 +287,7 @@ function RunCard({ run, onCancel }) {
         {showLog && (
           <div className="event-log">
             {run.events.map((event, index) => (
-              <div key={`${event.type}-${index}`}><time>{formatTime(event.at)}</time><code>{event.type}</code><span>{event.caseId || event.status || ""}</span></div>
+              <div key={`${event.type}-${index}`}><time>{formatTime(event.at)}</time><code>{eventLabel(event.type)}</code><span title={event.reason || event.output || ""}>{event.caseId || event.status || ""}{event.reason ? ` · ${event.reason}` : ""}</span></div>
             ))}
           </div>
         )}
@@ -274,19 +318,19 @@ function Picker({ type, datasets, agents, selectedId, onClose, onSelect, onImpor
         )}
         <div className="picker-list asset-picker-list">
           {(isDataset ? datasets : agents).map((item) => {
-            const available = isDataset || item.runtime?.available;
+            const connected = isDataset || item.runtime?.available;
             const expanded = expandedFamilyId === item.familyId;
             return (
               <div className={`asset-family ${expanded ? "expanded" : ""}`} key={item.familyId}>
                 <div className="asset-family-main">
-                  <button type="button" className="asset-select" onClick={() => available && onSelect(item.id)} disabled={!available}>
+                  <button type="button" className="asset-select" onClick={() => onSelect(item.id)}>
                     <span className="picker-item-icon">{isDataset ? <Database size={20} /> : <Robot size={20} />}</span>
                     <span className="picker-copy">
                       <strong>{isDataset ? item.name : item.handle}</strong>
                       <small>{item.familyDescription || item.description}</small>
                       <em>{isDataset ? `${item.caseCount} 个用例` : `${item.runnerType} · ${item.model}`}</em>
                     </span>
-                    <span className={`availability ${available ? "available" : ""}`}>{selectedId === item.id ? "已选择" : available ? "选择最新" : "未连接"}</span>
+                    <span className={`availability ${connected ? "available" : ""}`}>{selectedId === item.id ? "已选择" : connected ? "选择最新" : "选择（未连接）"}</span>
                   </button>
                   <button type="button" className={`version-toggle ${expanded ? "open" : ""}`} onClick={() => setExpandedFamilyId(expanded ? null : item.familyId)} aria-expanded={expanded}>
                     <GitBranch size={15} /><span>v{item.version}</span><small>{item.versionCount} 个版本</small><CaretDown size={14} />
@@ -295,16 +339,16 @@ function Picker({ type, datasets, agents, selectedId, onClose, onSelect, onImpor
                 {expanded && (
                   <div className="version-list">
                     {item.versions.map((version) => {
-                      const versionAvailable = isDataset || version.runtime?.available;
+                      const versionConnected = isDataset || version.runtime?.available;
                       return (
-                        <button type="button" className={selectedId === version.id ? "selected" : ""} key={version.id} onClick={() => versionAvailable && onSelect(version.id)} disabled={!versionAvailable}>
+                        <button type="button" className={selectedId === version.id ? "selected" : ""} key={version.id} onClick={() => onSelect(version.id)}>
                           <span className="version-number">v{version.version}</span>
                           <span className="version-copy">
                             <strong>{isDataset ? `${version.caseCount} 个用例` : `${version.runnerType} · ${version.model}`}</strong>
                             <small>{version.source || version.description}</small>
                           </span>
                           <span className="version-date">{formatTime(version.createdAt, true)}</span>
-                          <span className={`availability ${versionAvailable ? "available" : ""}`}>{selectedId === version.id ? "已选择" : versionAvailable ? "选择" : "未连接"}</span>
+                          <span className={`availability ${versionConnected ? "available" : ""}`}>{selectedId === version.id ? "已选择" : versionConnected ? "选择" : "选择（未连接）"}</span>
                         </button>
                       );
                     })}
@@ -329,7 +373,10 @@ function AgentForm({ family, baseVersion, onClose, onSubmit, busy }) {
     handle: family?.handle || "",
     runnerType: baseVersion?.runnerType || "dsh",
     model: baseVersion?.model?.startsWith("由") ? "" : baseVersion?.model || "",
+    preset: baseVersion?.preset || "headless",
+    systemPrompt: baseVersion?.systemPrompt || "",
     tools: baseVersion?.tools?.join(", ") || "web_search, browser",
+    skills: baseVersion?.skills?.join(", ") || "",
     description: baseVersion?.description || "自定义 Agent 配置",
   });
   function update(field, value) { setForm((current) => ({ ...current, [field]: value })); }
@@ -345,8 +392,11 @@ function AgentForm({ family, baseVersion, onClose, onSubmit, busy }) {
           <label><span>Handle</span><input disabled={isNewVersion} value={form.handle} onChange={(event) => update("handle", event.target.value)} placeholder="@team/research" /></label>
           <label><span>Runner</span><select value={form.runnerType} onChange={(event) => update("runnerType", event.target.value)}><option value="dsh">DeepSeek Harness</option><option value="pi">Pi</option><option value="claude-code">Claude Code</option><option value="codex">Codex</option><option value="hermes">Hermes</option><option value="mock">Demo</option></select></label>
           <label><span>模型（可选）</span><input value={form.model} onChange={(event) => update("model", event.target.value)} placeholder="由运行时决定" /></label>
+          <label><span>Preset</span><input value={form.preset} onChange={(event) => update("preset", event.target.value)} placeholder="headless" /></label>
           <label className="wide"><span>版本说明</span><input value={form.description} onChange={(event) => update("description", event.target.value)} placeholder="这次修改了什么" /></label>
+          <label className="wide"><span>System Prompt</span><textarea rows="3" value={form.systemPrompt} onChange={(event) => update("systemPrompt", event.target.value)} placeholder="Agent 在每个用例中遵循的稳定指令" /></label>
           <label className="wide"><span>Runner 工具 ID</span><input value={form.tools} onChange={(event) => update("tools", event.target.value)} placeholder="web_search, browser, files" /><small>使用英文逗号分隔；能力由 Runner 插件提供</small></label>
+          <label className="wide"><span>Skill 引用</span><input value={form.skills} onChange={(event) => update("skills", event.target.value)} placeholder="web-research, citation-check" /><small>运行会冻结这些 Skill 标识</small></label>
         </div>
         <footer><button type="button" onClick={onClose}>取消</button><button type="submit" className="primary-action" disabled={busy || !form.name.trim()}>{busy ? <CircleNotch size={18} className="spin" /> : <Plus size={18} />}{isNewVersion ? "创建版本并选择" : "创建并选择"}</button></footer>
       </form>
@@ -366,7 +416,7 @@ function HistoryPanel({ experiments, currentId, onClose, onOpen, onNew }) {
         <div className="history-list">
           {experiments.map((item) => (
             <button type="button" className={item.id === currentId ? "current" : ""} key={item.id} onClick={() => onOpen(item.id)}>
-              <span><strong>{item.title}</strong><small>{item.latestRun ? `${item.latestRun.passed}/${item.latestRun.total} 通过${item.latestRun.cost == null ? "" : ` · $${Number(item.latestRun.cost).toFixed(2)}`}` : item.datasetVersionId || item.agentVersionId ? "配置中" : "尚未配置"}</small></span>
+              <span><strong>{item.title}</strong><small>{item.latestRun ? `${item.latestRun.passed}/${item.latestRun.total} 通过${item.latestRun.costKnown === false || item.latestRun.cost == null ? "" : ` · ${formatCost(item.latestRun.cost)}`}` : item.datasetVersionId || item.agentVersionId ? "配置中" : "尚未配置"}</small></span>
               <time>{formatTime(item.updatedAt, true)}</time>
             </button>
           ))}
@@ -388,6 +438,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [trialCount, setTrialCount] = useState(5);
   const fileInputRef = useRef(null);
   const versionFileInputRef = useRef(null);
   const conversationEndRef = useRef(null);
@@ -458,20 +509,44 @@ export function App() {
   useEffect(() => {
     if (!activeRun) return undefined;
     const experimentId = experiment.id;
-    const timer = window.setInterval(async () => {
+    let refreshing = false;
+    let refreshPending = false;
+    let closed = false;
+    const lastSequence = activeRun.events.at(-1)?.sequence || 0;
+    const stream = new EventSource(rankApi.runEventsURL(activeRun.id, lastSequence));
+    const refreshRun = async () => {
+      if (closed) return;
+      if (refreshing) {
+        refreshPending = true;
+        return;
+      }
+      refreshing = true;
       try {
         const nextRun = await rankApi.getRun(activeRun.id);
         setExperiment((current) => current ? { ...current, runs: current.runs.map((run) => run.id === nextRun.id ? nextRun : run) } : current);
         if (!ACTIVE_STATES.has(nextRun.status)) {
-          window.clearInterval(timer);
+          closed = true;
+          stream.close();
           await openExperiment(experimentId);
           await refreshBootstrap();
         }
-      } catch (pollError) {
-        setError(pollError.message);
+      } catch (streamError) {
+        setError(streamError.message);
+      } finally {
+        refreshing = false;
+        if (refreshPending && !closed) {
+          refreshPending = false;
+          void refreshRun();
+        }
       }
-    }, 420);
-    return () => window.clearInterval(timer);
+    };
+    stream.onmessage = () => void refreshRun();
+    const eventNames = ["run.created", "run.status", "run.recovered", "trial.started", "trial.retry", "trial.completed", "trial.invalid", "case.started", "candidate.queued", "candidate.running", "candidate.harness.started", "candidate.harness.output", "candidate.harness.stdout", "candidate.harness.stderr", "candidate.completed", "candidate.failed", "judge.queued", "judge.running", "judge.harness.started", "judge.harness.output", "judge.harness.stdout", "judge.harness.stderr", "judge.completed", "judge.failed", "judge.verdict", "agent.message", "artifact.available", "case.completed", "run.completed"];
+    for (const name of eventNames) stream.addEventListener(name, () => void refreshRun());
+    stream.onerror = () => {
+      if (!closed && stream.readyState === EventSource.CLOSED) void refreshRun();
+    };
+    return () => { closed = true; stream.close(); };
   }, [activeRun?.id]);
 
   useEffect(() => {
@@ -519,7 +594,7 @@ export function App() {
     try {
       const action = experiment.a2ui?.actions?.start_run;
       if (!action) throw new Error("运行确认已过期，请刷新后重试");
-      const result = await rankApi.executeCommand(experiment.id, action);
+      const result = await rankApi.executeCommand(experiment.id, action, { trialCount });
       setExperiment(result.experiment);
       await refreshBootstrap();
     } catch (runError) {
@@ -563,7 +638,7 @@ export function App() {
     setBusy(true);
     setError("");
     try {
-      const input = { ...form, tools: form.tools.split(",").map((item) => item.trim()).filter(Boolean) };
+      const input = { ...form, tools: form.tools.split(",").map((item) => item.trim()).filter(Boolean), skills: form.skills.split(",").map((item) => item.trim()).filter(Boolean) };
       const agent = agentVersionTarget
         ? await rankApi.createAgentVersion(agentVersionTarget.familyId, input)
         : await rankApi.createAgent(input);
@@ -614,7 +689,7 @@ export function App() {
             : <RunCard run={item.data} onCancel={cancelRun} key={item.data.id} />)}
 
           {!activeRun && (!experiment.dataset || !experiment.agent) && <SetupCard experiment={experiment} onPickDataset={() => setPicker("dataset")} onPickAgent={() => setPicker("agent")} />}
-          {!activeRun && experiment.dataset && experiment.agent && <ReadyCard experiment={experiment} agentRuntime={agentRuntime} onPickDataset={() => setPicker("dataset")} onPickAgent={() => setPicker("agent")} onStart={startRun} busy={busy} />}
+          {!activeRun && experiment.dataset && experiment.agent && <ReadyCard experiment={experiment} agentRuntime={agentRuntime} trialCount={trialCount} onTrialCount={setTrialCount} onPickDataset={() => setPicker("dataset")} onPickAgent={() => setPicker("agent")} onStart={startRun} busy={busy} />}
           <div ref={conversationEndRef} />
         </section>
 

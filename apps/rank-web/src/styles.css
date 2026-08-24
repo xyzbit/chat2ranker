@@ -109,6 +109,13 @@ button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 3px sol
 .snapshot-list strong { overflow: hidden; font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .snapshot-list em { color: #96979b; font-size: 10px; font-style: normal; text-transform: uppercase; }
 .runtime-warning { display: flex; align-items: center; gap: 7px; margin: 0 16px 12px; padding: 9px 11px; color: #9b5d18; border-radius: 8px; background: #fff7e8; font-size: 11px; }
+.trial-choice { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 18px; border-top: 1px solid var(--line); }
+.trial-choice > span { display: flex; flex-direction: column; gap: 2px; }
+.trial-choice strong { font-size: 11px; }
+.trial-choice small { color: var(--muted); font-size: 10px; }
+.trial-choice > div { display: flex; padding: 2px; border-radius: 8px; background: #f0f0ee; }
+.trial-choice button { padding: 6px 9px; color: var(--muted); border: 0; border-radius: 6px; background: transparent; font-size: 10px; cursor: pointer; }
+.trial-choice button.selected { color: var(--text); background: #fff; box-shadow: 0 1px 4px rgba(20, 21, 28, .1); }
 .ready-card > footer { display: flex; align-items: center; justify-content: space-between; min-height: 68px; padding: 10px 17px; border-top: 1px solid var(--line); }
 .ready-card > footer > span { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
 .primary-action {
@@ -145,6 +152,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 3px sol
 .run-controls button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; color: #77797e; border: 0; border-radius: 7px; background: #f1f1ef; font-size: 11px; cursor: pointer; }
 .run-controls button:hover { color: var(--danger); background: var(--danger-soft); }
 .run-error { padding: 12px 17px; color: var(--danger); border-top: 1px solid #f2dada; background: var(--danger-soft); font-size: 11px; }
+.run-warning { display: flex; align-items: center; gap: 6px; padding: 10px 16px; color: #9b5d18; border-top: 1px solid #f0e0c2; background: #fff9ef; font-size: 10px; }
 .result-actions { display: flex; align-items: center; gap: 15px; margin-top: 8px; }
 .result-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 2px; color: var(--accent); border: 0; background: transparent; font-size: 12px; font-weight: 590; cursor: pointer; }
 .result-actions button:disabled { color: var(--success); cursor: default; }
@@ -159,10 +167,22 @@ button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 3px sol
 .failure-copy strong, .failure-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .failure-copy strong { font-size: 11px; }
 .failure-copy small { color: var(--muted); font-size: 10px; }
+.trial-details { grid-column: 1 / -1; padding-top: 3px; }
+.trial-details summary { color: var(--accent); font-size: 10px; cursor: pointer; }
+.trial-details > div { display: grid; gap: 4px; margin-top: 7px; }
+.trial-details span { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 6px 8px; border-radius: 6px; background: #f7f7f5; font-size: 9px; }
+.trial-details span.pass strong { color: var(--success); }
+.trial-details span.fail strong { color: var(--danger); }
+.trial-details span.invalid strong { color: #9b5d18; }
+.trial-details small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .event-log { max-height: 238px; overflow-y: auto; padding: 7px 0; }
 .event-log > div { display: grid; grid-template-columns: 50px 150px 1fr; gap: 10px; padding: 5px 12px; font-size: 10px; }
 .event-log time, .event-log span { color: var(--muted); }
 .event-log code { color: #393a3f; }
+.event-log span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-event { display: flex; align-items: center; min-width: 0; gap: 7px; margin: 12px 18px 0; padding: 8px 10px; color: #6b6c75; border-radius: 8px; background: #f7f7fb; font-size: 10px; }
+.live-event code { flex: 0 0 auto; color: var(--accent); }
+.live-event span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifact-view { overflow: hidden; margin-top: 8px; border: 1px solid var(--line); border-radius: 10px; background: #fbfbfc; }
 .artifact-view header { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 11px; }
 .artifact-view header button { display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; }
@@ -226,18 +246,20 @@ button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 3px sol
 .create-version { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 7px 8px; color: var(--accent); border: 0; border-radius: 7px; background: transparent; font-size: 10px; font-weight: 650; cursor: pointer; }
 .create-version:hover { background: var(--accent-soft); }
 
-.agent-form { width: min(590px, 100%); overflow: hidden; border: 1px solid rgba(0,0,0,.08); border-radius: 16px; background: #fff; box-shadow: 0 30px 80px rgba(20,22,28,.18); animation: modal-in 190ms cubic-bezier(.22,.8,.35,1); }
+.agent-form { width: min(590px, 100%); max-height: calc(100vh - 36px); overflow: hidden; border: 1px solid rgba(0,0,0,.08); border-radius: 16px; background: #fff; box-shadow: 0 30px 80px rgba(20,22,28,.18); animation: modal-in 190ms cubic-bezier(.22,.8,.35,1); }
 .agent-form > header { display: flex; align-items: flex-start; justify-content: space-between; padding: 22px 23px 18px; border-bottom: 1px solid var(--line); }
 .agent-form header small { color: var(--accent); font-size: 9px; font-weight: 760; letter-spacing: .13em; }
 .agent-form header h2 { margin: 5px 0 0; font-size: 19px; letter-spacing: -.025em; }
 .agent-form header > button { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 9px; background: #f2f2ef; cursor: pointer; }
-.form-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; padding: 20px 23px 22px; }
+.form-fields { display: grid; grid-template-columns: repeat(2, 1fr); max-height: calc(100vh - 190px); overflow-y: auto; gap: 15px; padding: 20px 23px 22px; }
 .form-fields label { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
 .form-fields label.wide { grid-column: 1 / -1; }
 .form-fields label > span { color: #5d5f64; font-size: 11px; font-weight: 650; }
-.form-fields input, .form-fields select { width: 100%; height: 41px; padding: 0 11px; color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px; outline: none; background: #fff; font-size: 12px; }
+.form-fields input, .form-fields select, .form-fields textarea { width: 100%; padding: 0 11px; color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px; outline: none; background: #fff; font: inherit; font-size: 12px; }
+.form-fields input, .form-fields select { height: 41px; }
+.form-fields textarea { min-height: 76px; padding-block: 10px; resize: vertical; line-height: 1.55; }
 .form-fields input:disabled { color: #77797e; background: #f3f3f0; }
-.form-fields input:focus, .form-fields select:focus { border-color: #aaa8ea; box-shadow: 0 0 0 3px rgba(81,79,219,.1); }
+.form-fields input:focus, .form-fields select:focus, .form-fields textarea:focus { border-color: #aaa8ea; box-shadow: 0 0 0 3px rgba(81,79,219,.1); }
 .form-fields label > small { color: var(--muted); font-size: 9px; }
 .agent-form > footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 13px 23px; border-top: 1px solid var(--line); background: #fafaf8; }
 .agent-form > footer > button:not(.primary-action) { min-height: 40px; padding: 8px 14px; border: 0; background: transparent; font-size: 12px; cursor: pointer; }
@@ -285,6 +307,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 3px sol
   .setup-item, .snapshot-list button { border-right: 0; border-bottom: 1px solid var(--line); }
   .setup-item:last-child, .snapshot-list button:last-child { border-bottom: 0; }
   .ready-card > footer { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .trial-choice { align-items: flex-start; flex-direction: column; }
   .ready-card > footer .primary-action { width: 100%; }
   .metrics { grid-template-columns: repeat(2, 1fr); row-gap: 17px; }
   .step { width: 68px; }

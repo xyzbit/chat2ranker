@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	executionclient "github.com/xyzbit/chat2ranker/execution/backend/client"
 	"github.com/xyzbit/chat2ranker/rank/backend/internal/app"
 	"github.com/xyzbit/chat2ranker/rank/backend/internal/httpapi"
 	"github.com/xyzbit/chat2ranker/rank/backend/internal/sqlite"
@@ -20,11 +21,8 @@ import (
 func main() {
 	address := flag.String("addr", "127.0.0.1:8787", "HTTP listen address")
 	databasePath := flag.String("db", "../var/rank.db", "SQLite database path")
-	workerBinary := flag.String("worker", os.Getenv("RANK_WORKER_BIN"), "rank-worker executable path")
-	repositoryRoot := flag.String("repo-root", os.Getenv("RANK_REPO_ROOT"), "chat2ranker repository root")
-	artifactRoot := flag.String("artifacts", "../var/artifacts", "artifact store root")
-	sandboxRoot := flag.String("sandboxes", "../var/sandboxes", "local process sandbox root")
-	workerTimeout := flag.Duration("worker-timeout", 10*time.Minute, "per candidate or judge execution timeout")
+	executionURL := flag.String("execution-url", envOr("RANK_EXECUTION_URL", "http://127.0.0.1:8790"), "Execution Service base URL")
+	executionTimeout := flag.Duration("execution-timeout", 15*time.Minute, "candidate or judge Execution Service timeout")
 	flag.Parse()
 	actionSecret := os.Getenv("RANK_ACTION_SECRET")
 	if actionSecret == "" {
@@ -48,19 +46,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
-	runners := app.DefaultRunners()
-	if *workerBinary != "" {
-		runners = app.ProcessRunners(app.ProcessRunnerConfig{
-			WorkerBinary:   *workerBinary,
-			RepositoryRoot: *repositoryRoot,
-			ArtifactRoot:   *artifactRoot,
-			SandboxRoot:    *sandboxRoot,
-			Timeout:        *workerTimeout,
-			JudgeRunner:    os.Getenv("RANK_JUDGE_RUNNER"),
-			JudgeModel:     os.Getenv("RANK_JUDGE_MODEL"),
-		})
-	}
-	service := app.NewService(store, app.Options{Workers: true, ActionSecret: actionSecret, ArtifactRoot: *artifactRoot, Runners: runners})
+	execution := executionclient.New(*executionURL, *executionTimeout)
+	runners := app.ExecutionRunners(app.ExecutionRunnerConfig{Client: execution, JudgeHarness: os.Getenv("RANK_JUDGE_RUNNER"), JudgeModel: os.Getenv("RANK_JUDGE_MODEL"), Timeout: *executionTimeout})
+	service := app.NewService(store, app.Options{Workers: true, ActionSecret: actionSecret, Runners: runners, Artifacts: app.ExecutionArtifactReader{Client: execution}, JudgeHarness: os.Getenv("RANK_JUDGE_RUNNER"), JudgeModel: os.Getenv("RANK_JUDGE_MODEL")})
 	if err := service.EnsureSeed(ctx); err != nil {
 		slog.Error("seed database", "error", err)
 		os.Exit(1)
@@ -81,4 +69,11 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	_ = server.Shutdown(shutdownCtx)
+}
+
+func envOr(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
 }

@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS agent_families(
 CREATE TABLE IF NOT EXISTS agent_versions(
   id TEXT PRIMARY KEY, family_id TEXT NOT NULL REFERENCES agent_families(id),
   version INTEGER NOT NULL, runner_type TEXT NOT NULL, description TEXT NOT NULL,
-  model TEXT NOT NULL, tools_json TEXT NOT NULL, created_at TEXT NOT NULL,
+  model TEXT NOT NULL, preset TEXT NOT NULL DEFAULT '', system_prompt TEXT NOT NULL DEFAULT '',
+  tools_json TEXT NOT NULL, skills_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL,
   UNIQUE(family_id, version)
 );
 
@@ -117,6 +118,26 @@ CREATE TABLE IF NOT EXISTS run_item_executions(
 );
 `
 
+const schemaV5 = `
+CREATE TABLE IF NOT EXISTS run_trials(
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  item_id TEXT NOT NULL REFERENCES run_items(id) ON DELETE CASCADE,
+  case_id TEXT NOT NULL,
+  trial_index INTEGER NOT NULL,
+  ordinal INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  result_key TEXT,
+  result_json TEXT,
+  created_at TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT,
+  UNIQUE(run_id,case_id,trial_index)
+);
+CREATE INDEX IF NOT EXISTS run_trials_run_idx ON run_trials(run_id,ordinal);
+CREATE INDEX IF NOT EXISTS run_trials_status_idx ON run_trials(run_id,status,ordinal);
+`
+
 func (s *Store) Migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, schemaV1); err != nil {
 		return fmt.Errorf("apply sqlite schema v1: %w", err)
@@ -136,5 +157,74 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(3,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
 		return fmt.Errorf("record sqlite schema v3: %w", err)
 	}
+	for _, column := range []struct{ name, declaration string }{
+		{"preset", "TEXT NOT NULL DEFAULT ''"},
+		{"system_prompt", "TEXT NOT NULL DEFAULT ''"},
+		{"skills_json", "TEXT NOT NULL DEFAULT '[]'"},
+	} {
+		if err := s.ensureColumn(ctx, "agent_versions", column.name, column.declaration); err != nil {
+			return fmt.Errorf("apply sqlite schema v4: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(4,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
+		return fmt.Errorf("record sqlite schema v4: %w", err)
+	}
+	for _, column := range []struct{ table, name, declaration string }{
+		{"dataset_versions", "evaluator_json", "TEXT NOT NULL DEFAULT '{}'"},
+		{"runs", "evaluator_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"},
+		{"runs", "trial_count", "INTEGER NOT NULL DEFAULT 1"},
+		{"runs", "scheduled_trials", "INTEGER NOT NULL DEFAULT 0"},
+		{"runs", "valid_trials", "INTEGER NOT NULL DEFAULT 0"},
+		{"runs", "infra_failures", "INTEGER NOT NULL DEFAULT 0"},
+		{"runs", "grading_failures", "INTEGER NOT NULL DEFAULT 0"},
+		{"runs", "reliable_cases", "INTEGER NOT NULL DEFAULT 0"},
+		{"runs", "case_count", "INTEGER NOT NULL DEFAULT 0"},
+		{"runs", "pass_hat_3", "REAL NOT NULL DEFAULT 0"},
+		{"runs", "evaluation_complete", "INTEGER NOT NULL DEFAULT 0"},
+		{"runs", "candidate_cost", "REAL NOT NULL DEFAULT 0"},
+		{"runs", "evaluation_cost", "REAL NOT NULL DEFAULT 0"},
+		{"run_items", "result_json", "TEXT"},
+		{"run_events", "trial_id", "TEXT"},
+		{"run_events", "trial_index", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := s.ensureColumn(ctx, column.table, column.name, column.declaration); err != nil {
+			return fmt.Errorf("apply sqlite schema v5: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, schemaV5); err != nil {
+		return fmt.Errorf("apply sqlite schema v5: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(5,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
+		return fmt.Errorf("record sqlite schema v5: %w", err)
+	}
 	return nil
+}
+
+func (s *Store) ensureColumn(ctx context.Context, table, name, declaration string) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid int
+		var columnName, columnType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		if columnName == name {
+			found = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE `+table+` ADD COLUMN `+name+` `+declaration)
+	return err
 }

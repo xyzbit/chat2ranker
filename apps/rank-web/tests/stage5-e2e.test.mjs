@@ -9,6 +9,7 @@ import test from "node:test";
 const appRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(appRoot, "../..");
 const backendRoot = path.join(repositoryRoot, "rank/backend");
+const executionBackendRoot = path.join(repositoryRoot, "execution/backend");
 
 async function freePort() {
   const server = createServer();
@@ -37,9 +38,9 @@ async function stop(child) {
   ]);
 }
 
-async function build(output, target) {
+async function build(output, target, cwd = backendRoot) {
   await new Promise((resolve, reject) => {
-    const child = spawn("go", ["build", "-o", output, target], { cwd: backendRoot, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("go", ["build", "-o", output, target], { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let details = "";
     child.stdout.on("data", (chunk) => { details += chunk; });
     child.stderr.on("data", (chunk) => { details += chunk; });
@@ -89,6 +90,13 @@ async function completeRun(baseURL, runID) {
   throw new Error("run did not reach a terminal state");
 }
 
+async function collectEvents(baseURL, pathname) {
+  const response = await fetch(baseURL + pathname, { headers: { accept: "text/event-stream" } });
+  if (!response.ok) throw new Error(`event stream returned HTTP ${response.status}`);
+  const text = await response.text();
+  return text.split(/\r?\n/).filter((line) => line.startsWith("data: ")).map((line) => JSON.parse(line.slice(6)));
+}
+
 async function fileCount(directory) {
   let count = 0;
   for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
@@ -98,28 +106,40 @@ async function fileCount(directory) {
   return count;
 }
 
-test("Stage 5 runs candidate and Judge in isolated worker processes with readable artifacts", { timeout: 90_000 }, async () => {
+test("Rank runs candidate and Judge through executiond with isolated workers and readable artifacts", { timeout: 90_000 }, async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "chat2ranker-stage5-"));
   const binaryRoot = path.join(temporaryRoot, "bin");
   await mkdir(binaryRoot);
   const rankdBinary = path.join(binaryRoot, "rankd");
-  const workerBinary = path.join(binaryRoot, "rank-worker");
-  await Promise.all([build(rankdBinary, "./cmd/rankd"), build(workerBinary, "./cmd/rank-worker")]);
-  const port = await freePort();
+  const executiondBinary = path.join(binaryRoot, "executiond");
+  const workerBinary = path.join(binaryRoot, "execution-worker");
+  await Promise.all([
+    build(rankdBinary, "./cmd/rankd"),
+    build(executiondBinary, "./cmd/executiond", executionBackendRoot),
+    build(workerBinary, "./cmd/execution-worker", executionBackendRoot),
+  ]);
+  const [port, executionPort] = await Promise.all([freePort(), freePort()]);
   const baseURL = `http://127.0.0.1:${port}`;
+  const executionURL = `http://127.0.0.1:${executionPort}`;
   const artifactRoot = path.join(temporaryRoot, "artifacts");
   const sandboxRoot = path.join(temporaryRoot, "sandboxes");
-  const environment = { ...process.env, RANK_REPO_ROOT: repositoryRoot };
+  const environment = { ...process.env, EXECUTION_REPO_ROOT: repositoryRoot };
   delete environment.DEEPSEEK_API_KEY;
-  const rankd = launch(rankdBinary, [
-    "-addr", `127.0.0.1:${port}`,
-    "-db", path.join(temporaryRoot, "rank.db"),
+  const executiond = launch(executiondBinary, [
+    "-addr", `127.0.0.1:${executionPort}`,
+    "-db", path.join(temporaryRoot, "execution.db"),
     "-worker", workerBinary,
     "-repo-root", repositoryRoot,
     "-artifacts", artifactRoot,
     "-sandboxes", sandboxRoot,
   ], { cwd: repositoryRoot, env: environment });
+  const rankd = launch(rankdBinary, [
+    "-addr", `127.0.0.1:${port}`,
+    "-db", path.join(temporaryRoot, "rank.db"),
+    "-execution-url", executionURL,
+  ], { cwd: repositoryRoot, env: environment });
   try {
+    await waitFor(executionURL, "/v1/health", executiond);
     await waitFor(baseURL, "/api/health", rankd);
     const bootstrap = await request(baseURL, "/api/bootstrap");
     const demo = bootstrap.agents.find((agent) => agent.id === "agent-research-demo-v1");
@@ -133,20 +153,40 @@ test("Stage 5 runs candidate and Judge in isolated worker processes with readabl
     const started = await request(baseURL, `/api/experiments/${experiment.id}/commands`, {
       method: "POST",
       headers: { "idempotency-key": `start-${crypto.randomUUID()}`, "x-rank-action-token": experiment.a2ui.actions.start_run.token },
-      body: JSON.stringify({ type: "start_run", actionToken: experiment.a2ui.actions.start_run.token, payload: {} }),
+      body: JSON.stringify({ type: "start_run", actionToken: experiment.a2ui.actions.start_run.token, payload: { trialCount: 5 } }),
     });
+    const runEventsPromise = collectEvents(baseURL, `/api/runs/${started.run.id}/events?after=0`);
     const run = await completeRun(baseURL, started.run.id);
-    assert.equal(run.status, "complete");
-    assert.equal(run.passed, 10);
-    assert.equal(run.total, 12);
+    const streamedRunEvents = await runEventsPromise;
+    assert.equal(run.status, "complete", run.error);
+    assert.equal(run.passed, 50);
+    assert.equal(run.total, 60);
     assert.equal(run.passRate, 83);
+    assert.equal(run.reliableCases, 10);
+    assert.equal(run.caseCount, 12);
+    assert.equal(run.passHat3, 83.3);
+    assert.equal(run.evaluationComplete, true);
     assert.equal(run.costKnown, true);
     assert.equal(run.results.length, 12);
+    const executionIDs = run.results.flatMap((result) => result.trials.flatMap((trial) => [trial.candidateExecutionId, ...trial.judgeExecutionIds]));
+    const sourceEventStreams = await Promise.all(executionIDs.map((executionID) => collectEvents(executionURL, `/v1/executions/${executionID}/events?after=0`)));
+    const sourceTerminalEvents = sourceEventStreams.filter((events) => events.at(-1)?.type === "execution.completed").length;
+    assert.equal(sourceTerminalEvents, 120);
+    const eventCounts = Object.fromEntries(["candidate.completed", "candidate.harness.output", "judge.completed", "judge.verdict"].map((type) => [type, streamedRunEvents.filter((event) => event.type === type).length]));
+    const persistedCounts = Object.fromEntries(["candidate.completed", "candidate.harness.output", "judge.completed", "judge.verdict"].map((type) => [type, run.events.filter((event) => event.type === type).length]));
+    const eventDiagnostics = JSON.stringify({ eventCounts, persistedCounts, sourceTerminalEvents });
+    assert.equal(eventCounts["candidate.completed"], 60, eventDiagnostics);
+    assert.equal(eventCounts["candidate.harness.output"], 60, eventDiagnostics);
+    assert.equal(eventCounts["judge.completed"], 60, eventDiagnostics);
+    assert.equal(eventCounts["judge.verdict"], 60, eventDiagnostics);
+    assert.equal(streamedRunEvents.at(-1)?.type, "run.completed");
+    assert.deepEqual(streamedRunEvents.map((event) => event.sequence), [...streamedRunEvents.keys()].map((index) => index + 1));
     for (const result of run.results) {
-      assert.match(result.executionId, /^case-/);
-      assert.match(result.judgeExecutionId, /^judge-/);
+      assert.match(result.executionId, /^exec-/);
+      assert.match(result.judgeExecutionId, /^exec-/);
       assert.notEqual(result.executionId, result.judgeExecutionId);
-      assert.ok(result.artifacts.length >= 4);
+      assert.equal(result.trials.length, 5);
+      assert.ok(result.artifacts.length >= 20);
     }
     const snapshot = {
       summary: {
@@ -154,6 +194,9 @@ test("Stage 5 runs candidate and Judge in isolated worker processes with readabl
         passed: run.passed,
         total: run.total,
         passRate: run.passRate,
+        reliableCases: run.reliableCases,
+        caseCount: run.caseCount,
+        passHat3: run.passHat3,
         cost: Number(run.cost.toFixed(3)),
         costKnown: run.costKnown,
       },
@@ -164,8 +207,8 @@ test("Stage 5 runs candidate and Judge in isolated worker processes with readabl
         cost: result.cost,
       })),
       isolation: {
-        candidateWorkers: run.results.filter((result) => /^case-/.test(result.executionId)).length,
-        judgeWorkers: run.results.filter((result) => /^judge-/.test(result.judgeExecutionId)).length,
+        candidateWorkers: run.results.flatMap((result) => result.trials).filter((trial) => /^exec-/.test(trial.candidateExecutionId)).length,
+        judgeWorkers: run.results.flatMap((result) => result.trials).filter((trial) => trial.judgeExecutionIds.some((id) => /^exec-/.test(id))).length,
         artifactsPerCase: run.results.map((result) => result.artifacts.length),
       },
     };
@@ -175,6 +218,8 @@ test("Stage 5 runs candidate and Judge in isolated worker processes with readabl
     const artifact = failure.artifacts.find((item) => item.kind === "result");
     const content = await request(baseURL, `/api/runs/${run.id}/artifacts?caseId=${encodeURIComponent(failure.caseId)}&path=${encodeURIComponent(artifact.path)}`);
     assert.match(content.content, /"protocolVersion":1/);
+    const executionEvents = await collectEvents(executionURL, `/v1/executions/${failure.executionId}/events?after=0`);
+    assert.deepEqual(executionEvents.map((event) => event.type), ["execution.queued", "execution.running", "harness.started", "harness.output", "execution.completed"]);
     assert.equal(await fileCount(sandboxRoot), 0);
 
     let cancelledExperiment = await request(baseURL, "/api/experiments", { method: "POST", body: JSON.stringify({ title: "Cancellation" }) });
@@ -186,6 +231,7 @@ test("Stage 5 runs candidate and Judge in isolated worker processes with readabl
     assert.equal(cancelled.status, "cancelled");
   } finally {
     await stop(rankd).catch(() => {});
+    await stop(executiond).catch(() => {});
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });

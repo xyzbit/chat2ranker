@@ -6,7 +6,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/xyzbit/chat2ranker/rank/backend/internal/app"
 	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
@@ -41,6 +43,7 @@ func New(service *app.Service, options ...Options) http.Handler {
 	mux.HandleFunc("POST /api/agents", handler.createAgent)
 	mux.HandleFunc("POST /api/agent-families/{id}/versions", handler.createAgentVersion)
 	mux.HandleFunc("GET /api/runs/{id}", handler.getRun)
+	mux.HandleFunc("GET /api/runs/{id}/events", handler.runEvents)
 	mux.HandleFunc("GET /api/runs/{id}/artifacts", handler.getArtifact)
 	mux.HandleFunc("POST /api/runs/{id}/cancel", handler.cancelRun)
 	mux.HandleFunc("POST /api/internal/control/sessions/bind", handler.bindControlSession)
@@ -220,7 +223,18 @@ func (h *Handler) executeA2UICommand(response http.ResponseWriter, request *http
 		return
 	}
 	if input.Type == app.ControlStartRun {
-		run, startErr := h.service.StartRun(request.Context(), experimentID, key)
+		var options app.RunOptions
+		if len(input.Payload) > 0 {
+			var settings struct {
+				TrialCount int `json:"trialCount"`
+			}
+			if err := json.Unmarshal(input.Payload, &settings); err != nil {
+				writeError(response, &app.Error{Status: 400, Code: "invalid_run_options", Message: "运行参数无效"})
+				return
+			}
+			options.TrialCount = settings.TrialCount
+		}
+		run, startErr := h.service.StartRun(request.Context(), experimentID, key, options)
 		if startErr != nil {
 			writeError(response, startErr)
 			return
@@ -321,17 +335,20 @@ func (h *Handler) appendControlTranscript(response http.ResponseWriter, request 
 
 func (h *Handler) startRun(response http.ResponseWriter, request *http.Request) {
 	key := strings.TrimSpace(request.Header.Get("Idempotency-Key"))
-	if key == "" {
-		var input struct {
-			IdempotencyKey string `json:"idempotencyKey"`
-		}
+	var input struct {
+		IdempotencyKey string `json:"idempotencyKey"`
+		TrialCount     int    `json:"trialCount"`
+	}
+	if request.ContentLength != 0 {
 		if err := decode(request, &input); err != nil {
 			writeError(response, err)
 			return
 		}
+	}
+	if key == "" {
 		key = input.IdempotencyKey
 	}
-	value, err := h.service.StartRun(request.Context(), request.PathValue("id"), key)
+	value, err := h.service.StartRun(request.Context(), request.PathValue("id"), key, app.RunOptions{TrialCount: input.TrialCount})
 	if err != nil {
 		writeError(response, err)
 		return
@@ -379,16 +396,19 @@ func (h *Handler) createDatasetVersion(response http.ResponseWriter, request *ht
 }
 
 type agentRequest struct {
-	Name        string   `json:"name"`
-	Handle      string   `json:"handle"`
-	RunnerType  string   `json:"runnerType"`
-	Model       string   `json:"model"`
-	Description string   `json:"description"`
-	Tools       []string `json:"tools"`
+	Name         string   `json:"name"`
+	Handle       string   `json:"handle"`
+	RunnerType   string   `json:"runnerType"`
+	Model        string   `json:"model"`
+	Preset       string   `json:"preset"`
+	SystemPrompt string   `json:"systemPrompt"`
+	Description  string   `json:"description"`
+	Tools        []string `json:"tools"`
+	Skills       []string `json:"skills"`
 }
 
 func (input agentRequest) appInput() app.CreateAgentInput {
-	return app.CreateAgentInput{Name: input.Name, Handle: input.Handle, RunnerType: input.RunnerType, Model: input.Model, Description: input.Description, Tools: input.Tools}
+	return app.CreateAgentInput{Name: input.Name, Handle: input.Handle, RunnerType: input.RunnerType, Model: input.Model, Preset: input.Preset, SystemPrompt: input.SystemPrompt, Description: input.Description, Tools: input.Tools, Skills: input.Skills}
 }
 func (h *Handler) createAgent(response http.ResponseWriter, request *http.Request) {
 	var input agentRequest
@@ -423,6 +443,55 @@ func (h *Handler) getRun(response http.ResponseWriter, request *http.Request) {
 		return
 	}
 	writeJSON(response, 200, value)
+}
+
+func (h *Handler) runEvents(response http.ResponseWriter, request *http.Request) {
+	flusher, ok := response.(http.Flusher)
+	if !ok {
+		writeError(response, &app.Error{Status: 500, Code: "stream_unsupported", Message: "当前 HTTP 服务不支持事件流"})
+		return
+	}
+	afterText := request.Header.Get("Last-Event-ID")
+	if query := request.URL.Query().Get("after"); query != "" {
+		afterText = query
+	}
+	after, err := strconv.ParseInt(strings.TrimSpace(afterText), 10, 64)
+	if err != nil && strings.TrimSpace(afterText) != "" {
+		writeError(response, &app.Error{Status: 400, Code: "invalid_event_cursor", Message: "事件游标必须是整数"})
+		return
+	}
+	response.Header().Set("Content-Type", "text/event-stream")
+	response.Header().Set("Cache-Control", "no-cache, no-transform")
+	response.Header().Set("Connection", "keep-alive")
+	response.Header().Set("X-Accel-Buffering", "no")
+	_, _ = io.WriteString(response, "retry: 1000\n\n")
+	flusher.Flush()
+	for {
+		events, terminal, waitErr := h.service.WaitRunEvents(request.Context(), request.PathValue("id"), after, 15*time.Second)
+		if waitErr != nil {
+			if errors.Is(waitErr, request.Context().Err()) {
+				return
+			}
+			payload, _ := json.Marshal(map[string]any{"error": waitErr.Error()})
+			_, _ = response.Write([]byte("event: stream.error\ndata: " + string(payload) + "\n\n"))
+			flusher.Flush()
+			return
+		}
+		if len(events) == 0 {
+			if terminal {
+				return
+			}
+			_, _ = io.WriteString(response, ": keepalive\n\n")
+			flusher.Flush()
+			continue
+		}
+		for _, event := range events {
+			payload, _ := json.Marshal(event)
+			_, _ = response.Write([]byte("id: " + strconv.FormatInt(event.ID, 10) + "\nevent: " + event.Type + "\ndata: " + string(payload) + "\n\n"))
+			after = event.ID
+		}
+		flusher.Flush()
+	}
 }
 
 func (h *Handler) getArtifact(response http.ResponseWriter, request *http.Request) {

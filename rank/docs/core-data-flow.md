@@ -2,46 +2,56 @@
 
 This reference defines the data exchanged while preparing and running an experiment.
 
+![chat2ranker core experiment data flow](diagrams/rendered/core-data-flow.png)
+
 ## Prepare an experiment
 
 1. The browser sends an ordinary chat message to the persistent Control DSH Session.
-2. The Rank Skill uses Control DSH tools to query or mutate datasets and agent configurations through `rankd`.
+2. The Rank Skill uses Control DSH tools to list, create, or select datasets and agent configurations through `rankd`; the same Session may use browser, web-search, and file tools while preparing cases.
 3. `rankd` stores reusable immutable versions and experiment selections through its repository interface; the local assembly uses SQLite.
 4. The Control DSH plugin renders dataset and agent choices as A2UI inside the conversation.
 5. The composer continues to send chat messages. Only an explicit A2UI action starts a run.
 
 ## Start and execute a run
 
-1. `rankd` receives `StartRun` with an experiment, dataset version, and agent version.
-2. `rankd` freezes both version snapshots and creates one `RunItem` per case.
-3. The scheduler emits one immutable `ExecutionSpec` per `RunItem`.
-4. `rankd` starts a `rank-worker` process for the case; the worker creates a private workspace, artifact directory, and harness home.
-5. The selected Runner starts its harness through a CLI or SDK inside that Sandbox.
-6. The Runner retains its request, standard output, standard error, native harness home, trace, and terminal result under the execution artifact directory.
-7. `rankd` receives the versioned worker response and creates an independent Judge execution with the case input, expected criteria, and candidate output.
-8. The Judge runs in another worker process with a different workspace, harness home, and execution identifier.
-9. Rank stores the score and reason, aggregates the run, and publishes run-state events.
-10. Control DSH projects those events into the experiment Session; the browser updates the A2UI result card.
+1. `rankd` receives `StartRun` with an experiment and a Trial count (default 5, range 1–20).
+2. `rankd` freezes the selected DatasetVersion, AgentVersion, and EvaluatorVersion; it creates one `RunItem` per case and one `RunTrial` per Case × Trial pair.
+3. The Rank scheduler submits one immutable Agent invocation for each Trial to `executiond` with a stable idempotency key.
+4. `executiond` persists an `Execution` before the configured Executor starts an `execution-worker`.
+5. The worker creates a private workspace and Harness Home, resolves the selected public Harness Adapter, then starts its CLI or SDK invocation.
+6. Worker progress is normalized into durable Execution events. `executiond` persists the request, lifecycle, output chunks, standard output, standard error, native harness home, trace, terminal result, and Artifact references.
+7. `rankd` follows Execution SSE and applies required deterministic criteria to the candidate output. A failed check ends the Trial as a valid quality failure without spending Judge tokens.
+8. For a candidate that passes the gate, Rank submits one independent Judge invocation per Rubric criterion with the task, expected evidence, untrusted candidate output, and only that criterion. Each Judge receives another Execution ID, worker process, workspace, and Harness Home.
+9. Rank derives each Rubric pass from its frozen score threshold, applies critical-criterion and weighted-score policy, and atomically stores the structured Trial result. Transient candidate or Judge errors receive a bounded retry; exhausted candidate errors are infrastructure failures and exhausted Judge errors are grading failures.
+10. Rank aggregates valid Trial quality separately from invalid execution/grading counts, saves one case projection, finalizes the Run, and publishes ordered Run events.
+11. The browser follows Rank SSE and updates Trial progress, valid-Trial pass rate, reliable cases, cost, failed cases, and trace links. Control DSH keeps the persistent experiment conversation and receives the compact terminal summary.
+
+## Aggregation rules
+
+- `Trial pass rate = passed valid Trials / valid Trials`; infrastructure and grading failures are never inserted into this denominator.
+- `Reliable case = all scheduled Trials are valid and pass`; the default is therefore 5/5.
+- `pass^3(case) = C(passed Trials, 3) / C(valid Trials, 3)` when at least three valid Trials exist; the Run value is the mean across eligible cases.
+- `total cost = candidate cost + evaluation cost`; both components and the cost-known flag are retained.
+- `evaluationComplete=false` whenever any Trial is excluded for infrastructure or grading failure.
 
 ## Execution input
 
 | Field group | Examples | Rule |
 |---|---|---|
-| Identity | run, run item, case, execution | Opaque versioned identifiers |
+| Identity | Rank run and case in metadata; execution in the service | Opaque identifiers joined through references |
 | Harness | type, version, image, entry point | Frozen before dispatch |
-| Agent | prompt, model, tools, Skill references, limits | Immutable `AgentVersion` snapshot |
-| Case | input, attachments, expected behavior, rubric | Immutable `DatasetVersion` snapshot |
+| Agent | Runner type, preset, system prompt, model, tool IDs, Skill references | Immutable `AgentVersion` snapshot |
+| Case | input, attachments, deterministic expectations, reference evidence | Immutable `DatasetVersion` snapshot |
+| Evaluator | deterministic criteria, Rubric criteria, weights, critical flags, thresholds, Judge harness/model | Immutable `EvaluatorVersion` snapshot |
 | Environment | workspace artifact, network policy, scoped secret references | Materialized only in the Sandbox |
-| Limits | timeout, cost budget, output retention | Enforced by worker and Runner |
+| Limits | timeout, cost budget, output retention | Declared in the Execution specification and enforced by the execution plane |
 
 ## Execution output
 
-Normalized run events cover case start, candidate output, Judge completion, artifact availability, completion, cancellation, recovery, and failure. Native model and tool events remain in the harness artifact so Rank does not erase runner-specific diagnostics.
+Execution Service returns a normalized terminal result and retained native Artifact references. Its SSE stream preserves execution lifecycle plus Harness progress. Rank maps these into case-scoped candidate and Judge events, then publishes case start, output, verdict, artifact availability, completion, cancellation, recovery, and failure without importing worker internals into its business tables.
 
-The terminal result contains final output, duration, token usage when provided, cost plus an explicit cost-known flag, Judge verdict, execution identifiers, and artifact references. Normalized data supports comparison; the retained native trace supports diagnosis.
+The terminal result contains final output, duration, token usage when provided, separated candidate/evaluation cost plus an explicit cost-known flag, criterion results, failure class, execution identifiers, and artifact references. Normalized data supports comparison; the retained native trace supports diagnosis.
 
 ## Judge visibility
 
-The Judge receives only the case input, rubric, permitted tested output, reference data, and explicitly selected trace fields. It cannot read the control conversation, other cases, mutable dataset drafts, or credentials. Judge execution uses a separate Sandbox and execution identifier.
-
-The [standalone core data-flow diagram](diagrams/core-data-flow.html) shows these steps by owning runtime role.
+The Judge receives only the case input, one frozen Rubric criterion, permitted tested output, reference data, and explicitly selected trace fields. Candidate output is delimited and treated as untrusted evidence, never as instructions. The Judge cannot read the control conversation, other cases, mutable dataset drafts, or credentials. Judge execution uses a separate Sandbox and execution identifier; an `unknown` or malformed verdict becomes a grading failure rather than a quality failure.

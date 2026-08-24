@@ -75,12 +75,12 @@
   <main>
     <p class="eyebrow">Architecture · current state</p>
     <h1>Conversation controls the experiment; Rank controls execution.</h1>
-    <p class="lede">Control DSH keeps the product conversation and renders A2UI. The Go control plane freezes versions, schedules work, and aggregates results. Every tested harness and Judge runs outside Control DSH in an isolated Sandbox.</p>
+    <p class="lede">Control DSH keeps the product conversation and renders A2UI. rankd owns evaluation policy and frozen versions. The generic Execution Service owns durable invocation events and starts one isolated worker for every candidate and Judge.</p>
 
     <div class="diagram-shell">
       <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rank-architecture-title rank-architecture-desc">
         <title id="rank-architecture-title">chat2ranker system architecture</title>
-        <desc id="rank-architecture-desc">Three runtime zones show the browser and Control DSH, the Go Rank control plane with PostgreSQL and artifact references, and isolated peer harness and Judge runners managed by rank-worker.</desc>
+        <desc id="rank-architecture-desc">Three runtime zones show the browser and Control DSH, the Go Rank business control plane with repository-backed state, and the generic Execution Service with isolated candidate and Judge workers.</desc>
         <defs>
           <pattern id="rank-arch-dots" width="24" height="24" patternUnits="userSpaceOnUse">
             <circle cx="12" cy="12" r="1" fill="rgba(23,24,27,0.07)"/>
@@ -107,7 +107,7 @@
 
         <rect x="40" y="456" width="1200" height="160" rx="8" fill="rgba(23,24,27,0.018)" stroke="rgba(23,24,27,0.12)" stroke-width="1" stroke-dasharray="4 4"/>
         <rect x="56" y="460" width="188" height="16" rx="2" fill="#fafaf8"/>
-        <text x="150" y="472" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="1.6">ISOLATED EXECUTION</text>
+        <text x="150" y="472" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="1.6">EXECUTION PLANE</text>
 
         <!-- Connectors are drawn before nodes -->
         <line x1="280" y1="124" x2="440" y2="124" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
@@ -120,19 +120,19 @@
 
         <line x1="440" y1="324" x2="300" y2="324" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
         <rect x="348" y="316" width="44" height="16" rx="2" fill="#fafaf8"/>
-        <text x="370" y="328" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">SQL</text>
+        <text x="370" y="328" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">REPO</text>
 
-        <line x1="840" y1="324" x2="940" y2="324" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
-        <rect x="864" y="316" width="52" height="16" rx="2" fill="#fafaf8"/>
-        <text x="890" y="328" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">REFS</text>
+        <path d="M840,520 H900 Q908,520 908,512 V392 Q908,384 916,384 H1062 Q1070,384 1070,376 V368" fill="none" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
+        <rect x="876" y="432" width="64" height="16" rx="2" fill="#fafaf8"/>
+        <text x="908" y="444" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">PERSIST</text>
 
         <line x1="640" y1="380" x2="640" y2="500" stroke="#514fdb" stroke-width="2" marker-end="url(#rank-arch-arrow-accent)"/>
         <rect x="596" y="432" width="88" height="16" rx="2" fill="#fafaf8"/>
-        <text x="640" y="444" text-anchor="middle" fill="#514fdb" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">JOB + LEASE</text>
+        <text x="640" y="444" text-anchor="middle" fill="#514fdb" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">HTTP + SSE</text>
 
         <line x1="440" y1="536" x2="360" y2="536" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
-        <rect x="364" y="528" width="72" height="16" rx="2" fill="#fafaf8"/>
-        <text x="400" y="540" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">START CASE</text>
+        <rect x="342" y="528" width="116" height="16" rx="2" fill="#fafaf8"/>
+        <text x="400" y="540" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">START CANDIDATE</text>
 
         <line x1="840" y1="552" x2="940" y2="552" stroke="#85878d" stroke-width="1.5" marker-end="url(#rank-arch-arrow)"/>
         <rect x="848" y="544" width="84" height="16" rx="2" fill="#fafaf8"/>
@@ -140,7 +140,7 @@
 
         <path d="M300,508 V416 Q300,408 308,408 H632 a8,8 0 0,1 16,0 H1062 Q1070,408 1070,400 V368" fill="none" stroke="#85878d" stroke-width="1" stroke-dasharray="4 4" marker-end="url(#rank-arch-arrow)"/>
         <rect x="760" y="400" width="96" height="16" rx="2" fill="#fafaf8"/>
-        <text x="808" y="412" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">NATIVE TRACE</text>
+        <text x="808" y="412" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">EVENTS + ARTIFACTS</text>
 
         <!-- Experience nodes -->
         <rect x="80" y="88" width="200" height="72" rx="8" fill="#ffffff" stroke="#d8d9d6" stroke-width="1.5"/>
@@ -159,8 +159,8 @@
         <rect x="80" y="280" width="220" height="88" rx="8" fill="#ffffff" stroke="#d8d9d6" stroke-width="1.5"/>
         <rect x="92" y="292" width="52" height="16" rx="4" fill="#f4f4f1"/>
         <text x="118" y="304" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">STATE</text>
-        <text x="190" y="328" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Rank PostgreSQL</text>
-        <text x="190" y="348" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">versions · runs · scores · leases</text>
+        <text x="190" y="328" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Rank Repository</text>
+        <text x="190" y="348" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">SQLite local · PostgreSQL adapter</text>
 
         <rect x="440" y="268" width="400" height="112" rx="8" fill="#efefff" stroke="#514fdb" stroke-width="2"/>
         <rect x="452" y="280" width="92" height="16" rx="4" fill="rgba(81,79,219,0.12)"/>
@@ -172,28 +172,28 @@
         <rect x="940" y="280" width="260" height="88" rx="8" fill="#ffffff" stroke="#d8d9d6" stroke-width="1.5"/>
         <rect x="952" y="292" width="68" height="16" rx="4" fill="#f4f4f1"/>
         <text x="986" y="304" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">ARTIFACT</text>
-        <text x="1070" y="328" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Artifact Store</text>
-        <text x="1070" y="348" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">native traces · files · stdout · stderr</text>
+        <text x="1070" y="328" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Execution State</text>
+        <text x="1070" y="348" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">SQLite events · artifacts · native traces</text>
 
         <!-- Execution nodes -->
         <rect x="80" y="508" width="280" height="80" rx="8" fill="#ffffff" stroke="#d8d9d6" stroke-width="1.5"/>
         <rect x="92" y="520" width="64" height="16" rx="4" fill="#f4f4f1"/>
         <text x="124" y="532" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">HARNESS</text>
-        <text x="220" y="552" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Peer Runner</text>
-        <text x="220" y="572" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">DSH · Pi · Claude Code · Codex · Hermes</text>
+        <text x="220" y="552" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Candidate Worker</text>
+        <text x="220" y="572" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">Harness Adapter · one private workspace</text>
 
         <rect x="440" y="500" width="400" height="96" rx="8" fill="#ffffff" stroke="#17181b" stroke-width="1.5"/>
         <rect x="452" y="512" width="64" height="16" rx="4" fill="#f4f4f1"/>
-        <text x="484" y="524" text-anchor="middle" fill="#17181b" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">WORKER</text>
-        <text x="640" y="548" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="20" font-weight="600">rank-worker</text>
-        <text x="640" y="572" text-anchor="middle" fill="#5f6167" font-family="'Geist Mono', monospace" font-size="12">process · container · Kubernetes Job</text>
-        <text x="640" y="588" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">materializes one isolated workspace per execution</text>
+        <text x="484" y="524" text-anchor="middle" fill="#17181b" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">SERVICE</text>
+        <text x="640" y="548" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="20" font-weight="600">executiond</text>
+        <text x="640" y="572" text-anchor="middle" fill="#5f6167" font-family="'Geist Mono', monospace" font-size="12">Repository · Executor · Adapter Registry</text>
+        <text x="640" y="588" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">generic service · durable lifecycle owner</text>
 
         <rect x="940" y="508" width="260" height="80" rx="8" fill="#ffffff" stroke="#d8d9d6" stroke-width="1.5"/>
         <rect x="952" y="520" width="52" height="16" rx="4" fill="#f4f4f1"/>
         <text x="978" y="532" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" letter-spacing="0.8">JUDGE</text>
-        <text x="1070" y="552" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Judge Runner</text>
-        <text x="1070" y="572" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">separate Sandbox · scoped visibility</text>
+        <text x="1070" y="552" text-anchor="middle" fill="#17181b" font-family="Inter, sans-serif" font-size="16" font-weight="600">Judge Worker</text>
+        <text x="1070" y="572" text-anchor="middle" fill="#85878d" font-family="'Geist Mono', monospace" font-size="8">Harness Adapter · scoped visibility</text>
 
         <!-- Legend -->
         <line x1="40" y1="648" x2="1240" y2="648" stroke="#d8d9d6" stroke-width="1"/>
@@ -212,7 +212,7 @@
     </div>
 
     <footer>
-      <span>chat2ranker · architecture v0.1</span>
+      <span>chat2ranker · architecture v0.2</span>
       <span>Control DSH and tested DSH never share runtime state</span>
     </footer>
   </main>

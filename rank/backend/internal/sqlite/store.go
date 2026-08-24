@@ -138,7 +138,7 @@ func (s *Store) ListDatasetFamilies(ctx context.Context) ([]domain.DatasetFamily
 }
 
 func (s *Store) ListDatasetVersions(ctx context.Context, familyID string) ([]domain.DatasetVersion, error) {
-	rows, err := s.q.QueryContext(ctx, `SELECT v.id,v.family_id,f.name,v.version,v.source,v.description,v.schema_json,v.rubric_json,v.cases_json,v.created_at FROM dataset_versions v JOIN dataset_families f ON f.id=v.family_id WHERE v.family_id=? ORDER BY v.version DESC`, familyID)
+	rows, err := s.q.QueryContext(ctx, `SELECT v.id,v.family_id,f.name,v.version,v.source,v.description,v.schema_json,v.rubric_json,v.evaluator_json,v.cases_json,v.created_at FROM dataset_versions v JOIN dataset_families f ON f.id=v.family_id WHERE v.family_id=? ORDER BY v.version DESC`, familyID)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func (s *Store) ListDatasetVersions(ctx context.Context, familyID string) ([]dom
 }
 
 func (s *Store) GetDatasetVersion(ctx context.Context, id string) (domain.DatasetVersion, error) {
-	row := s.q.QueryRowContext(ctx, `SELECT v.id,v.family_id,f.name,v.version,v.source,v.description,v.schema_json,v.rubric_json,v.cases_json,v.created_at FROM dataset_versions v JOIN dataset_families f ON f.id=v.family_id WHERE v.id=?`, id)
+	row := s.q.QueryRowContext(ctx, `SELECT v.id,v.family_id,f.name,v.version,v.source,v.description,v.schema_json,v.rubric_json,v.evaluator_json,v.cases_json,v.created_at FROM dataset_versions v JOIN dataset_families f ON f.id=v.family_id WHERE v.id=?`, id)
 	item, err := scanDatasetVersion(row.Scan)
 	return item, translate(err)
 }
@@ -164,12 +164,15 @@ type scanFunc func(...any) error
 
 func scanDatasetVersion(scan scanFunc) (domain.DatasetVersion, error) {
 	var item domain.DatasetVersion
-	var schemaJSON, rubricJSON, casesJSON, created string
-	if err := scan(&item.ID, &item.FamilyID, &item.Name, &item.Version, &item.Source, &item.Description, &schemaJSON, &rubricJSON, &casesJSON, &created); err != nil {
+	var schemaJSON, rubricJSON, evaluatorJSON, casesJSON, created string
+	if err := scan(&item.ID, &item.FamilyID, &item.Name, &item.Version, &item.Source, &item.Description, &schemaJSON, &rubricJSON, &evaluatorJSON, &casesJSON, &created); err != nil {
 		return item, err
 	}
 	item.Schema = json.RawMessage(schemaJSON)
 	item.Rubric = json.RawMessage(rubricJSON)
+	if err := decode(evaluatorJSON, &item.Evaluator); err != nil {
+		return item, err
+	}
 	if err := decode(casesJSON, &item.Cases); err != nil {
 		return item, err
 	}
@@ -195,7 +198,7 @@ func (s *Store) CreateDatasetVersion(ctx context.Context, version domain.Dataset
 }
 
 func (s *Store) insertDatasetVersion(ctx context.Context, version domain.DatasetVersion) error {
-	_, err := s.q.ExecContext(ctx, `INSERT INTO dataset_versions(id,family_id,version,source,description,schema_json,rubric_json,cases_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, version.ID, version.FamilyID, version.Version, version.Source, version.Description, string(version.Schema), string(version.Rubric), encode(version.Cases), stamp(version.CreatedAt))
+	_, err := s.q.ExecContext(ctx, `INSERT INTO dataset_versions(id,family_id,version,source,description,schema_json,rubric_json,evaluator_json,cases_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, version.ID, version.FamilyID, version.Version, version.Source, version.Description, string(version.Schema), string(version.Rubric), encode(version.Evaluator), encode(version.Cases), stamp(version.CreatedAt))
 	return translate(err)
 }
 
@@ -222,7 +225,7 @@ func (s *Store) ListAgentFamilies(ctx context.Context) ([]domain.AgentFamily, er
 }
 
 func (s *Store) ListAgentVersions(ctx context.Context, familyID string) ([]domain.AgentVersion, error) {
-	rows, err := s.q.QueryContext(ctx, `SELECT v.id,v.family_id,f.name,f.handle,v.version,v.runner_type,v.description,v.model,v.tools_json,v.created_at FROM agent_versions v JOIN agent_families f ON f.id=v.family_id WHERE v.family_id=? ORDER BY v.version DESC`, familyID)
+	rows, err := s.q.QueryContext(ctx, `SELECT v.id,v.family_id,f.name,f.handle,v.version,v.runner_type,v.description,v.model,v.preset,v.system_prompt,v.tools_json,v.skills_json,v.created_at FROM agent_versions v JOIN agent_families f ON f.id=v.family_id WHERE v.family_id=? ORDER BY v.version DESC`, familyID)
 	if err != nil {
 		return nil, err
 	}
@@ -239,18 +242,21 @@ func (s *Store) ListAgentVersions(ctx context.Context, familyID string) ([]domai
 }
 
 func (s *Store) GetAgentVersion(ctx context.Context, id string) (domain.AgentVersion, error) {
-	row := s.q.QueryRowContext(ctx, `SELECT v.id,v.family_id,f.name,f.handle,v.version,v.runner_type,v.description,v.model,v.tools_json,v.created_at FROM agent_versions v JOIN agent_families f ON f.id=v.family_id WHERE v.id=?`, id)
+	row := s.q.QueryRowContext(ctx, `SELECT v.id,v.family_id,f.name,f.handle,v.version,v.runner_type,v.description,v.model,v.preset,v.system_prompt,v.tools_json,v.skills_json,v.created_at FROM agent_versions v JOIN agent_families f ON f.id=v.family_id WHERE v.id=?`, id)
 	item, err := scanAgentVersion(row.Scan)
 	return item, translate(err)
 }
 
 func scanAgentVersion(scan scanFunc) (domain.AgentVersion, error) {
 	var item domain.AgentVersion
-	var toolsJSON, created string
-	if err := scan(&item.ID, &item.FamilyID, &item.Name, &item.Handle, &item.Version, &item.RunnerType, &item.Description, &item.Model, &toolsJSON, &created); err != nil {
+	var toolsJSON, skillsJSON, created string
+	if err := scan(&item.ID, &item.FamilyID, &item.Name, &item.Handle, &item.Version, &item.RunnerType, &item.Description, &item.Model, &item.Preset, &item.SystemPrompt, &toolsJSON, &skillsJSON, &created); err != nil {
 		return item, err
 	}
 	if err := decode(toolsJSON, &item.Tools); err != nil {
+		return item, err
+	}
+	if err := decode(skillsJSON, &item.Skills); err != nil {
 		return item, err
 	}
 	var err error
@@ -274,7 +280,7 @@ func (s *Store) CreateAgentVersion(ctx context.Context, version domain.AgentVers
 }
 
 func (s *Store) insertAgentVersion(ctx context.Context, version domain.AgentVersion) error {
-	_, err := s.q.ExecContext(ctx, `INSERT INTO agent_versions(id,family_id,version,runner_type,description,model,tools_json,created_at) VALUES(?,?,?,?,?,?,?,?)`, version.ID, version.FamilyID, version.Version, version.RunnerType, version.Description, version.Model, encode(version.Tools), stamp(version.CreatedAt))
+	_, err := s.q.ExecContext(ctx, `INSERT INTO agent_versions(id,family_id,version,runner_type,description,model,preset,system_prompt,tools_json,skills_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, version.ID, version.FamilyID, version.Version, version.RunnerType, version.Description, version.Model, version.Preset, version.SystemPrompt, encode(version.Tools), encode(version.Skills), stamp(version.CreatedAt))
 	return translate(err)
 }
 
@@ -322,7 +328,7 @@ func (s *Store) latestRunSummary(ctx context.Context, experimentID string) (doma
 	var item domain.RunSummary
 	var created string
 	var completed sql.NullString
-	err := s.q.QueryRowContext(ctx, `SELECT id,status,passed,total,pass_rate,cost,duration_ms,created_at,completed_at FROM runs WHERE experiment_id=? ORDER BY created_at DESC LIMIT 1`, experimentID).Scan(&item.ID, &item.Status, &item.Passed, &item.Total, &item.PassRate, &item.Cost, &item.DurationMs, &created, &completed)
+	err := s.q.QueryRowContext(ctx, `SELECT id,status,passed,total,pass_rate,trial_count,reliable_cases,case_count,cost,duration_ms,created_at,completed_at FROM runs WHERE experiment_id=? ORDER BY created_at DESC LIMIT 1`, experimentID).Scan(&item.ID, &item.Status, &item.Passed, &item.Total, &item.PassRate, &item.TrialCount, &item.ReliableCases, &item.CaseCount, &item.Cost, &item.DurationMs, &created, &completed)
 	if err != nil {
 		return item, translate(err)
 	}
@@ -504,7 +510,7 @@ func (s *Store) insertMessage(ctx context.Context, message domain.Message) error
 }
 
 func (s *Store) GetRun(ctx context.Context, id string) (domain.Run, error) {
-	row := s.q.QueryRowContext(ctx, `SELECT id,experiment_id,idempotency_key,status,dataset_snapshot_json,agent_snapshot_json,concurrency,created_at,started_at,completed_at,duration_ms,passed,total,pass_rate,cost,cost_known,error FROM runs WHERE id=?`, id)
+	row := s.q.QueryRowContext(ctx, `SELECT id,experiment_id,idempotency_key,status,dataset_snapshot_json,agent_snapshot_json,evaluator_snapshot_json,trial_count,concurrency,created_at,started_at,completed_at,duration_ms,passed,total,pass_rate,scheduled_trials,valid_trials,infra_failures,grading_failures,reliable_cases,case_count,pass_hat_3,evaluation_complete,cost,candidate_cost,evaluation_cost,cost_known,error FROM runs WHERE id=?`, id)
 	run, err := scanRun(row.Scan)
 	if err != nil {
 		return run, translate(err)
@@ -518,7 +524,23 @@ func (s *Store) GetRun(ctx context.Context, id string) (domain.Run, error) {
 			run.Results = append(run.Results, *item.Result)
 		}
 	}
-	run.Events, err = s.listRunEvents(ctx, id)
+	trials, err := s.ListRunTrials(ctx, id)
+	if err != nil {
+		return run, err
+	}
+	trialsByCase := map[string][]domain.TrialResult{}
+	for _, trial := range trials {
+		if trial.Status == domain.TrialComplete {
+			run.CompletedTrials++
+		}
+		if trial.Result != nil {
+			trialsByCase[trial.CaseID] = append(trialsByCase[trial.CaseID], *trial.Result)
+		}
+	}
+	for index := range run.Results {
+		run.Results[index].Trials = trialsByCase[run.Results[index].CaseID]
+	}
+	run.Events, err = s.ListRunEvents(ctx, id, 0)
 	return run, err
 }
 
@@ -568,10 +590,10 @@ func (s *Store) listRuns(ctx context.Context, query string, args ...any) ([]doma
 
 func scanRun(scan scanFunc) (domain.Run, error) {
 	run := domain.Run{Results: []domain.CaseResult{}, Events: []domain.RunEvent{}}
-	var datasetJSON, agentJSON, created string
+	var datasetJSON, agentJSON, evaluatorJSON, created string
 	var started, completed sql.NullString
-	var costKnown int
-	if err := scan(&run.ID, &run.ExperimentID, &run.IdempotencyKey, &run.Status, &datasetJSON, &agentJSON, &run.Concurrency, &created, &started, &completed, &run.DurationMs, &run.Passed, &run.Total, &run.PassRate, &run.Cost, &costKnown, &run.Error); err != nil {
+	var costKnown, evaluationComplete int
+	if err := scan(&run.ID, &run.ExperimentID, &run.IdempotencyKey, &run.Status, &datasetJSON, &agentJSON, &evaluatorJSON, &run.TrialCount, &run.Concurrency, &created, &started, &completed, &run.DurationMs, &run.Passed, &run.Total, &run.PassRate, &run.ScheduledTrials, &run.ValidTrials, &run.InfraFailures, &run.GradingFailures, &run.ReliableCases, &run.CaseCount, &run.PassHat3, &evaluationComplete, &run.Cost, &run.CandidateCost, &run.EvaluationCost, &costKnown, &run.Error); err != nil {
 		return run, err
 	}
 	if err := decode(datasetJSON, &run.DatasetSnapshot); err != nil {
@@ -580,7 +602,11 @@ func scanRun(scan scanFunc) (domain.Run, error) {
 	if err := decode(agentJSON, &run.AgentSnapshot); err != nil {
 		return run, err
 	}
+	if err := decode(evaluatorJSON, &run.EvaluatorSnapshot); err != nil {
+		return run, err
+	}
 	run.CostKnown = costKnown != 0
+	run.EvaluationComplete = evaluationComplete != 0
 	var err error
 	run.CreatedAt, err = parseStamp(created)
 	if err != nil {
@@ -603,13 +629,19 @@ func scanRun(scan scanFunc) (domain.Run, error) {
 	return run, nil
 }
 
-func (s *Store) CreateRun(ctx context.Context, run domain.Run, items []domain.RunItem, created domain.RunEvent) error {
-	_, err := s.q.ExecContext(ctx, `INSERT INTO runs(id,experiment_id,idempotency_key,status,dataset_snapshot_json,agent_snapshot_json,concurrency,created_at,duration_ms,passed,total,pass_rate,cost,cost_known,error) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, run.ID, run.ExperimentID, run.IdempotencyKey, run.Status, encode(run.DatasetSnapshot), encode(run.AgentSnapshot), run.Concurrency, stamp(run.CreatedAt), run.DurationMs, run.Passed, run.Total, run.PassRate, run.Cost, boolInt(run.CostKnown), run.Error)
+func (s *Store) CreateRun(ctx context.Context, run domain.Run, items []domain.RunItem, trials []domain.RunTrial, created domain.RunEvent) error {
+	_, err := s.q.ExecContext(ctx, `INSERT INTO runs(id,experiment_id,idempotency_key,status,dataset_snapshot_json,agent_snapshot_json,evaluator_snapshot_json,trial_count,concurrency,created_at,duration_ms,passed,total,pass_rate,scheduled_trials,valid_trials,infra_failures,grading_failures,reliable_cases,case_count,pass_hat_3,evaluation_complete,cost,candidate_cost,evaluation_cost,cost_known,error) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, run.ID, run.ExperimentID, run.IdempotencyKey, run.Status, encode(run.DatasetSnapshot), encode(run.AgentSnapshot), encode(run.EvaluatorSnapshot), run.TrialCount, run.Concurrency, stamp(run.CreatedAt), run.DurationMs, run.Passed, run.Total, run.PassRate, run.ScheduledTrials, run.ValidTrials, run.InfraFailures, run.GradingFailures, run.ReliableCases, run.CaseCount, run.PassHat3, boolInt(run.EvaluationComplete), run.Cost, run.CandidateCost, run.EvaluationCost, boolInt(run.CostKnown), run.Error)
 	if err != nil {
 		return translate(err)
 	}
 	for _, item := range items {
 		_, err = s.q.ExecContext(ctx, `INSERT INTO run_items(id,run_id,case_id,title,ordinal,status,created_at) VALUES(?,?,?,?,?,?,?)`, item.ID, item.RunID, item.CaseID, item.Title, item.Ordinal, item.Status, stamp(item.CreatedAt))
+		if err != nil {
+			return translate(err)
+		}
+	}
+	for _, trial := range trials {
+		_, err = s.q.ExecContext(ctx, `INSERT INTO run_trials(id,run_id,item_id,case_id,trial_index,ordinal,status,created_at) VALUES(?,?,?,?,?,?,?,?)`, trial.ID, trial.RunID, trial.ItemID, trial.CaseID, trial.TrialIndex, trial.Ordinal, trial.Status, stamp(trial.CreatedAt))
 		if err != nil {
 			return translate(err)
 		}
@@ -641,7 +673,7 @@ func (s *Store) UpdateRunStatus(ctx context.Context, runID, status string, at ti
 }
 
 func (s *Store) ListRunItems(ctx context.Context, runID string) ([]domain.RunItem, error) {
-	rows, err := s.q.QueryContext(ctx, `SELECT i.id,i.run_id,i.case_id,i.title,i.ordinal,i.status,COALESCE(i.result_key,''),i.passed,i.cost,i.score,i.output,i.reason,i.duration_ms,i.created_at,i.started_at,i.completed_at,COALESCE(e.execution_id,''),COALESCE(e.judge_execution_id,''),COALESCE(e.cost_known,1),COALESCE(e.usage_json,'{}'),COALESCE(e.artifacts_json,'[]') FROM run_items i LEFT JOIN run_item_executions e ON e.item_id=i.id WHERE i.run_id=? ORDER BY i.ordinal`, runID)
+	rows, err := s.q.QueryContext(ctx, `SELECT i.id,i.run_id,i.case_id,i.title,i.ordinal,i.status,COALESCE(i.result_key,''),i.passed,i.cost,i.score,i.output,i.reason,i.duration_ms,i.created_at,i.started_at,i.completed_at,COALESCE(e.execution_id,''),COALESCE(e.judge_execution_id,''),COALESCE(e.cost_known,1),COALESCE(e.usage_json,'{}'),COALESCE(e.artifacts_json,'[]'),COALESCE(i.result_json,'') FROM run_items i LEFT JOIN run_item_executions e ON e.item_id=i.id WHERE i.run_id=? ORDER BY i.ordinal`, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -652,10 +684,10 @@ func (s *Store) ListRunItems(ctx context.Context, runID string) ([]domain.RunIte
 		var passed, cost, score sql.NullFloat64
 		var duration sql.NullInt64
 		var output, reason sql.NullString
-		var created, executionID, judgeExecutionID, usageJSON, artifactsJSON string
+		var created, executionID, judgeExecutionID, usageJSON, artifactsJSON, resultJSON string
 		var costKnown int
 		var started, completed sql.NullString
-		if err := rows.Scan(&item.ID, &item.RunID, &item.CaseID, &item.Title, &item.Ordinal, &item.Status, &item.ResultKey, &passed, &cost, &score, &output, &reason, &duration, &created, &started, &completed, &executionID, &judgeExecutionID, &costKnown, &usageJSON, &artifactsJSON); err != nil {
+		if err := rows.Scan(&item.ID, &item.RunID, &item.CaseID, &item.Title, &item.Ordinal, &item.Status, &item.ResultKey, &passed, &cost, &score, &output, &reason, &duration, &created, &started, &completed, &executionID, &judgeExecutionID, &costKnown, &usageJSON, &artifactsJSON, &resultJSON); err != nil {
 			return nil, err
 		}
 		item.CreatedAt, err = parseStamp(created)
@@ -676,7 +708,12 @@ func (s *Store) ListRunItems(ctx context.Context, runID string) ([]domain.RunIte
 			}
 			item.CompletedAt = &value
 		}
-		if passed.Valid {
+		if resultJSON != "" {
+			item.Result = &domain.CaseResult{}
+			if err := decode(resultJSON, item.Result); err != nil {
+				return nil, err
+			}
+		} else if passed.Valid {
 			item.Result = &domain.CaseResult{CaseID: item.CaseID, Title: item.Title, Passed: passed.Float64 != 0, Cost: cost.Float64, CostKnown: costKnown != 0, Score: score.Float64, Output: output.String, Reason: reason.String, DurationMs: duration.Int64, ExecutionID: executionID, JudgeExecutionID: judgeExecutionID}
 			if err := json.Unmarshal([]byte(usageJSON), &item.Result.Usage); err != nil {
 				return nil, err
@@ -690,13 +727,56 @@ func (s *Store) ListRunItems(ctx context.Context, runID string) ([]domain.RunIte
 	return items, rows.Err()
 }
 
-func (s *Store) ResetActiveRunItems(ctx context.Context, runID string) error {
-	_, err := s.q.ExecContext(ctx, `UPDATE run_items SET status='queued',started_at=NULL WHERE run_id=? AND status='running'`, runID)
+func (s *Store) ListRunTrials(ctx context.Context, runID string) ([]domain.RunTrial, error) {
+	rows, err := s.q.QueryContext(ctx, `SELECT id,run_id,item_id,case_id,trial_index,ordinal,status,COALESCE(result_key,''),COALESCE(result_json,''),created_at,started_at,completed_at FROM run_trials WHERE run_id=? ORDER BY ordinal`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []domain.RunTrial{}
+	for rows.Next() {
+		var item domain.RunTrial
+		var resultJSON, created string
+		var started, completed sql.NullString
+		if err := rows.Scan(&item.ID, &item.RunID, &item.ItemID, &item.CaseID, &item.TrialIndex, &item.Ordinal, &item.Status, &item.ResultKey, &resultJSON, &created, &started, &completed); err != nil {
+			return nil, err
+		}
+		item.CreatedAt, err = parseStamp(created)
+		if err != nil {
+			return nil, err
+		}
+		if started.Valid {
+			value, parseErr := parseStamp(started.String)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			item.StartedAt = &value
+		}
+		if completed.Valid {
+			value, parseErr := parseStamp(completed.String)
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			item.CompletedAt = &value
+		}
+		if resultJSON != "" {
+			item.Result = &domain.TrialResult{}
+			if err := decode(resultJSON, item.Result); err != nil {
+				return nil, err
+			}
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) ResetActiveRunTrials(ctx context.Context, runID string) error {
+	_, err := s.q.ExecContext(ctx, `UPDATE run_trials SET status='queued',started_at=NULL WHERE run_id=? AND status='running'`, runID)
 	return translate(err)
 }
 
-func (s *Store) ClaimRunItem(ctx context.Context, runID, itemID string, startedAt time.Time) (bool, error) {
-	result, err := s.q.ExecContext(ctx, `UPDATE run_items SET status='running',started_at=? WHERE id=? AND run_id=? AND status='queued'`, stamp(startedAt), itemID, runID)
+func (s *Store) ClaimRunTrial(ctx context.Context, runID, trialID string, startedAt time.Time) (bool, error) {
+	result, err := s.q.ExecContext(ctx, `UPDATE run_trials SET status='running',started_at=? WHERE id=? AND run_id=? AND status='queued'`, stamp(startedAt), trialID, runID)
 	if err != nil {
 		return false, translate(err)
 	}
@@ -704,27 +784,24 @@ func (s *Store) ClaimRunItem(ctx context.Context, runID, itemID string, startedA
 	return count == 1, nil
 }
 
-func (s *Store) CompleteRunItem(ctx context.Context, itemID, resultKey string, result domain.CaseResult, completedAt time.Time, events []domain.RunEvent) (bool, error) {
+func (s *Store) CompleteRunTrial(ctx context.Context, trialID, resultKey string, result domain.TrialResult, completedAt time.Time, events []domain.RunEvent) (bool, error) {
 	var status, existingKey string
-	if err := s.q.QueryRowContext(ctx, `SELECT status,COALESCE(result_key,'') FROM run_items WHERE id=?`, itemID).Scan(&status, &existingKey); err != nil {
+	if err := s.q.QueryRowContext(ctx, `SELECT status,COALESCE(result_key,'') FROM run_trials WHERE id=?`, trialID).Scan(&status, &existingKey); err != nil {
 		return false, translate(err)
 	}
-	if status == domain.ItemComplete {
+	if status == domain.TrialComplete {
 		if existingKey == resultKey {
 			return false, nil
 		}
 		return false, domain.ErrConflict
 	}
-	updated, err := s.q.ExecContext(ctx, `UPDATE run_items SET status='complete',result_key=?,passed=?,cost=?,score=?,output=?,reason=?,duration_ms=?,completed_at=? WHERE id=? AND status='running'`, resultKey, boolInt(result.Passed), result.Cost, result.Score, result.Output, result.Reason, result.DurationMs, stamp(completedAt), itemID)
+	updated, err := s.q.ExecContext(ctx, `UPDATE run_trials SET status='complete',result_key=?,result_json=?,completed_at=? WHERE id=? AND status='running'`, resultKey, encode(result), stamp(completedAt), trialID)
 	if err != nil {
 		return false, translate(err)
 	}
 	count, _ := updated.RowsAffected()
 	if count != 1 {
 		return false, domain.ErrConflict
-	}
-	if _, err := s.q.ExecContext(ctx, `INSERT INTO run_item_executions(item_id,execution_id,judge_execution_id,cost_known,usage_json,artifacts_json) VALUES(?,?,?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET execution_id=excluded.execution_id,judge_execution_id=excluded.judge_execution_id,cost_known=excluded.cost_known,usage_json=excluded.usage_json,artifacts_json=excluded.artifacts_json`, itemID, result.ExecutionID, result.JudgeExecutionID, boolInt(result.CostKnown), encode(result.Usage), encode(result.Artifacts)); err != nil {
-		return false, translate(err)
 	}
 	for _, event := range events {
 		if err := s.AppendRunEvent(ctx, event); err != nil {
@@ -734,8 +811,20 @@ func (s *Store) CompleteRunItem(ctx context.Context, itemID, resultKey string, r
 	return true, nil
 }
 
+func (s *Store) SaveRunItemAggregate(ctx context.Context, itemID string, result domain.CaseResult, completedAt time.Time) error {
+	updated, err := s.q.ExecContext(ctx, `UPDATE run_items SET status='complete',result_key=?,passed=?,cost=?,score=?,output=?,reason=?,duration_ms=?,result_json=?,completed_at=? WHERE id=?`, "aggregate:"+itemID, boolInt(result.Passed), result.Cost, result.Score, result.Output, result.Reason, result.DurationMs, encode(result), stamp(completedAt), itemID)
+	if err != nil {
+		return translate(err)
+	}
+	if count, _ := updated.RowsAffected(); count != 1 {
+		return domain.ErrNotFound
+	}
+	_, err = s.q.ExecContext(ctx, `INSERT INTO run_item_executions(item_id,execution_id,judge_execution_id,cost_known,usage_json,artifacts_json) VALUES(?,?,?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET execution_id=excluded.execution_id,judge_execution_id=excluded.judge_execution_id,cost_known=excluded.cost_known,usage_json=excluded.usage_json,artifacts_json=excluded.artifacts_json`, itemID, result.ExecutionID, result.JudgeExecutionID, boolInt(result.CostKnown), encode(result.Usage), encode(result.Artifacts))
+	return translate(err)
+}
+
 func (s *Store) FinishRun(ctx context.Context, run domain.Run, message domain.Message, event domain.RunEvent) error {
-	result, err := s.q.ExecContext(ctx, `UPDATE runs SET status='complete',completed_at=?,duration_ms=?,passed=?,total=?,pass_rate=?,cost=?,cost_known=?,error='' WHERE id=? AND status NOT IN ('complete','failed','cancelled')`, nullableStamp(run.CompletedAt), run.DurationMs, run.Passed, run.Total, run.PassRate, run.Cost, boolInt(run.CostKnown), run.ID)
+	result, err := s.q.ExecContext(ctx, `UPDATE runs SET status='complete',completed_at=?,duration_ms=?,passed=?,total=?,pass_rate=?,valid_trials=?,infra_failures=?,grading_failures=?,reliable_cases=?,case_count=?,pass_hat_3=?,evaluation_complete=?,cost=?,candidate_cost=?,evaluation_cost=?,cost_known=?,error='' WHERE id=? AND status NOT IN ('complete','failed','cancelled')`, nullableStamp(run.CompletedAt), run.DurationMs, run.Passed, run.Total, run.PassRate, run.ValidTrials, run.InfraFailures, run.GradingFailures, run.ReliableCases, run.CaseCount, run.PassHat3, boolInt(run.EvaluationComplete), run.Cost, run.CandidateCost, run.EvaluationCost, boolInt(run.CostKnown), run.ID)
 	if err != nil {
 		return translate(err)
 	}
@@ -764,11 +853,14 @@ func (s *Store) CancelRun(ctx context.Context, runID string, at time.Time, event
 	if _, err = s.q.ExecContext(ctx, `UPDATE run_items SET status='cancelled',completed_at=? WHERE run_id=? AND status IN ('queued','running')`, stamp(at), runID); err != nil {
 		return translate(err)
 	}
+	if _, err = s.q.ExecContext(ctx, `UPDATE run_trials SET status='cancelled',completed_at=? WHERE run_id=? AND status IN ('queued','running')`, stamp(at), runID); err != nil {
+		return translate(err)
+	}
 	return s.AppendRunEvent(ctx, event)
 }
 
 func (s *Store) AppendRunEvent(ctx context.Context, event domain.RunEvent) error {
-	_, err := s.q.ExecContext(ctx, `INSERT INTO run_events(run_id,type,case_id,status,dataset_version_id,agent_version_id,passed,cost,score,output,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, event.RunID, event.Type, nullableText(event.CaseID), nullableText(event.Status), nullableText(event.DatasetVersionID), nullableText(event.AgentVersionID), nullableBool(event.Passed), nullableFloat(event.Cost), nullableFloat(event.Score), nullableText(event.Output), nullableText(event.Reason), stamp(event.At))
+	_, err := s.q.ExecContext(ctx, `INSERT INTO run_events(run_id,type,case_id,trial_id,trial_index,status,dataset_version_id,agent_version_id,passed,cost,score,output,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, event.RunID, event.Type, nullableText(event.CaseID), nullableText(event.TrialID), event.TrialIndex, nullableText(event.Status), nullableText(event.DatasetVersionID), nullableText(event.AgentVersionID), nullableBool(event.Passed), nullableFloat(event.Cost), nullableFloat(event.Score), nullableText(event.Output), nullableText(event.Reason), stamp(event.At))
 	return translate(err)
 }
 
@@ -785,8 +877,8 @@ func nullableFloat(value *float64) any {
 	return *value
 }
 
-func (s *Store) listRunEvents(ctx context.Context, runID string) ([]domain.RunEvent, error) {
-	rows, err := s.q.QueryContext(ctx, `SELECT id,run_id,type,COALESCE(case_id,''),COALESCE(status,''),COALESCE(dataset_version_id,''),COALESCE(agent_version_id,''),passed,cost,score,COALESCE(output,''),COALESCE(reason,''),created_at FROM run_events WHERE run_id=? ORDER BY id`, runID)
+func (s *Store) ListRunEvents(ctx context.Context, runID string, afterSequence int64) ([]domain.RunEvent, error) {
+	rows, err := s.q.QueryContext(ctx, `SELECT id,run_id,type,COALESCE(case_id,''),COALESCE(trial_id,''),trial_index,COALESCE(status,''),COALESCE(dataset_version_id,''),COALESCE(agent_version_id,''),passed,cost,score,COALESCE(output,''),COALESCE(reason,''),created_at FROM run_events WHERE run_id=? AND id>? ORDER BY id`, runID, afterSequence)
 	if err != nil {
 		return nil, err
 	}
@@ -797,7 +889,7 @@ func (s *Store) listRunEvents(ctx context.Context, runID string) ([]domain.RunEv
 		var passed sql.NullInt64
 		var cost, score sql.NullFloat64
 		var created string
-		if err := rows.Scan(&item.ID, &item.RunID, &item.Type, &item.CaseID, &item.Status, &item.DatasetVersionID, &item.AgentVersionID, &passed, &cost, &score, &item.Output, &item.Reason, &created); err != nil {
+		if err := rows.Scan(&item.ID, &item.RunID, &item.Type, &item.CaseID, &item.TrialID, &item.TrialIndex, &item.Status, &item.DatasetVersionID, &item.AgentVersionID, &passed, &cost, &score, &item.Output, &item.Reason, &created); err != nil {
 			return nil, err
 		}
 		item.At, err = parseStamp(created)

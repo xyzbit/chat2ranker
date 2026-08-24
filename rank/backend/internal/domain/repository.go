@@ -55,12 +55,15 @@ type RunRepository interface {
 	GetRunByIdempotencyKey(ctx context.Context, experimentID, key string) (Run, error)
 	ListRunsByExperiment(ctx context.Context, experimentID string) ([]Run, error)
 	ListActiveRuns(ctx context.Context) ([]Run, error)
-	CreateRun(ctx context.Context, run Run, items []RunItem, created RunEvent) error
+	ListRunEvents(ctx context.Context, runID string, afterSequence int64) ([]RunEvent, error)
+	CreateRun(ctx context.Context, run Run, items []RunItem, trials []RunTrial, created RunEvent) error
 	UpdateRunStatus(ctx context.Context, runID, status string, at time.Time, runError string) error
 	ListRunItems(ctx context.Context, runID string) ([]RunItem, error)
-	ResetActiveRunItems(ctx context.Context, runID string) error
-	ClaimRunItem(ctx context.Context, runID, itemID string, startedAt time.Time) (bool, error)
-	CompleteRunItem(ctx context.Context, itemID, resultKey string, result CaseResult, completedAt time.Time, events []RunEvent) (bool, error)
+	ListRunTrials(ctx context.Context, runID string) ([]RunTrial, error)
+	ResetActiveRunTrials(ctx context.Context, runID string) error
+	ClaimRunTrial(ctx context.Context, runID, trialID string, startedAt time.Time) (bool, error)
+	CompleteRunTrial(ctx context.Context, trialID, resultKey string, result TrialResult, completedAt time.Time, events []RunEvent) (bool, error)
+	SaveRunItemAggregate(ctx context.Context, itemID string, result CaseResult, completedAt time.Time) error
 	FinishRun(ctx context.Context, run Run, message Message, event RunEvent) error
 	CancelRun(ctx context.Context, runID string, at time.Time, event RunEvent) error
 	AppendRunEvent(ctx context.Context, event RunEvent) error
