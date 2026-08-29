@@ -1,0 +1,91 @@
+name: Release (Chat2Ranker)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without the v prefix
+        required: true
+        default: 0.1.0
+        type: string
+      publish:
+        description: Create the GitHub Release after all runtimes pass
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: chat2ranker-release
+  cancel-in-progress: false
+
+jobs:
+  runtime:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: darwin-x64
+            runner: macos-15-intel
+          - target: darwin-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 1.24.x
+          cache-dependency-path: |
+            rank/backend/go.sum
+            execution/backend/go.sum
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build release runtime
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          test "$(node -p 'require("./apps/rank-web/package.json").version')" = "$VERSION"
+          pnpm rank:package -- --version "$VERSION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: chat2ranker-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            dist/chat2ranker/chat2ranker-${{ inputs.version }}-${{ matrix.target }}.tar.gz
+            dist/chat2ranker/chat2ranker-${{ inputs.version }}-${{ matrix.target }}.tar.gz.sha256
+
+  release:
+    name: GitHub Release
+    if: inputs.publish
+    needs: runtime
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: chat2ranker-*
+          path: dist
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Chat2Ranker v$VERSION" \
+            --notes "Conversation-first local Agent evaluation platform. Start with: npx -y @xyzbit/chat2ranker start"
