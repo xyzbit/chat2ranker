@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test tests/import-cases.test.mjs tests/control-host.test.mjs tests/stage5-e2e.test.mjs",
-    "test:unit": "node --test tests/import-cases.test.mjs",
+    "test": "node --test tests/api.test.mjs tests/import-cases.test.mjs tests/message-format.test.mjs tests/mention-search.test.mjs tests/conversation-config.test.mjs tests/model-connections.test.mjs tests/control-host.test.mjs tests/stage5-e2e.test.mjs",
+    "test:unit": "node --test tests/api.test.mjs tests/import-cases.test.mjs tests/message-format.test.mjs tests/mention-search.test.mjs tests/conversation-config.test.mjs tests/model-connections.test.mjs",
     "control": "node control-host/src/main.mjs"
   },
   "dependencies": {

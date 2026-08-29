@@ -13,19 +13,117 @@ import (
 	"github.com/xyzbit/chat2ranker/execution/backend/internal/app"
 )
 
-type Handler struct{ service *app.Service }
+type Options struct{ ControlToken string }
+type Handler struct {
+	service      *app.Service
+	controlToken string
+}
 
-func New(service *app.Service) http.Handler {
-	h := &Handler{service: service}
+func New(service *app.Service, options ...Options) http.Handler {
+	configured := Options{ControlToken: "rank-local-control-token"}
+	if len(options) > 0 {
+		configured = options[0]
+	}
+	if configured.ControlToken == "" {
+		configured.ControlToken = "rank-local-control-token"
+	}
+	h := &Handler{service: service, controlToken: configured.ControlToken}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", h.health)
 	mux.HandleFunc("GET /v1/runtimes/{harness}", h.probe)
+	mux.HandleFunc("GET /v1/model-catalog", h.listModelCatalog)
+	mux.HandleFunc("GET /v1/model-connections", h.listModelConnections)
+	mux.HandleFunc("POST /v1/model-connections", h.createModelConnection)
+	mux.HandleFunc("GET /v1/model-connections/{id}", h.getModelConnection)
+	mux.HandleFunc("PATCH /v1/model-connections/{id}", h.updateModelConnection)
+	mux.HandleFunc("POST /v1/model-connections/{id}/verify", h.verifyModelConnection)
+	mux.HandleFunc("DELETE /v1/model-connections/{id}", h.deleteModelConnection)
+	mux.HandleFunc("GET /v1/system-model-bindings", h.listSystemModelBindings)
+	mux.HandleFunc("GET /v1/system-model-bindings/{role}", h.getSystemModelBinding)
+	mux.HandleFunc("PUT /v1/system-model-bindings/{role}", h.saveSystemModelBinding)
+	mux.HandleFunc("GET /v1/internal/system-model-bindings/{role}/runtime", h.resolveSystemModel)
 	mux.HandleFunc("POST /v1/executions", h.submit)
 	mux.HandleFunc("GET /v1/executions/{id}", h.get)
 	mux.HandleFunc("GET /v1/executions/{id}/events", h.events)
 	mux.HandleFunc("POST /v1/executions/{id}/cancel", h.cancel)
 	mux.HandleFunc("GET /v1/executions/{id}/artifacts", h.artifact)
 	return recoverMiddleware(mux)
+}
+
+func (h *Handler) listSystemModelBindings(response http.ResponseWriter, request *http.Request) {
+	value, err := h.service.ListSystemModelBindings(request.Context())
+	writeValue(response, value, err, 200)
+}
+func (h *Handler) getSystemModelBinding(response http.ResponseWriter, request *http.Request) {
+	value, err := h.service.GetSystemModelBinding(request.Context(), request.PathValue("role"))
+	writeValue(response, value, err, 200)
+}
+func (h *Handler) saveSystemModelBinding(response http.ResponseWriter, request *http.Request) {
+	var input contract.SystemModelBindingInput
+	if err := decode(request, &input); err != nil {
+		writeError(response, err)
+		return
+	}
+	value, err := h.service.SaveSystemModelBinding(request.Context(), request.PathValue("role"), input)
+	writeValue(response, value, err, 200)
+}
+func (h *Handler) resolveSystemModel(response http.ResponseWriter, request *http.Request) {
+	if h.controlToken == "" || request.Header.Get("X-Rank-Control-Token") != h.controlToken {
+		writeJSON(response, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "unauthorized", "message": "invalid control token"}})
+		return
+	}
+	value, err := h.service.ResolveSystemModel(request.Context(), request.PathValue("role"))
+	writeValue(response, value, err, 200)
+}
+
+func (h *Handler) listModelCatalog(response http.ResponseWriter, _ *http.Request) {
+	writeJSON(response, 200, h.service.ListModelCatalog())
+}
+
+func (h *Handler) listModelConnections(response http.ResponseWriter, request *http.Request) {
+	value, err := h.service.ListModelConnections(request.Context())
+	writeValue(response, value, err, 200)
+}
+func (h *Handler) getModelConnection(response http.ResponseWriter, request *http.Request) {
+	value, err := h.service.GetModelConnection(request.Context(), request.PathValue("id"))
+	writeValue(response, value, err, 200)
+}
+func (h *Handler) createModelConnection(response http.ResponseWriter, request *http.Request) {
+	var input contract.ModelConnectionInput
+	if err := decode(request, &input); err != nil {
+		writeError(response, err)
+		return
+	}
+	value, err := h.service.SaveModelConnection(request.Context(), "", input)
+	writeValue(response, value, err, http.StatusCreated)
+}
+func (h *Handler) updateModelConnection(response http.ResponseWriter, request *http.Request) {
+	var input contract.ModelConnectionInput
+	if err := decode(request, &input); err != nil {
+		writeError(response, err)
+		return
+	}
+	value, err := h.service.SaveModelConnection(request.Context(), request.PathValue("id"), input)
+	writeValue(response, value, err, 200)
+}
+func (h *Handler) verifyModelConnection(response http.ResponseWriter, request *http.Request) {
+	value, err := h.service.VerifyModelConnection(request.Context(), request.PathValue("id"))
+	writeValue(response, value, err, 200)
+}
+func (h *Handler) deleteModelConnection(response http.ResponseWriter, request *http.Request) {
+	err := h.service.DeleteModelConnection(request.Context(), request.PathValue("id"))
+	if err != nil {
+		writeError(response, err)
+		return
+	}
+	response.WriteHeader(http.StatusNoContent)
+}
+func writeValue(response http.ResponseWriter, value any, err error, status int) {
+	if err != nil {
+		writeError(response, err)
+		return
+	}
+	writeJSON(response, status, value)
 }
 
 func (h *Handler) health(response http.ResponseWriter, _ *http.Request) {

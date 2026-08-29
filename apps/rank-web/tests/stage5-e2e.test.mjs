@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { createServer as createHTTPServer } from "node:http";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -138,10 +139,61 @@ test("Rank runs candidate and Judge through executiond with isolated workers and
     "-db", path.join(temporaryRoot, "rank.db"),
     "-execution-url", executionURL,
   ], { cwd: repositoryRoot, env: environment });
+  let providerServer;
   try {
     await waitFor(executionURL, "/v1/health", executiond);
     await waitFor(baseURL, "/api/health", rankd);
     const bootstrap = await request(baseURL, "/api/bootstrap");
+    const deepseekCatalog = bootstrap.modelCatalog.find((provider) => provider.id === "deepseek");
+    assert.equal(deepseekCatalog.baseUrl, "https://api.deepseek.com");
+    assert.ok(deepseekCatalog.models.some((model) => model.id === "deepseek-v4-flash" && model.price.input > 0));
+    const catalogSnapshot = bootstrap.modelCatalog.map((provider) => ({
+      id: provider.id,
+      baseUrl: provider.baseUrl,
+      protocol: provider.protocol,
+      sourceUrl: provider.sourceUrl,
+      defaultModel: provider.models[0]?.id,
+      defaultPrice: provider.models[0]?.price,
+      modelCount: provider.models.length,
+    }));
+    assert.deepEqual(catalogSnapshot, JSON.parse(await readFile(path.join(appRoot, "tests/snapshots/model-catalog.json"), "utf8")));
+    const metadataOnlyConnection = await request(baseURL, "/api/model-connections", {
+      method: "POST",
+      body: JSON.stringify({ name: "E2E Gateway", provider: "custom", protocol: "openai-chat-completions", baseUrl: "https://example.invalid/v1", defaultModel: "e2e-model", prices: { "e2e-model": { input: 1, output: 2, cacheRead: .5, cacheWrite: 0 } } }),
+    });
+    assert.equal(metadataOnlyConnection.status, "missing_credential");
+    assert.equal(metadataOnlyConnection.hasCredential, false);
+    assert.equal(metadataOnlyConnection.prices["e2e-model"].output, 2);
+    const afterConnection = await request(baseURL, "/api/bootstrap");
+    assert.ok(afterConnection.modelConnections.some((connection) => connection.id === metadataOnlyConnection.id));
+    let providerModels = ["catalog-a", "account-new"];
+    let providerFailure = false;
+    providerServer = createHTTPServer((incoming, outgoing) => {
+      outgoing.setHeader("content-type", "application/json");
+      if (providerFailure) {
+        outgoing.statusCode = 503;
+        outgoing.end(JSON.stringify({ error: { message: "temporary failure" } }));
+      } else if (incoming.url === "/v1/models") {
+        outgoing.end(JSON.stringify({ data: providerModels.map((id) => ({ id })) }));
+      } else if (incoming.url === "/v1/chat/completions") {
+        outgoing.end(JSON.stringify({ choices: [] }));
+      } else {
+        outgoing.statusCode = 404;
+        outgoing.end(JSON.stringify({ error: "not found" }));
+      }
+    });
+    await new Promise((resolve, reject) => providerServer.listen(0, "127.0.0.1", resolve).once("error", reject));
+    const providerURL = `http://127.0.0.1:${providerServer.address().port}/v1`;
+    const syncConnection = await request(baseURL, "/api/model-connections", { method: "POST", body: JSON.stringify({ name: "Sync E2E", provider: "custom", protocol: "openai-chat-completions", baseUrl: providerURL, apiKey: "sync-secret", defaultModel: "catalog-a" }) });
+    let synced = await request(baseURL, `/api/model-connections/${syncConnection.id}/verify`, { method: "POST", body: "{}" });
+    assert.deepEqual(synced.models, ["account-new", "catalog-a"]);
+    providerModels = ["catalog-a", "account-latest"];
+    synced = await request(baseURL, `/api/model-connections/${syncConnection.id}/verify`, { method: "POST", body: "{}" });
+    assert.deepEqual(synced.models, ["account-latest", "catalog-a"]);
+    providerFailure = true;
+    await assert.rejects(request(baseURL, `/api/model-connections/${syncConnection.id}/verify`, { method: "POST", body: "{}" }), /temporary failure/);
+    const afterFailedSync = await request(baseURL, "/api/bootstrap");
+    assert.deepEqual(afterFailedSync.modelConnections.find((connection) => connection.id === syncConnection.id).models, ["account-latest", "catalog-a"]);
     const demo = bootstrap.agents.find((agent) => agent.id === "agent-research-demo-v1");
     const dsh = bootstrap.agents.find((agent) => agent.id === "agent-dsh-research-v1");
     assert.equal(demo.runtime.available, true);
@@ -222,6 +274,21 @@ test("Rank runs candidate and Judge through executiond with isolated workers and
     assert.deepEqual(executionEvents.map((event) => event.type), ["execution.queued", "execution.running", "harness.started", "harness.output", "execution.completed"]);
     assert.equal(await fileCount(sandboxRoot), 0);
 
+    const variant = await request(baseURL, "/api/agents", { method: "POST", body: JSON.stringify({ name: "Comparison Variant", handle: "@demo/comparison-variant", runnerType: "mock", model: "deterministic-demo" }) });
+    let comparisonExperiment = await request(baseURL, "/api/experiments", { method: "POST", body: JSON.stringify({ title: "Multi-Agent Comparison" }) });
+    comparisonExperiment = await command(baseURL, comparisonExperiment, "select_dataset", { datasetVersionId: "dataset-web-research-v3" });
+    comparisonExperiment = await command(baseURL, comparisonExperiment, "select_agent", { agentVersionId: "agent-research-demo-v1" });
+    const comparisonStart = await request(baseURL, `/api/experiments/${comparisonExperiment.id}/commands`, {
+      method: "POST",
+      headers: { "idempotency-key": `compare-${crypto.randomUUID()}`, "x-rank-action-token": comparisonExperiment.a2ui.actions.start_run.token },
+      body: JSON.stringify({ type: "start_run", actionToken: comparisonExperiment.a2ui.actions.start_run.token, payload: { trialCount: 1, agentVersionIds: ["agent-research-demo-v1", variant.id] } }),
+    });
+    const comparisonRuns = await Promise.all(comparisonStart.run.runs.map((item) => completeRun(baseURL, item.id)));
+    assert.equal(comparisonStart.run.runGroup.runIds.length, 2);
+    assert.deepEqual(comparisonRuns.map((item) => item.groupId), [comparisonStart.run.runGroup.id, comparisonStart.run.runGroup.id]);
+    assert.deepEqual(comparisonRuns.map((item) => item.agentSnapshot.id), ["agent-research-demo-v1", variant.id]);
+    assert.deepEqual(comparisonRuns.map((item) => item.total), [12, 12]);
+
     let cancelledExperiment = await request(baseURL, "/api/experiments", { method: "POST", body: JSON.stringify({ title: "Cancellation" }) });
     cancelledExperiment = await command(baseURL, cancelledExperiment, "select_dataset", { datasetVersionId: "dataset-web-research-v3" });
     cancelledExperiment = await command(baseURL, cancelledExperiment, "select_agent", { agentVersionId: "agent-research-demo-v1" });
@@ -230,6 +297,7 @@ test("Rank runs candidate and Judge through executiond with isolated workers and
     const cancelled = await completeRun(baseURL, cancelledStart.id);
     assert.equal(cancelled.status, "cancelled");
   } finally {
+    if (providerServer) await new Promise((resolve) => providerServer.close(resolve));
     await stop(rankd).catch(() => {});
     await stop(executiond).catch(() => {});
     await rm(temporaryRoot, { recursive: true, force: true });

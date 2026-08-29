@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/xyzbit/chat2ranker/execution/backend/contract"
 	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
 )
 
@@ -35,6 +36,20 @@ type Options struct {
 	ActionSecret  string
 	JudgeHarness  string
 	JudgeModel    string
+	Connections   ModelConnectionClient
+}
+
+type ModelConnectionClient interface {
+	ListModelCatalog(context.Context) ([]contract.ModelProvider, error)
+	ListModelConnections(context.Context) ([]contract.ModelConnection, error)
+	GetModelConnection(context.Context, string) (contract.ModelConnection, error)
+	CreateModelConnection(context.Context, contract.ModelConnectionInput) (contract.ModelConnection, error)
+	UpdateModelConnection(context.Context, string, contract.ModelConnectionInput) (contract.ModelConnection, error)
+	VerifyModelConnection(context.Context, string) (contract.ModelConnection, error)
+	DeleteModelConnection(context.Context, string) error
+	ListSystemModelBindings(context.Context) ([]contract.SystemModelBinding, error)
+	GetSystemModelBinding(context.Context, string) (contract.SystemModelBinding, error)
+	SaveSystemModelBinding(context.Context, string, contract.SystemModelBindingInput) (contract.SystemModelBinding, error)
 }
 
 type Service struct {
@@ -47,6 +62,7 @@ type Service struct {
 	artifacts     ArtifactReader
 	judgeHarness  string
 	judgeModel    string
+	connections   ModelConnectionClient
 	mu            sync.Mutex
 	cancels       map[string]context.CancelFunc
 }
@@ -67,7 +83,7 @@ func NewService(repo domain.Repository, options Options) *Service {
 	if strings.TrimSpace(options.JudgeHarness) == "" {
 		options.JudgeHarness = "dsh"
 	}
-	return &Service{repo: repo, runners: options.Runners, artifacts: options.Artifacts, workers: options.Workers, now: options.Clock, workerLatency: options.WorkerLatency, actionSecret: []byte(options.ActionSecret), judgeHarness: options.JudgeHarness, judgeModel: options.JudgeModel, cancels: map[string]context.CancelFunc{}}
+	return &Service{repo: repo, runners: options.Runners, artifacts: options.Artifacts, connections: options.Connections, workers: options.Workers, now: options.Clock, workerLatency: options.WorkerLatency, actionSecret: []byte(options.ActionSecret), judgeHarness: options.JudgeHarness, judgeModel: options.JudgeModel, cancels: map[string]context.CancelFunc{}}
 }
 
 func newID(prefix string) string {
@@ -128,7 +144,29 @@ func (s *Service) Bootstrap(ctx context.Context) (domain.Bootstrap, error) {
 		agents = append(agents, domain.AgentAsset{AgentVersionView: latest, FamilyDescription: family.Description, VersionCount: len(views), Versions: views})
 	}
 	experiments, err := s.repo.ListExperiments(ctx)
-	return domain.Bootstrap{Datasets: datasets, Agents: agents, Experiments: experiments}, err
+	if err != nil {
+		return domain.Bootstrap{}, err
+	}
+	connections := []contract.ModelConnection{}
+	catalog := []contract.ModelProvider{}
+	systemModels := []contract.SystemModelBinding{}
+	if s.connections != nil {
+		connections, _ = s.connections.ListModelConnections(ctx)
+		catalog, _ = s.connections.ListModelCatalog(ctx)
+		systemModels, _ = s.connections.ListSystemModelBindings(ctx)
+	}
+	runtimes := map[string]domain.RuntimeAvailability{}
+	for name, runner := range s.runners {
+		runtimes[name] = runner.Probe(ctx, domain.AgentVersion{RunnerType: name})
+	}
+	return domain.Bootstrap{Datasets: datasets, Agents: agents, Experiments: experiments, ModelConnections: connections, ModelCatalog: catalog, SystemModels: systemModels, Runtimes: runtimes}, nil
+}
+
+func (s *Service) SaveSystemModel(ctx context.Context, role string, input contract.SystemModelBindingInput) (contract.SystemModelBinding, error) {
+	if s.connections == nil {
+		return contract.SystemModelBinding{}, problem(503, "execution_service_unavailable", "Execution Service 未配置")
+	}
+	return s.connections.SaveSystemModelBinding(ctx, role, input)
 }
 
 func (s *Service) probe(ctx context.Context, agent domain.AgentVersion) domain.RuntimeAvailability {
@@ -254,8 +292,8 @@ func (s *Service) CreateDatasetVersion(ctx context.Context, familyID string, inp
 }
 
 type CreateAgentInput struct {
-	Name, Handle, RunnerType, Model, Preset, SystemPrompt, Description string
-	Tools, Skills                                                      []string
+	Name, Handle, RunnerType, Model, ModelConnectionID, Preset, SystemPrompt, Description string
+	Tools, Skills                                                                         []string
 }
 
 func normalizeTools(tools []string) []string {
@@ -272,6 +310,9 @@ func normalizeTools(tools []string) []string {
 }
 
 func (s *Service) CreateAgent(ctx context.Context, input CreateAgentInput) (domain.AgentVersionView, error) {
+	if err := s.validateAgentConnection(ctx, input); err != nil {
+		return domain.AgentVersionView{}, err
+	}
 	family, version, err := s.newAgent(input)
 	if err != nil {
 		return domain.AgentVersionView{}, err
@@ -306,16 +347,29 @@ func (s *Service) newAgent(input CreateAgentInput) (domain.AgentFamily, domain.A
 		input.Description = "自定义 Agent 配置"
 	}
 	family := domain.AgentFamily{ID: familyID, Name: name, Handle: handle, Description: input.Description, LatestVersionID: familyID + "-v1", CreatedAt: now}
-	version := domain.AgentVersion{ID: family.LatestVersionID, FamilyID: familyID, Name: name, Handle: handle, Version: 1, RunnerType: input.RunnerType, Description: input.Description, Model: input.Model, Preset: strings.TrimSpace(input.Preset), SystemPrompt: strings.TrimSpace(input.SystemPrompt), Tools: normalizeTools(input.Tools), Skills: normalizeTools(input.Skills), CreatedAt: now}
+	version := domain.AgentVersion{ID: family.LatestVersionID, FamilyID: familyID, Name: name, Handle: handle, Version: 1, RunnerType: input.RunnerType, Description: input.Description, Model: input.Model, ModelConnectionID: input.ModelConnectionID, Preset: agentPreset(input.RunnerType, input.Preset), SystemPrompt: strings.TrimSpace(input.SystemPrompt), Tools: normalizeTools(input.Tools), Skills: normalizeTools(input.Skills), CreatedAt: now}
 	return family, version, nil
 }
 
 func (s *Service) CreateAgentVersion(ctx context.Context, familyID string, input CreateAgentInput) (domain.AgentVersionView, error) {
+	if err := s.validateAgentConnection(ctx, input); err != nil {
+		return domain.AgentVersionView{}, err
+	}
+	var created domain.AgentVersion
+	err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+		var err error
+		created, err = s.createAgentVersion(ctx, repo, familyID, input)
+		return err
+	})
+	return domain.AgentVersionView{AgentVersion: created, Runtime: s.probe(ctx, created)}, err
+}
+
+func (s *Service) createAgentVersion(ctx context.Context, repo domain.Repository, familyID string, input CreateAgentInput) (domain.AgentVersion, error) {
 	if input.RunnerType == "" {
 		input.RunnerType = "dsh"
 	}
 	if s.runners[input.RunnerType] == nil {
-		return domain.AgentVersionView{}, problem(400, "unknown_runner", "未知 Runner："+input.RunnerType)
+		return domain.AgentVersion{}, problem(400, "unknown_runner", "未知 Runner："+input.RunnerType)
 	}
 	if input.Model == "" {
 		input.Model = "由运行时决定"
@@ -323,34 +377,95 @@ func (s *Service) CreateAgentVersion(ctx context.Context, familyID string, input
 	if input.Description == "" {
 		input.Description = "Agent 配置新版本"
 	}
-	var created domain.AgentVersion
-	err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
-		families, e := repo.ListAgentFamilies(ctx)
-		if e != nil {
-			return e
+	families, err := repo.ListAgentFamilies(ctx)
+	if err != nil {
+		return domain.AgentVersion{}, err
+	}
+	var family *domain.AgentFamily
+	for index := range families {
+		if families[index].ID == familyID {
+			family = &families[index]
+			break
 		}
-		var family *domain.AgentFamily
-		for index := range families {
-			if families[index].ID == familyID {
-				family = &families[index]
-				break
-			}
-		}
-		if family == nil {
-			return problem(404, "agent_family_not_found", "Agent 资产不存在")
-		}
-		versions, e := repo.ListAgentVersions(ctx, familyID)
-		if e != nil {
-			return e
-		}
-		next := 1
-		if len(versions) > 0 {
-			next = versions[0].Version + 1
-		}
-		created = domain.AgentVersion{ID: fmt.Sprintf("%s-v%d", familyID, next), FamilyID: familyID, Name: family.Name, Handle: family.Handle, Version: next, RunnerType: input.RunnerType, Description: input.Description, Model: input.Model, Preset: strings.TrimSpace(input.Preset), SystemPrompt: strings.TrimSpace(input.SystemPrompt), Tools: normalizeTools(input.Tools), Skills: normalizeTools(input.Skills), CreatedAt: s.now().UTC()}
-		return repo.CreateAgentVersion(ctx, created)
-	})
-	return domain.AgentVersionView{AgentVersion: created, Runtime: s.probe(ctx, created)}, err
+	}
+	if family == nil {
+		return domain.AgentVersion{}, problem(404, "agent_family_not_found", "Agent 资产不存在")
+	}
+	versions, err := repo.ListAgentVersions(ctx, familyID)
+	if err != nil {
+		return domain.AgentVersion{}, err
+	}
+	next := 1
+	if len(versions) > 0 {
+		next = versions[0].Version + 1
+	}
+	created := domain.AgentVersion{ID: fmt.Sprintf("%s-v%d", familyID, next), FamilyID: familyID, Name: family.Name, Handle: family.Handle, Version: next, RunnerType: input.RunnerType, Description: input.Description, Model: input.Model, ModelConnectionID: input.ModelConnectionID, Preset: agentPreset(input.RunnerType, input.Preset), SystemPrompt: strings.TrimSpace(input.SystemPrompt), Tools: normalizeTools(input.Tools), Skills: normalizeTools(input.Skills), CreatedAt: s.now().UTC()}
+	return created, repo.CreateAgentVersion(ctx, created)
+}
+
+func agentPreset(runnerType, preset string) string {
+	preset = strings.TrimSpace(preset)
+	if preset == "" && runnerType == "dsh" {
+		return "headless"
+	}
+	return preset
+}
+
+func (s *Service) validateAgentConnection(ctx context.Context, input CreateAgentInput) error {
+	if input.ModelConnectionID == "" {
+		return nil
+	}
+	if s.connections == nil {
+		return problem(503, "model_connections_unavailable", "模型连接服务不可用")
+	}
+	connection, err := s.connections.GetModelConnection(ctx, input.ModelConnectionID)
+	if err != nil {
+		return problem(400, "model_connection_not_found", "模型连接不存在")
+	}
+	if connection.Status != "verified" {
+		return problem(400, "model_connection_unverified", "模型连接尚未验证")
+	}
+	if input.RunnerType == "codex" && connection.Protocol != contract.ProtocolOpenAIResponses {
+		return problem(400, "incompatible_model_protocol", "Codex 仅支持 Responses 连接")
+	}
+	if input.RunnerType == "hermes" && connection.Protocol != contract.ProtocolOpenAIChat {
+		return problem(400, "incompatible_model_protocol", "Hermes 仅支持 Chat Completions 连接")
+	}
+	if input.RunnerType == "claude-code" {
+		return problem(400, "incompatible_model_connection", "Claude Code 使用自身登录")
+	}
+	return nil
+}
+
+func (s *Service) ListModelConnections(ctx context.Context) ([]contract.ModelConnection, error) {
+	if s.connections == nil {
+		return nil, problem(503, "model_connections_unavailable", "模型连接服务不可用")
+	}
+	return s.connections.ListModelConnections(ctx)
+}
+func (s *Service) CreateModelConnection(ctx context.Context, input contract.ModelConnectionInput) (contract.ModelConnection, error) {
+	if s.connections == nil {
+		return contract.ModelConnection{}, problem(503, "model_connections_unavailable", "模型连接服务不可用")
+	}
+	return s.connections.CreateModelConnection(ctx, input)
+}
+func (s *Service) UpdateModelConnection(ctx context.Context, id string, input contract.ModelConnectionInput) (contract.ModelConnection, error) {
+	if s.connections == nil {
+		return contract.ModelConnection{}, problem(503, "model_connections_unavailable", "模型连接服务不可用")
+	}
+	return s.connections.UpdateModelConnection(ctx, id, input)
+}
+func (s *Service) VerifyModelConnection(ctx context.Context, id string) (contract.ModelConnection, error) {
+	if s.connections == nil {
+		return contract.ModelConnection{}, problem(503, "model_connections_unavailable", "模型连接服务不可用")
+	}
+	return s.connections.VerifyModelConnection(ctx, id)
+}
+func (s *Service) DeleteModelConnection(ctx context.Context, id string) error {
+	if s.connections == nil {
+		return problem(503, "model_connections_unavailable", "模型连接服务不可用")
+	}
+	return s.connections.DeleteModelConnection(ctx, id)
 }
 
 func (s *Service) CreateExperiment(ctx context.Context, title string) (domain.ExperimentView, error) {
@@ -415,10 +530,15 @@ func (s *Service) UpdateExperiment(ctx context.Context, id string, patch Experim
 		if e != nil {
 			return mapNotFound(e, "experiment_not_found", "实验不存在")
 		}
-		message := domain.Message{ID: newID("msg"), ExperimentID: id, Role: "assistant", CreatedAt: s.now().UTC()}
+		now := s.now().UTC()
 		if patch.Title != nil && strings.TrimSpace(*patch.Title) != "" {
 			experiment.Title = strings.TrimSpace(*patch.Title)
 		}
+		if patch.DatasetVersionID == nil && patch.AgentVersionID == nil {
+			experiment.UpdatedAt = now
+			return repo.UpdateExperimentControl(ctx, experiment)
+		}
+		message := domain.Message{ID: newID("msg"), ExperimentID: id, Role: "assistant", CreatedAt: now}
 		if patch.DatasetVersionID != nil {
 			dataset, e := repo.GetDatasetVersion(ctx, *patch.DatasetVersionID)
 			if e != nil {
@@ -434,9 +554,6 @@ func (s *Service) UpdateExperiment(ctx context.Context, id string, patch Experim
 			}
 			experiment.AgentVersionID = agent.ID
 			message.Content = fmt.Sprintf("已选 Agent「%s v%d」。", agent.Handle, agent.Version)
-		}
-		if message.Content == "" {
-			message.Content = "实验配置已更新。"
 		}
 		experiment.UpdatedAt = message.CreatedAt
 		return repo.UpdateExperimentSelection(ctx, experiment, message)

@@ -118,7 +118,9 @@ func TestRepositoryContractPersistsSnapshotsAndIdempotentCallbacks(t *testing.T)
 		if err := repo.SaveRunItemAggregate(ctx, item.ID, aggregate, now); err != nil {
 			return err
 		}
-		return nil
+		completed := now.Add(time.Second)
+		run.Status, run.Passed, run.Total, run.PassRate, run.Cost, run.CostKnown, run.CompletedAt = domain.RunComplete, 1, 1, 100, .02, true, &completed
+		return repo.FinishRun(ctx, run, domain.Message{ID: "msg-run-complete", ExperimentID: experiment.ID, Role: "assistant", Content: "done", RunID: run.ID, CreatedAt: completed}, domain.RunEvent{RunID: run.ID, Type: "run.completed", At: completed})
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +130,16 @@ func TestRepositoryContractPersistsSnapshotsAndIdempotentCallbacks(t *testing.T)
 	}
 	if loaded.ID != run.ID || len(loaded.Results) != 1 || loaded.DatasetSnapshot.ID != dataset.ID {
 		t.Fatalf("unexpected loaded run: %#v", loaded)
+	}
+	experiments, err := store.ListExperiments(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(experiments) != 1 || experiments[0].LatestRun == nil || !experiments[0].LatestRun.CostKnown {
+		t.Fatalf("latest run summary lost cost completeness: %#v", experiments)
+	}
+	if summary := experiments[0].RunSummary; summary == nil || summary.Completed != 1 || summary.Passed != 1 || summary.Total != 1 || summary.Cost != .02 || !summary.CostKnown {
+		t.Fatalf("completed run aggregate is incorrect: %#v", summary)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)

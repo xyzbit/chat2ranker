@@ -20,13 +20,14 @@ type ExecutionSpec struct {
 }
 
 type CandidateResult struct {
-	Output      string
-	Cost        float64
-	CostKnown   bool
-	DurationMs  int64
-	ExecutionID string
-	Usage       domain.Usage
-	Artifacts   []domain.ArtifactRef
+	Output        string
+	Cost          float64
+	CostKnown     bool
+	CostEstimated bool
+	DurationMs    int64
+	ExecutionID   string
+	Usage         domain.Usage
+	Artifacts     []domain.ArtifactRef
 }
 
 type JudgeSpec struct {
@@ -43,15 +44,16 @@ type JudgeSpec struct {
 }
 
 type JudgeResult struct {
-	Passed      bool
-	Score       float64
-	Reason      string
-	Cost        float64
-	CostKnown   bool
-	DurationMs  int64
-	ExecutionID string
-	Usage       domain.Usage
-	Artifacts   []domain.ArtifactRef
+	Passed        bool
+	Score         float64
+	Reason        string
+	Cost          float64
+	CostKnown     bool
+	CostEstimated bool
+	DurationMs    int64
+	ExecutionID   string
+	Usage         domain.Usage
+	Artifacts     []domain.ArtifactRef
 }
 
 type RunnerEvent struct {

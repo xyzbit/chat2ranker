@@ -53,3 +53,15 @@ func TestFirstPartyDSHProbeRequiresCredentialAndBuiltCLI(t *testing.T) {
 		t.Fatalf("configured DSH unavailable: %#v", availability)
 	}
 }
+
+func TestFirstPartyDSHUsesPackagedCLIOverride(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "dsh.js")
+	if err := os.WriteFile(path, []byte("// packaged fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("RANK_DSH_BIN", path)
+	adapter := NewDSH("/missing").(*dshAdapter)
+	if adapter.commandPath != path {
+		t.Fatalf("packaged DSH path = %q, want %q", adapter.commandPath, path)
+	}
+}

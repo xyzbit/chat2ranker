@@ -33,6 +33,8 @@ type Options struct {
 	WorkerVersion string
 	ArtifactRoot  string
 	Clock         func() time.Time
+	Credentials   CredentialStore
+	Verifier      ConnectionVerifier
 }
 
 type Service struct {
@@ -42,6 +44,8 @@ type Service struct {
 	workerVersion string
 	artifactRoot  string
 	now           func() time.Time
+	credentials   CredentialStore
+	verifier      ConnectionVerifier
 	mu            sync.Mutex
 	cancels       map[string]context.CancelFunc
 	subscriptions map[string]map[chan struct{}]struct{}
@@ -54,7 +58,10 @@ func NewService(repo domain.Repository, executor domain.Executor, options Option
 	if options.WorkerVersion == "" {
 		options.WorkerVersion = "dev"
 	}
-	return &Service{repo: repo, executor: executor, workers: options.Workers, workerVersion: options.WorkerVersion, artifactRoot: options.ArtifactRoot, now: options.Clock, cancels: map[string]context.CancelFunc{}, subscriptions: map[string]map[chan struct{}]struct{}{}}
+	if options.Verifier == nil {
+		options.Verifier = HTTPConnectionVerifier{}
+	}
+	return &Service{repo: repo, executor: executor, workers: options.Workers, workerVersion: options.WorkerVersion, artifactRoot: options.ArtifactRoot, now: options.Clock, credentials: options.Credentials, verifier: options.Verifier, cancels: map[string]context.CancelFunc{}, subscriptions: map[string]map[chan struct{}]struct{}{}}
 }
 
 func (s *Service) Submit(ctx context.Context, input contract.SubmitRequest) (contract.Execution, error) {

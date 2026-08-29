@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -42,6 +43,7 @@ func (adapter *commandAdapter) Probe(context.Context) contract.Availability {
 		availability.Reason = adapter.config.MissingReason
 		return availability
 	}
+	availability.Installed = true
 	if adapter.config.RequiredEnvironment != "" && strings.TrimSpace(os.Getenv(adapter.config.RequiredEnvironment)) == "" {
 		availability.Reason = "未配置 " + adapter.config.RequiredEnvironment
 		return availability
@@ -53,6 +55,7 @@ func (adapter *commandAdapter) Probe(context.Context) contract.Availability {
 		}
 	}
 	availability.Available = len(adapter.config.Argv) > 0
+	availability.Configured = availability.Available
 	return availability
 }
 
@@ -162,14 +165,28 @@ func effectivePrompt(spec contract.Spec) string {
 
 func commandEnvironment(invocation Invocation) []string {
 	allowed := map[string]bool{"PATH": true, "TMPDIR": true, "LANG": true, "LC_ALL": true, "NODE_EXTRA_CA_CERTS": true, "SSL_CERT_FILE": true, "SSL_CERT_DIR": true, "DEEPSEEK_API_KEY": true, "DEEPSEEK_BASE_URL": true, "ANTHROPIC_API_KEY": true, "OPENAI_API_KEY": true, "GOOGLE_API_KEY": true}
-	environment := []string{}
+	values := map[string]string{}
 	for _, entry := range os.Environ() {
-		name, _, _ := strings.Cut(entry, "=")
+		name, value, _ := strings.Cut(entry, "=")
 		if allowed[name] {
-			environment = append(environment, entry)
+			values[name] = value
 		}
 	}
-	return append(environment, "HOME="+invocation.HarnessHome, "DSH_HOME="+invocation.HarnessHome, "DSH_TELEMETRY_DISABLED=1", "DSH_PERMISSION_MODE=read-only", "EXECUTION_ID="+invocation.ExecutionID, "EXECUTION_WORKSPACE="+invocation.Workspace)
+	values["HOME"], values["DSH_HOME"], values["DSH_TELEMETRY_DISABLED"], values["DSH_PERMISSION_MODE"] = invocation.HarnessHome, invocation.HarnessHome, "1", "read-only"
+	values["EXECUTION_ID"], values["EXECUTION_WORKSPACE"] = invocation.ExecutionID, invocation.Workspace
+	for name, value := range invocation.Environment {
+		values[name] = value
+	}
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	environment := make([]string, 0, len(names))
+	for _, name := range names {
+		environment = append(environment, name+"="+values[name])
+	}
+	return environment
 }
 
 type limitedBuffer struct {

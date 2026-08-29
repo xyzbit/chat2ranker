@@ -17,7 +17,7 @@ func NewMock() Adapter { return mockAdapter{} }
 func (mockAdapter) ID() string { return "mock" }
 
 func (mockAdapter) Probe(context.Context) contract.Availability {
-	return contract.Availability{Available: true, Label: "隔离 Demo Harness"}
+	return contract.Availability{Available: true, Installed: true, Configured: true, Label: "隔离 Demo Harness"}
 }
 
 func (mockAdapter) Run(ctx context.Context, invocation Invocation) (contract.Result, error) {
@@ -44,7 +44,7 @@ func (mockAdapter) Run(ctx context.Context, invocation Invocation) (contract.Res
 		if passed {
 			score = 1
 		}
-		result := contract.Result{Passed: passed, Score: score, Reason: reason, Cost: 0.006, CostKnown: true, Usage: contract.Usage{InputTokens: 40, OutputTokens: 8}}
+		result := contract.Result{Passed: passed, Score: score, Reason: reason, Cost: 0.006, CostKnown: true, CostSource: contract.CostSourceProvider, Usage: contract.Usage{InputTokens: 40, OutputTokens: 8}}
 		if invocation.Emit != nil {
 			if err := invocation.Emit(ProgressEvent{Type: "harness.output", Message: reason, At: time.Now().UTC()}); err != nil {
 				return contract.Result{}, err
@@ -72,7 +72,7 @@ func (mockAdapter) Run(ctx context.Context, invocation Invocation) (contract.Res
 			return contract.Result{}, err
 		}
 	}
-	return contract.Result{Output: output, Cost: cost, CostKnown: true, Usage: contract.Usage{InputTokens: 70, OutputTokens: 30}}, nil
+	return contract.Result{Output: output, Cost: cost, CostKnown: true, CostSource: contract.CostSourceProvider, Usage: contract.Usage{InputTokens: 70, OutputTokens: 30}}, nil
 }
 
 func stringValue(value any) string {

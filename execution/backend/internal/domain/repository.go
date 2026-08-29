@@ -27,5 +27,12 @@ type Repository interface {
 	Fail(ctx context.Context, id, message string, completedAt time.Time, event contract.Event) error
 	Cancel(ctx context.Context, id string, completedAt time.Time, event contract.Event) error
 	Requeue(ctx context.Context, id string, event contract.Event) error
+	ListModelConnections(context.Context) ([]contract.ModelConnection, error)
+	GetModelConnection(context.Context, string) (contract.ModelConnection, error)
+	SaveModelConnection(context.Context, contract.ModelConnection) error
+	DeleteModelConnection(context.Context, string) error
+	ListSystemModelBindings(context.Context) ([]contract.SystemModelBinding, error)
+	GetSystemModelBinding(context.Context, string) (contract.SystemModelBinding, error)
+	SaveSystemModelBinding(context.Context, contract.SystemModelBinding) error
 	Close() error
 }

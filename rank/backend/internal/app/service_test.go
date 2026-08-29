@@ -58,6 +58,27 @@ func TestControlCommandsAreSessionBoundStructuredAndIdempotent(t *testing.T) {
 	if view.DatasetVersionID != "dataset-web-research-v3" || len(view.ControlEvents) != 1 {
 		t.Fatalf("unexpected control projection: %#v", view)
 	}
+	results, err := service.ApplyControlCommand(ctx, app.ControlCommandInput{
+		ExperimentID: experiment.ID, ControlSessionID: experiment.ControlSessionID,
+		IdempotencyKey: "show-results-1", Type: app.ControlShowResults, Payload: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resultView struct {
+		RunCount int   `json:"runCount"`
+		Runs     []any `json:"runs"`
+	}
+	if err := json.Unmarshal(results.Result, &resultView); err != nil {
+		t.Fatal(err)
+	}
+	if resultView.RunCount != 0 || len(resultView.Runs) != 0 {
+		t.Fatalf("unexpected empty experiment results: %#v", resultView)
+	}
+	view, err = service.GetExperiment(ctx, experiment.ID)
+	if err != nil || view.ControlEvents[1].Type != "a2ui/show_experiment_results" {
+		t.Fatalf("experiment result card event missing: %#v, %v", view.ControlEvents, err)
+	}
 	_, err = service.ApplyControlCommand(ctx, app.ControlCommandInput{
 		ExperimentID: experiment.ID, ControlSessionID: "another-session",
 		IdempotencyKey: "tool-call-2", Type: app.ControlPrepareRun, Payload: json.RawMessage(`{}`),
@@ -93,6 +114,20 @@ func TestControlSessionCreatesAndSelectsVersionedAssets(t *testing.T) {
 	if err := json.Unmarshal(datasetCommand.Result, &datasetResult); err != nil {
 		t.Fatal(err)
 	}
+	addedCommand, err := service.ApplyControlCommand(ctx, app.ControlCommandInput{
+		ExperimentID: experiment.ID, ControlSessionID: experiment.ControlSessionID,
+		IdempotencyKey: "add-case-1", Type: app.ControlAddDatasetCases,
+		Payload: json.RawMessage(`{"baseDatasetVersionId":"` + datasetResult.DatasetVersionID + `","cases":[{"id":"chat-2","title":"新增用例","input":"完成第二个任务","expected":{"demoOutcome":"pass"}}]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var addedResult struct {
+		DatasetVersionID string `json:"datasetVersionId"`
+	}
+	if err := json.Unmarshal(addedCommand.Result, &addedResult); err != nil {
+		t.Fatal(err)
+	}
 	agentCommand, err := service.ApplyControlCommand(ctx, app.ControlCommandInput{
 		ExperimentID: experiment.ID, ControlSessionID: experiment.ControlSessionID,
 		IdempotencyKey: "create-agent-1", Type: app.ControlCreateAgent,
@@ -107,14 +142,36 @@ func TestControlSessionCreatesAndSelectsVersionedAssets(t *testing.T) {
 	if err := json.Unmarshal(agentCommand.Result, &agentResult); err != nil {
 		t.Fatal(err)
 	}
+	agentVersionCommand, err := service.ApplyControlCommand(ctx, app.ControlCommandInput{
+		ExperimentID: experiment.ID, ControlSessionID: experiment.ControlSessionID,
+		IdempotencyKey: "create-agent-version-1", Type: app.ControlCreateAgentVersion,
+		Payload: json.RawMessage(`{"baseAgentVersionId":"` + agentResult.AgentVersionID + `","tools":["web_search","browser"],"skills":["web-research"]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var agentVersionResult struct {
+		AgentVersionID string `json:"agentVersionId"`
+	}
+	if err := json.Unmarshal(agentVersionCommand.Result, &agentVersionResult); err != nil {
+		t.Fatal(err)
+	}
 	view, err := service.GetExperiment(ctx, experiment.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.DatasetVersionID != datasetResult.DatasetVersionID || view.AgentVersionID != agentResult.AgentVersionID || view.Dataset.Version != 1 || view.Agent.Version != 1 {
+	if view.DatasetVersionID != addedResult.DatasetVersionID || view.AgentVersionID != agentVersionResult.AgentVersionID || view.Dataset.Version != 2 || view.Dataset.CaseCount != 2 || view.Agent.Version != 2 || len(view.Agent.Tools) != 2 || len(view.Agent.Skills) != 1 {
 		t.Fatalf("control-created assets were not selected: %#v", view)
 	}
-	if len(view.ControlEvents) != 2 || view.ControlEvents[0].Type != "control/create_dataset" || view.ControlEvents[1].Type != "control/create_agent" {
+	base, err := store.GetDatasetVersion(ctx, datasetResult.DatasetVersionID)
+	if err != nil || base.CaseCount != 1 {
+		t.Fatalf("base dataset was mutated: %#v, %v", base, err)
+	}
+	baseAgent, err := store.GetAgentVersion(ctx, agentResult.AgentVersionID)
+	if err != nil || len(baseAgent.Tools) != 1 || len(baseAgent.Skills) != 0 {
+		t.Fatalf("base Agent was mutated: %#v, %v", baseAgent, err)
+	}
+	if len(view.ControlEvents) != 4 || view.ControlEvents[0].Type != "control/create_dataset" || view.ControlEvents[1].Type != "control/add_dataset_cases" || view.ControlEvents[2].Type != "control/create_agent" || view.ControlEvents[3].Type != "control/create_agent_version" {
 		t.Fatalf("unexpected control asset events: %#v", view.ControlEvents)
 	}
 }
@@ -178,6 +235,24 @@ func configuredExperiment(t *testing.T, service *app.Service) domain.ExperimentV
 	return experiment
 }
 
+func TestTitleOnlyUpdateDoesNotAppendConfigurationMessage(t *testing.T) {
+	service, store, _ := testService(t, false)
+	defer store.Close()
+	ctx := context.Background()
+	experiment, err := service.CreateExperiment(ctx, "未命名实验")
+	if err != nil {
+		t.Fatal(err)
+	}
+	title := "提示词优化对比"
+	updated, err := service.UpdateExperiment(ctx, experiment.ID, app.ExperimentPatch{Title: &title})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Title != title || len(updated.Messages) != len(experiment.Messages) {
+		t.Fatalf("title update polluted the conversation: %#v", updated)
+	}
+}
+
 func waitComplete(t *testing.T, service *app.Service, runID string) domain.Run {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -226,6 +301,64 @@ func TestStartRunIsTransactionalAndIdempotent(t *testing.T) {
 	}
 	if len(trials) != 60 {
 		t.Fatalf("expected 60 independent trials, got %d", len(trials))
+	}
+}
+
+func TestStartComparisonCreatesIndependentIdempotentRuns(t *testing.T) {
+	service, store, path := testService(t, false)
+	experiment := configuredExperiment(t, service)
+	second, err := service.CreateAgent(context.Background(), app.CreateAgentInput{Name: "Research Variant", Handle: "@demo/research-v2", RunnerType: "mock", Model: "deterministic-demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := app.ComparisonOptions{AgentVersionIDs: []string{"agent-research-demo-v1", second.ID}, TrialCount: 1}
+	first, err := service.StartComparison(context.Background(), experiment.ID, "compare-1", options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := service.StartComparison(context.Background(), experiment.ID, "compare-1", options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Group.ID != replayed.Group.ID || len(first.Runs) != 2 || len(replayed.Runs) != 2 {
+		t.Fatalf("comparison was not replayed: %#v %#v", first.Group, replayed.Group)
+	}
+	for index, run := range first.Runs {
+		if run.GroupID != first.Group.ID || run.DatasetSnapshot.ID != experiment.DatasetVersionID || run.AgentSnapshot.ID != options.AgentVersionIDs[index] || run.Total != 12 {
+			t.Fatalf("child run did not freeze comparison input: %#v", run)
+		}
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := sqlite.Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	group, err := reopened.GetRunGroup(context.Background(), first.Group.ID)
+	if err != nil || len(group.RunIDs) != 2 || group.Status != domain.RunQueued {
+		t.Fatalf("persisted comparison is incomplete: %#v, %v", group, err)
+	}
+}
+
+func TestAgentPresetDefaultsOnlyForDSH(t *testing.T) {
+	service, store, _ := testService(t, false)
+	defer store.Close()
+
+	dsh, err := service.CreateAgent(context.Background(), app.CreateAgentInput{Name: "DSH default", RunnerType: "dsh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dsh.Preset != "headless" {
+		t.Fatalf("DSH preset = %q, want headless", dsh.Preset)
+	}
+	demo, err := service.CreateAgent(context.Background(), app.CreateAgentInput{Name: "Demo default", RunnerType: "mock"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if demo.Preset != "" {
+		t.Fatalf("mock preset = %q, want empty", demo.Preset)
 	}
 }
 

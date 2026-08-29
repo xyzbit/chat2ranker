@@ -138,6 +138,21 @@ CREATE INDEX IF NOT EXISTS run_trials_run_idx ON run_trials(run_id,ordinal);
 CREATE INDEX IF NOT EXISTS run_trials_status_idx ON run_trials(run_id,status,ordinal);
 `
 
+const schemaV6 = `
+CREATE TABLE IF NOT EXISTS run_groups(
+  id TEXT PRIMARY KEY,
+  experiment_id TEXT NOT NULL REFERENCES experiments(id),
+  idempotency_key TEXT NOT NULL,
+  dataset_version_id TEXT NOT NULL,
+  agent_version_ids_json TEXT NOT NULL,
+  trial_count INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(experiment_id,idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS run_groups_experiment_idx ON run_groups(experiment_id,created_at);
+CREATE INDEX IF NOT EXISTS runs_group_idx ON runs(group_id,created_at);
+`
+
 func (s *Store) Migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, schemaV1); err != nil {
 		return fmt.Errorf("apply sqlite schema v1: %w", err)
@@ -196,6 +211,27 @@ func (s *Store) Migrate(ctx context.Context) error {
 	}
 	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(5,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
 		return fmt.Errorf("record sqlite schema v5: %w", err)
+	}
+	if err := s.ensureColumn(ctx, "runs", "group_id", "TEXT"); err != nil {
+		return fmt.Errorf("apply sqlite schema v6: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, schemaV6); err != nil {
+		return fmt.Errorf("apply sqlite schema v6: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(6,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
+		return fmt.Errorf("record sqlite schema v6: %w", err)
+	}
+	if err := s.ensureColumn(ctx, "agent_versions", "model_connection_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("apply sqlite schema v7: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(7,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
+		return fmt.Errorf("record sqlite schema v7: %w", err)
+	}
+	if err := s.ensureColumn(ctx, "runs", "cost_estimated", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("apply sqlite schema v8: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(8,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
+		return fmt.Errorf("record sqlite schema v8: %w", err)
 	}
 	return nil
 }

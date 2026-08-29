@@ -69,6 +69,12 @@ type RunRepository interface {
 	AppendRunEvent(ctx context.Context, event RunEvent) error
 }
 
+type RunGroupRepository interface {
+	GetRunGroup(ctx context.Context, id string) (RunGroup, error)
+	GetRunGroupByIdempotencyKey(ctx context.Context, experimentID, key string) (RunGroup, error)
+	CreateRunGroup(ctx context.Context, group RunGroup) error
+}
+
 // Repository is the composite persistence port owned by the Rank domain.
 // Application services depend on these interfaces; SQL and SQLite types stay
 // entirely inside persistence adapters.
@@ -79,4 +85,5 @@ type Repository interface {
 	ExperimentRepository
 	ControlRepository
 	RunRepository
+	RunGroupRepository
 }

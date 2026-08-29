@@ -3,6 +3,8 @@ package domain
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/xyzbit/chat2ranker/execution/backend/contract"
 )
 
 type Case struct {
@@ -91,25 +93,28 @@ type AgentFamily struct {
 }
 
 type AgentVersion struct {
-	ID           string    `json:"id"`
-	FamilyID     string    `json:"familyId"`
-	Name         string    `json:"name"`
-	Handle       string    `json:"handle"`
-	Version      int       `json:"version"`
-	RunnerType   string    `json:"runnerType"`
-	Description  string    `json:"description"`
-	Model        string    `json:"model"`
-	Preset       string    `json:"preset,omitempty"`
-	SystemPrompt string    `json:"systemPrompt,omitempty"`
-	Tools        []string  `json:"tools"`
-	Skills       []string  `json:"skills"`
-	CreatedAt    time.Time `json:"createdAt"`
+	ID                string    `json:"id"`
+	FamilyID          string    `json:"familyId"`
+	Name              string    `json:"name"`
+	Handle            string    `json:"handle"`
+	Version           int       `json:"version"`
+	RunnerType        string    `json:"runnerType"`
+	Description       string    `json:"description"`
+	Model             string    `json:"model"`
+	ModelConnectionID string    `json:"modelConnectionId,omitempty"`
+	Preset            string    `json:"preset,omitempty"`
+	SystemPrompt      string    `json:"systemPrompt,omitempty"`
+	Tools             []string  `json:"tools"`
+	Skills            []string  `json:"skills"`
+	CreatedAt         time.Time `json:"createdAt"`
 }
 
 type RuntimeAvailability struct {
-	Available bool   `json:"available"`
-	Label     string `json:"label,omitempty"`
-	Reason    string `json:"reason,omitempty"`
+	Available  bool   `json:"available"`
+	Installed  bool   `json:"installed"`
+	Configured bool   `json:"configured"`
+	Label      string `json:"label,omitempty"`
+	Reason     string `json:"reason,omitempty"`
 }
 
 type AgentVersionView struct {
@@ -176,8 +181,18 @@ type Experiment struct {
 
 type ExperimentSummary struct {
 	Experiment
-	RunCount  int         `json:"runCount"`
-	LatestRun *RunSummary `json:"latestRun,omitempty"`
+	RunCount   int                   `json:"runCount"`
+	LatestRun  *RunSummary           `json:"latestRun,omitempty"`
+	RunSummary *ExperimentRunSummary `json:"runSummary,omitempty"`
+}
+
+type ExperimentRunSummary struct {
+	Completed     int     `json:"completed"`
+	Passed        int     `json:"passed"`
+	Total         int     `json:"total"`
+	Cost          float64 `json:"cost"`
+	CostKnown     bool    `json:"costKnown"`
+	CostEstimated bool    `json:"costEstimated"`
 }
 
 type ExperimentView struct {
@@ -196,6 +211,7 @@ type CaseResult struct {
 	Passed           bool          `json:"passed"`
 	Cost             float64       `json:"cost"`
 	CostKnown        bool          `json:"costKnown"`
+	CostEstimated    bool          `json:"costEstimated"`
 	Score            float64       `json:"score"`
 	Output           string        `json:"output"`
 	Reason           string        `json:"reason"`
@@ -244,6 +260,7 @@ type TrialResult struct {
 	EvaluationCost       float64           `json:"evaluationCost"`
 	Cost                 float64           `json:"cost"`
 	CostKnown            bool              `json:"costKnown"`
+	CostEstimated        bool              `json:"costEstimated"`
 	DurationMs           int64             `json:"durationMs"`
 	Attempts             int               `json:"attempts"`
 	CandidateExecutionID string            `json:"candidateExecutionId,omitempty"`
@@ -292,6 +309,7 @@ type RunEvent struct {
 type Run struct {
 	ID                 string           `json:"id"`
 	ExperimentID       string           `json:"experimentId"`
+	GroupID            string           `json:"groupId,omitempty"`
 	IdempotencyKey     string           `json:"-"`
 	Status             string           `json:"status"`
 	DatasetSnapshot    DatasetVersion   `json:"datasetSnapshot"`
@@ -319,9 +337,24 @@ type Run struct {
 	CandidateCost      float64          `json:"candidateCost"`
 	EvaluationCost     float64          `json:"evaluationCost"`
 	CostKnown          bool             `json:"costKnown"`
+	CostEstimated      bool             `json:"costEstimated"`
 	Error              string           `json:"error,omitempty"`
 	Results            []CaseResult     `json:"results"`
 	Events             []RunEvent       `json:"events"`
+}
+
+// RunGroup is a comparison request. Each child Run still freezes and executes
+// exactly one Agent version, so runners and executors remain single-task APIs.
+type RunGroup struct {
+	ID               string    `json:"id"`
+	ExperimentID     string    `json:"experimentId"`
+	IdempotencyKey   string    `json:"-"`
+	DatasetVersionID string    `json:"datasetVersionId"`
+	AgentVersionIDs  []string  `json:"agentVersionIds"`
+	RunIDs           []string  `json:"runIds"`
+	TrialCount       int       `json:"trialCount"`
+	Status           string    `json:"status"`
+	CreatedAt        time.Time `json:"createdAt"`
 }
 
 type RunSummary struct {
@@ -334,6 +367,8 @@ type RunSummary struct {
 	ReliableCases int        `json:"reliableCases"`
 	CaseCount     int        `json:"caseCount"`
 	Cost          float64    `json:"cost"`
+	CostKnown     bool       `json:"costKnown"`
+	CostEstimated bool       `json:"costEstimated"`
 	DurationMs    int64      `json:"durationMs"`
 	CreatedAt     time.Time  `json:"createdAt"`
 	CompletedAt   *time.Time `json:"completedAt,omitempty"`
@@ -369,9 +404,13 @@ type RunTrial struct {
 }
 
 type Bootstrap struct {
-	Datasets    []DatasetAsset      `json:"datasets"`
-	Agents      []AgentAsset        `json:"agents"`
-	Experiments []ExperimentSummary `json:"experiments"`
+	Datasets         []DatasetAsset                 `json:"datasets"`
+	Agents           []AgentAsset                   `json:"agents"`
+	Experiments      []ExperimentSummary            `json:"experiments"`
+	ModelConnections []contract.ModelConnection     `json:"modelConnections"`
+	ModelCatalog     []contract.ModelProvider       `json:"modelCatalog"`
+	SystemModels     []contract.SystemModelBinding  `json:"systemModels"`
+	Runtimes         map[string]RuntimeAvailability `json:"runtimes"`
 }
 
 const (

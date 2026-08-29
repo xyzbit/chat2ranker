@@ -25,3 +25,15 @@ func TestDSHInvocationPatchesIncludeProviderWithModel(t *testing.T) {
 		t.Fatalf("DSH ranking invocation must disable LLM session titles: %#v", patches[2])
 	}
 }
+
+func TestDSHModelConnectionProtocols(t *testing.T) {
+	for protocol, want := range map[string]string{
+		contract.ProtocolOpenAIChat:      "openai-completions",
+		contract.ProtocolOpenAIResponses: "openai-responses",
+		contract.ProtocolAnthropic:       "anthropic-messages",
+	} {
+		if got := dshAPI(protocol); got != want {
+			t.Fatalf("%s: got %q, want %q", protocol, got, want)
+		}
+	}
+}

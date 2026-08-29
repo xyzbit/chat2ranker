@@ -12,10 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xyzbit/chat2ranker/execution/backend/contract"
 	"github.com/xyzbit/chat2ranker/execution/backend/harness"
 	"github.com/xyzbit/chat2ranker/execution/backend/internal/app"
 	"github.com/xyzbit/chat2ranker/execution/backend/internal/executor"
 	"github.com/xyzbit/chat2ranker/execution/backend/internal/httpapi"
+	"github.com/xyzbit/chat2ranker/execution/backend/internal/secret"
 	"github.com/xyzbit/chat2ranker/execution/backend/internal/sqlite"
 )
 
@@ -26,6 +28,7 @@ func main() {
 	repositoryRoot := flag.String("repo-root", os.Getenv("EXECUTION_REPO_ROOT"), "chat2ranker repository root")
 	artifactRoot := flag.String("artifacts", "../../rank/var/artifacts", "artifact store root")
 	sandboxRoot := flag.String("sandboxes", "../../rank/var/sandboxes", "local process sandbox root")
+	credentialRoot := flag.String("credentials", "../../rank/var/credentials", "local encrypted-store replacement directory for model credentials")
 	workerTimeout := flag.Duration("worker-timeout", 10*time.Minute, "per harness invocation timeout")
 	workerVersion := flag.String("worker-version", os.Getenv("EXECUTION_WORKER_VERSION"), "immutable execution-worker release identifier")
 	flag.Parse()
@@ -48,13 +51,25 @@ func main() {
 		slog.Error("configure harness adapters", "error", err)
 		os.Exit(1)
 	}
-	local := executor.NewLocal(executor.LocalConfig{WorkerBinary: *workerBinary, RepositoryRoot: *repositoryRoot, ArtifactRoot: *artifactRoot, SandboxRoot: *sandboxRoot, Timeout: *workerTimeout, Harnesses: harnesses})
-	service := app.NewService(store, local, app.Options{Workers: true, WorkerVersion: *workerVersion, ArtifactRoot: *artifactRoot})
+	credentials := secret.NewFileStore(*credentialRoot)
+	resolveConnection := func(ctx context.Context, id string) (contract.ModelConnection, string, error) {
+		connection, err := store.GetModelConnection(ctx, id)
+		if err != nil {
+			return connection, "", err
+		}
+		if connection.Status != "verified" {
+			return connection, "", errors.New("model connection is not verified")
+		}
+		credential, err := credentials.Get(ctx, connection.CredentialRef)
+		return connection, credential, err
+	}
+	local := executor.NewLocal(executor.LocalConfig{WorkerBinary: *workerBinary, RepositoryRoot: *repositoryRoot, ArtifactRoot: *artifactRoot, SandboxRoot: *sandboxRoot, Timeout: *workerTimeout, Harnesses: harnesses, ResolveModelConnection: resolveConnection})
+	service := app.NewService(store, local, app.Options{Workers: true, WorkerVersion: *workerVersion, ArtifactRoot: *artifactRoot, Credentials: credentials})
 	if err := service.ResumeActive(ctx); err != nil {
 		slog.Error("resume active executions", "error", err)
 		os.Exit(1)
 	}
-	server := &http.Server{Addr: *address, Handler: httpapi.New(service), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Addr: *address, Handler: httpapi.New(service, httpapi.Options{ControlToken: os.Getenv("RANK_CONTROL_TOKEN")}), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		slog.Info("executiond listening", "address", *address, "database", *databasePath, "executor", local.Name())
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

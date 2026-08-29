@@ -71,11 +71,46 @@ CREATE TABLE IF NOT EXISTS execution_events(
   UNIQUE(execution_id, sequence)
 );
 CREATE INDEX IF NOT EXISTS execution_events_execution_idx ON execution_events(execution_id, sequence);
+CREATE TABLE IF NOT EXISTS model_connections(
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'custom',
+  protocol TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  default_model TEXT NOT NULL,
+  models_json TEXT NOT NULL,
+  prices_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL,
+  status_message TEXT NOT NULL,
+  credential_ref TEXT NOT NULL,
+  last_verified_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS system_model_bindings(
+  role TEXT PRIMARY KEY,
+  connection_id TEXT NOT NULL REFERENCES model_connections(id) ON DELETE RESTRICT,
+  model TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 INSERT OR IGNORE INTO schema_migrations(version, applied_at)
 VALUES(1, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+VALUES(2, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 `
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("apply execution sqlite schema: %w", err)
+	}
+	for _, column := range []struct{ name, declaration string }{{"provider", "TEXT NOT NULL DEFAULT 'custom'"}, {"prices_json", "TEXT NOT NULL DEFAULT '{}'"}} {
+		if err := s.ensureColumn(ctx, "model_connections", column.name, column.declaration); err != nil {
+			return fmt.Errorf("apply execution sqlite schema v3: %w", err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(3, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
+		return fmt.Errorf("record execution sqlite schema v3: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(4, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
+		return fmt.Errorf("record execution sqlite schema v4: %w", err)
 	}
 	return nil
 }
@@ -194,6 +229,185 @@ func (s *Store) Requeue(ctx context.Context, id string, event contract.Event) er
 		result, err := transaction.ExecContext(ctx, `UPDATE executions SET status=?,external_handle='',started_at=NULL,completed_at=NULL,error='' WHERE id=? AND status IN (?,?)`, contract.StatusQueued, id, contract.StatusQueued, contract.StatusRunning)
 		return affected(result, err)
 	}, event)
+}
+
+func (s *Store) ListModelConnections(ctx context.Context) ([]contract.ModelConnection, error) {
+	rows, err := s.db.QueryContext(ctx, modelConnectionSelect+` ORDER BY name,id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []contract.ModelConnection{}
+	for rows.Next() {
+		value, err := scanModelConnection(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	return result, rows.Err()
+}
+
+func (s *Store) GetModelConnection(ctx context.Context, id string) (contract.ModelConnection, error) {
+	return scanModelConnection(s.db.QueryRowContext(ctx, modelConnectionSelect+` WHERE id=?`, id))
+}
+
+func (s *Store) SaveModelConnection(ctx context.Context, value contract.ModelConnection) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO model_connections(id,name,provider,protocol,base_url,default_model,models_json,prices_json,status,status_message,credential_ref,last_verified_at,created_at,updated_at)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,provider=excluded.provider,protocol=excluded.protocol,base_url=excluded.base_url,default_model=excluded.default_model,models_json=excluded.models_json,prices_json=excluded.prices_json,status=excluded.status,status_message=excluded.status_message,credential_ref=excluded.credential_ref,last_verified_at=excluded.last_verified_at,updated_at=excluded.updated_at`,
+		value.ID, value.Name, value.Provider, value.Protocol, value.BaseURL, value.DefaultModel, string(mustJSON(value.Models)), string(mustJSON(value.Prices)), value.Status, value.StatusMessage, value.CredentialRef, nullableTime(value.LastVerifiedAt), formatTime(value.CreatedAt), formatTime(value.UpdatedAt))
+	return mapError(err)
+}
+
+func (s *Store) DeleteModelConnection(ctx context.Context, id string) error {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM model_connections WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) ListSystemModelBindings(ctx context.Context) ([]contract.SystemModelBinding, error) {
+	rows, err := s.db.QueryContext(ctx, systemModelBindingSelect+` ORDER BY b.role`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []contract.SystemModelBinding{}
+	for rows.Next() {
+		value, err := scanSystemModelBinding(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
+	return result, rows.Err()
+}
+
+func (s *Store) GetSystemModelBinding(ctx context.Context, role string) (contract.SystemModelBinding, error) {
+	return scanSystemModelBinding(s.db.QueryRowContext(ctx, systemModelBindingSelect+` WHERE b.role=?`, role))
+}
+
+func (s *Store) SaveSystemModelBinding(ctx context.Context, value contract.SystemModelBinding) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO system_model_bindings(role,connection_id,model,updated_at) VALUES(?,?,?,?) ON CONFLICT(role) DO UPDATE SET connection_id=excluded.connection_id,model=excluded.model,updated_at=excluded.updated_at`, value.Role, value.ConnectionID, value.Model, formatTime(value.UpdatedAt))
+	return mapError(err)
+}
+
+const systemModelBindingSelect = `SELECT b.role,b.connection_id,b.model,b.updated_at,` + modelConnectionSelectColumns + ` FROM system_model_bindings b JOIN model_connections c ON c.id=b.connection_id`
+const modelConnectionSelectColumns = `c.id,c.name,c.provider,c.protocol,c.base_url,c.default_model,c.models_json,c.prices_json,c.status,c.status_message,c.credential_ref,c.last_verified_at,c.created_at,c.updated_at`
+
+func scanSystemModelBinding(row scanner) (contract.SystemModelBinding, error) {
+	var value contract.SystemModelBinding
+	var updated string
+	var models, prices, created, connectionUpdated string
+	var verifiedAt sql.NullString
+	err := row.Scan(&value.Role, &value.ConnectionID, &value.Model, &updated, &value.Connection.ID, &value.Connection.Name, &value.Connection.Provider, &value.Connection.Protocol, &value.Connection.BaseURL, &value.Connection.DefaultModel, &models, &prices, &value.Connection.Status, &value.Connection.StatusMessage, &value.Connection.CredentialRef, &verifiedAt, &created, &connectionUpdated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return value, domain.ErrNotFound
+	}
+	if err != nil {
+		return value, err
+	}
+	if err = json.Unmarshal([]byte(models), &value.Connection.Models); err != nil {
+		return value, err
+	}
+	if err = json.Unmarshal([]byte(prices), &value.Connection.Prices); err != nil {
+		return value, err
+	}
+	value.Connection.HasCredential = value.Connection.CredentialRef != ""
+	value.UpdatedAt, err = time.Parse(time.RFC3339Nano, updated)
+	if err != nil {
+		return value, err
+	}
+	value.Connection.CreatedAt, err = time.Parse(time.RFC3339Nano, created)
+	if err != nil {
+		return value, err
+	}
+	value.Connection.UpdatedAt, err = time.Parse(time.RFC3339Nano, connectionUpdated)
+	if verifiedAt.Valid {
+		value.Connection.LastVerifiedAt = parseTimePointer(verifiedAt.String)
+	}
+	return value, err
+}
+
+const modelConnectionSelect = `SELECT id,name,provider,protocol,base_url,default_model,models_json,prices_json,status,status_message,credential_ref,last_verified_at,created_at,updated_at FROM model_connections`
+
+func scanModelConnection(row scanner) (contract.ModelConnection, error) {
+	var value contract.ModelConnection
+	var models, prices, verified, created, updated string
+	var verifiedAt sql.NullString
+	err := row.Scan(&value.ID, &value.Name, &value.Provider, &value.Protocol, &value.BaseURL, &value.DefaultModel, &models, &prices, &value.Status, &value.StatusMessage, &value.CredentialRef, &verifiedAt, &created, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return value, domain.ErrNotFound
+	}
+	if err != nil {
+		return value, err
+	}
+	if err = json.Unmarshal([]byte(models), &value.Models); err != nil {
+		return value, err
+	}
+	if err = json.Unmarshal([]byte(prices), &value.Prices); err != nil {
+		return value, err
+	}
+	if value.Prices == nil {
+		value.Prices = map[string]contract.ModelPrice{}
+	}
+	value.HasCredential = value.CredentialRef != ""
+	if verifiedAt.Valid {
+		verified = verifiedAt.String
+		value.LastVerifiedAt = parseTimePointer(verified)
+	}
+	value.CreatedAt, err = time.Parse(time.RFC3339Nano, created)
+	if err != nil {
+		return value, err
+	}
+	value.UpdatedAt, err = time.Parse(time.RFC3339Nano, updated)
+	return value, err
+}
+
+func mustJSON(value any) []byte { data, _ := json.Marshal(value); return data }
+
+func (s *Store) ensureColumn(ctx context.Context, table, name, declaration string) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var columnName, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		found = found || columnName == name
+	}
+	if err := rows.Close(); err != nil || found {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE `+table+` ADD COLUMN `+name+` `+declaration)
+	return err
+}
+func nullableTime(value *time.Time) any {
+	if value == nil {
+		return nil
+	}
+	return formatTime(*value)
+}
+func parseTimePointer(value string) *time.Time {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }
 
 type sqlExecutor interface {

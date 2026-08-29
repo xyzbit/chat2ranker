@@ -14,6 +14,7 @@ import (
 
 	"github.com/xyzbit/chat2ranker/execution/backend/contract"
 	"github.com/xyzbit/chat2ranker/execution/backend/harness"
+	"github.com/xyzbit/chat2ranker/execution/backend/internal/pricing"
 	"github.com/xyzbit/chat2ranker/execution/backend/internal/workerprotocol"
 )
 
@@ -28,7 +29,14 @@ func Execute(parent context.Context, request workerprotocol.Request, emit func(w
 		response.Error = err.Error()
 		return response
 	}
-	_ = writeJSON(filepath.Join(request.ArtifactDir, "request.json"), request)
+	safeRequest := request
+	safeRequest.Credential = ""
+	if safeRequest.ModelConnection != nil {
+		copy := *safeRequest.ModelConnection
+		copy.CredentialRef, copy.APIKey = "", ""
+		safeRequest.ModelConnection = &copy
+	}
+	_ = writeJSON(filepath.Join(request.ArtifactDir, "request.json"), safeRequest)
 	timeout := time.Duration(request.Spec.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
@@ -46,7 +54,8 @@ func Execute(parent context.Context, request workerprotocol.Request, emit func(w
 			return emit(workerprotocol.Event{Type: event.Type, Message: event.Message, Data: event.Data, At: event.At})
 		}
 	}
-	result, err := registry.Run(ctx, harness.Invocation{ExecutionID: request.ExecutionID, Spec: request.Spec, Workspace: request.WorkspaceDir, ArtifactDir: request.ArtifactDir, HarnessHome: request.HarnessHome, Metadata: request.Metadata, Emit: progress})
+	result, err := registry.Run(ctx, harness.Invocation{ExecutionID: request.ExecutionID, Spec: request.Spec, Workspace: request.WorkspaceDir, ArtifactDir: request.ArtifactDir, HarnessHome: request.HarnessHome, Metadata: request.Metadata, ModelConnection: request.ModelConnection, Credential: request.Credential, Emit: progress})
+	pricing.Apply(&result, request.Spec, request.ModelConnection)
 	result.DurationMs = time.Since(started).Milliseconds()
 	if err != nil {
 		response.Error = err.Error()

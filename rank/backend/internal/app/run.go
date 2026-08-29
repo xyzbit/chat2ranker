@@ -21,6 +21,16 @@ type RunOptions struct {
 	TrialCount int `json:"trialCount"`
 }
 
+type ComparisonOptions struct {
+	AgentVersionIDs []string `json:"agentVersionIds"`
+	TrialCount      int      `json:"trialCount"`
+}
+
+type ComparisonResult struct {
+	Group domain.RunGroup `json:"runGroup"`
+	Runs  []domain.Run    `json:"runs"`
+}
+
 func normalizeTrialCount(value int) (int, error) {
 	if value == 0 {
 		return defaultTrialCount, nil
@@ -85,27 +95,10 @@ func (s *Service) StartRun(ctx context.Context, experimentID, idempotencyKey str
 		if !availability.Available {
 			return problem(409, "runner_unavailable", availability.Reason)
 		}
-		now := s.now().UTC()
-		scheduled := len(dataset.Cases) * trialCount
-		created = domain.Run{
-			ID: newID("run"), ExperimentID: experimentID, IdempotencyKey: idempotencyKey,
-			Status: domain.RunQueued, DatasetSnapshot: dataset, AgentSnapshot: agent,
-			EvaluatorSnapshot: s.freezeEvaluator(dataset, agent), TrialCount: trialCount,
-			Concurrency: 5, CreatedAt: now, Total: scheduled, ScheduledTrials: scheduled,
-			CaseCount: len(dataset.Cases), CostKnown: true, Results: []domain.CaseResult{}, Events: []domain.RunEvent{},
-		}
-		items := make([]domain.RunItem, len(dataset.Cases))
-		trials := make([]domain.RunTrial, 0, scheduled)
-		ordinal := 0
-		for caseIndex, caseItem := range dataset.Cases {
-			itemID := newID("item")
-			items[caseIndex] = domain.RunItem{ID: itemID, RunID: created.ID, CaseID: caseItem.ID, Title: caseItem.Title, Ordinal: caseIndex, Status: domain.ItemQueued, CreatedAt: now}
-			for trialIndex := 1; trialIndex <= trialCount; trialIndex++ {
-				trials = append(trials, domain.RunTrial{ID: newID("trial"), RunID: created.ID, ItemID: itemID, CaseID: caseItem.ID, TrialIndex: trialIndex, Ordinal: ordinal, Status: domain.TrialQueued, CreatedAt: now})
-				ordinal++
-			}
-		}
-		event := domain.RunEvent{RunID: created.ID, Type: "run.created", At: now, DatasetVersionID: dataset.ID, AgentVersionID: agent.ID, Reason: fmt.Sprintf("每个用例独立运行 %d 次", trialCount)}
+		var items []domain.RunItem
+		var trials []domain.RunTrial
+		var event domain.RunEvent
+		created, items, trials, event = s.buildRun(experimentID, idempotencyKey, "", dataset, agent, trialCount, s.now().UTC())
 		return repo.CreateRun(ctx, created, items, trials, event)
 	})
 	if err != nil {
@@ -115,6 +108,140 @@ func (s *Service) StartRun(ctx context.Context, experimentID, idempotencyKey str
 		s.dispatch(created.ID)
 	}
 	return s.repo.GetRun(ctx, created.ID)
+}
+
+func (s *Service) StartComparison(ctx context.Context, experimentID, idempotencyKey string, options ComparisonOptions) (ComparisonResult, error) {
+	if idempotencyKey == "" {
+		idempotencyKey = newID("request")
+	}
+	trialCount, err := normalizeTrialCount(options.TrialCount)
+	if err != nil {
+		return ComparisonResult{}, err
+	}
+	agentIDs := uniqueStrings(options.AgentVersionIDs)
+	if len(agentIDs) < 2 || len(agentIDs) > 4 {
+		return ComparisonResult{}, problem(400, "invalid_comparison_agents", "对比运行需要选择 2 到 4 个 Agent 版本")
+	}
+	var group domain.RunGroup
+	var runs []domain.Run
+	replayed := false
+	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+		existing, err := repo.GetRunGroupByIdempotencyKey(ctx, experimentID, idempotencyKey)
+		if err == nil {
+			if existing.TrialCount != trialCount || !sameStrings(existing.AgentVersionIDs, agentIDs) {
+				return problem(409, "idempotency_conflict", "相同幂等键已用于不同的对比运行")
+			}
+			group, replayed = existing, true
+			return nil
+		}
+		if !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+		experiment, err := repo.GetExperiment(ctx, experimentID)
+		if err != nil {
+			return mapNotFound(err, "experiment_not_found", "实验不存在")
+		}
+		if experiment.DatasetVersionID == "" {
+			return problem(409, "experiment_not_ready", "请先选择测试集")
+		}
+		existingRuns, err := repo.ListRunsByExperiment(ctx, experimentID)
+		if err != nil {
+			return err
+		}
+		for _, run := range existingRuns {
+			if domain.IsActiveRun(run.Status) {
+				return problem(409, "run_already_active", "当前实验已有运行中的任务")
+			}
+		}
+		dataset, err := repo.GetDatasetVersion(ctx, experiment.DatasetVersionID)
+		if err != nil {
+			return err
+		}
+		agents := make([]domain.AgentVersion, 0, len(agentIDs))
+		for _, id := range agentIDs {
+			agent, err := repo.GetAgentVersion(ctx, id)
+			if err != nil {
+				return mapNotFound(err, "agent_version_not_found", "Agent 版本不存在")
+			}
+			if availability := s.probe(ctx, agent); !availability.Available {
+				return problem(409, "runner_unavailable", fmt.Sprintf("%s v%d：%s", agent.Handle, agent.Version, availability.Reason))
+			}
+			agents = append(agents, agent)
+		}
+		now := s.now().UTC()
+		group = domain.RunGroup{ID: newID("group"), ExperimentID: experimentID, IdempotencyKey: idempotencyKey, DatasetVersionID: dataset.ID, AgentVersionIDs: agentIDs, TrialCount: trialCount, Status: domain.RunQueued, CreatedAt: now}
+		if err := repo.CreateRunGroup(ctx, group); err != nil {
+			return err
+		}
+		for index, agent := range agents {
+			run, items, trials, event := s.buildRun(experimentID, fmt.Sprintf("%s/%d", idempotencyKey, index+1), group.ID, dataset, agent, trialCount, now)
+			if err := repo.CreateRun(ctx, run, items, trials, event); err != nil {
+				return err
+			}
+			group.RunIDs = append(group.RunIDs, run.ID)
+			runs = append(runs, run)
+		}
+		return nil
+	})
+	if err != nil {
+		return ComparisonResult{}, err
+	}
+	if replayed {
+		runs = make([]domain.Run, 0, len(group.RunIDs))
+		for _, id := range group.RunIDs {
+			run, err := s.repo.GetRun(ctx, id)
+			if err != nil {
+				return ComparisonResult{}, err
+			}
+			runs = append(runs, run)
+		}
+	} else if s.workers {
+		for _, run := range runs {
+			s.dispatch(run.ID)
+		}
+	}
+	group, err = s.repo.GetRunGroup(ctx, group.ID)
+	return ComparisonResult{Group: group, Runs: runs}, err
+}
+
+func (s *Service) buildRun(experimentID, key, groupID string, dataset domain.DatasetVersion, agent domain.AgentVersion, trialCount int, now time.Time) (domain.Run, []domain.RunItem, []domain.RunTrial, domain.RunEvent) {
+	scheduled := len(dataset.Cases) * trialCount
+	run := domain.Run{ID: newID("run"), ExperimentID: experimentID, GroupID: groupID, IdempotencyKey: key, Status: domain.RunQueued, DatasetSnapshot: dataset, AgentSnapshot: agent, EvaluatorSnapshot: s.freezeEvaluator(dataset, agent), TrialCount: trialCount, Concurrency: 5, CreatedAt: now, Total: scheduled, ScheduledTrials: scheduled, CaseCount: len(dataset.Cases), CostKnown: true, Results: []domain.CaseResult{}, Events: []domain.RunEvent{}}
+	items := make([]domain.RunItem, len(dataset.Cases))
+	trials := make([]domain.RunTrial, 0, scheduled)
+	ordinal := 0
+	for caseIndex, caseItem := range dataset.Cases {
+		itemID := newID("item")
+		items[caseIndex] = domain.RunItem{ID: itemID, RunID: run.ID, CaseID: caseItem.ID, Title: caseItem.Title, Ordinal: caseIndex, Status: domain.ItemQueued, CreatedAt: now}
+		for trialIndex := 1; trialIndex <= trialCount; trialIndex++ {
+			trials = append(trials, domain.RunTrial{ID: newID("trial"), RunID: run.ID, ItemID: itemID, CaseID: caseItem.ID, TrialIndex: trialIndex, Ordinal: ordinal, Status: domain.TrialQueued, CreatedAt: now})
+			ordinal++
+		}
+	}
+	event := domain.RunEvent{RunID: run.ID, Type: "run.created", At: now, DatasetVersionID: dataset.ID, AgentVersionID: agent.ID, Reason: fmt.Sprintf("每个用例独立运行 %d 次", trialCount)}
+	return run, items, trials, event
+}
+
+func uniqueStrings(values []string) []string {
+	seen, result := map[string]bool{}, make([]string, 0, len(values))
+	for _, value := range values {
+		if value != "" && !seen[value] {
+			seen[value], result = true, append(result, value)
+		}
+	}
+	return result
+}
+
+func sameStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) GetRun(ctx context.Context, id string) (domain.Run, error) {
@@ -238,6 +365,11 @@ func (s *Service) executeRun(ctx context.Context, runID string) error {
 	if runner == nil {
 		return s.failRun(context.Background(), runID, fmt.Errorf("runner %q is not registered", run.AgentSnapshot.RunnerType))
 	}
+	if preflight, ok := runner.(interface{ PreflightJudge(context.Context) error }); ok && len(run.EvaluatorSnapshot.Rubric) > 0 {
+		if err := preflight.PreflightJudge(ctx); err != nil {
+			return s.failRun(context.Background(), runID, fmt.Errorf("Judge 预检失败：%w", err))
+		}
+	}
 	if err := s.transition(ctx, runID, domain.RunPreparing); err != nil {
 		return err
 	}
@@ -359,6 +491,7 @@ func (s *Service) processTrial(ctx context.Context, run domain.Run, runner Agent
 	evaluationCost, durationMs := 0.0, candidate.DurationMs
 	usage := candidate.Usage
 	costKnown := candidate.CostKnown
+	costEstimated := candidate.CostEstimated
 	for _, rubric := range run.EvaluatorSnapshot.Rubric {
 		var verdict JudgeResult
 		var judgeErr error
@@ -378,7 +511,7 @@ func (s *Service) processTrial(ctx context.Context, run domain.Run, runner Agent
 			result := baseTrialResult(run, trial, candidate, started, attempts)
 			result.Valid, result.FailureClass, result.Reason, result.Criteria = false, domain.FailureGrading, judgeErr.Error(), criteria
 			result.EvaluationCost, result.Cost = evaluationCost, candidate.Cost+evaluationCost
-			result.CostKnown, result.DurationMs, result.Usage = false, durationMs, usage
+			result.CostKnown, result.CostEstimated, result.DurationMs, result.Usage = false, costEstimated, durationMs, usage
 			result.JudgeExecutionIDs = judgeIDs
 			result.Artifacts = append(result.Artifacts, judgeArtifacts...)
 			return s.completeTrial(ctx, trial, result, "trial.invalid")
@@ -396,6 +529,7 @@ func (s *Service) processTrial(ctx context.Context, run domain.Run, runner Agent
 		usage.CacheWriteTokens += verdict.Usage.CacheWriteTokens
 		usage.ReasoningTokens += verdict.Usage.ReasoningTokens
 		costKnown = costKnown && verdict.CostKnown
+		costEstimated = costEstimated || verdict.CostEstimated
 		verdictEvent := trialEvent(run.ID, trial, "judge.verdict", s.now().UTC())
 		verdictEvent.Passed, verdictEvent.Score, verdictEvent.Reason = &passed, &score, verdict.Reason
 		if err := s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.AppendRunEvent(ctx, verdictEvent) }); err != nil {
@@ -406,7 +540,7 @@ func (s *Service) processTrial(ctx context.Context, run domain.Run, runner Agent
 	result := baseTrialResult(run, trial, candidate, started, attempts)
 	result.Valid, result.Passed, result.Score, result.Criteria = true, rubricPassed, score, criteria
 	result.EvaluationCost, result.Cost = evaluationCost, candidate.Cost+evaluationCost
-	result.CostKnown, result.DurationMs, result.Usage = costKnown, durationMs, usage
+	result.CostKnown, result.CostEstimated, result.DurationMs, result.Usage = costKnown, costEstimated, durationMs, usage
 	result.JudgeExecutionIDs = judgeIDs
 	result.Artifacts = append(result.Artifacts, judgeArtifacts...)
 	if rubricPassed {
@@ -419,7 +553,7 @@ func (s *Service) processTrial(ctx context.Context, run domain.Run, runner Agent
 }
 
 func baseTrialResult(run domain.Run, trial domain.RunTrial, candidate CandidateResult, started time.Time, attempts int) domain.TrialResult {
-	return domain.TrialResult{ID: trial.ID, RunID: run.ID, CaseID: trial.CaseID, TrialIndex: trial.TrialIndex, Status: domain.TrialComplete, Output: candidate.Output, CandidateCost: candidate.Cost, Cost: candidate.Cost, CostKnown: candidate.CostKnown, DurationMs: candidate.DurationMs, Attempts: attempts, CandidateExecutionID: candidate.ExecutionID, JudgeExecutionIDs: []string{}, Usage: candidate.Usage, Artifacts: append([]domain.ArtifactRef(nil), candidate.Artifacts...), Criteria: []domain.CriterionResult{}, CreatedAt: trial.CreatedAt, StartedAt: &started}
+	return domain.TrialResult{ID: trial.ID, RunID: run.ID, CaseID: trial.CaseID, TrialIndex: trial.TrialIndex, Status: domain.TrialComplete, Output: candidate.Output, CandidateCost: candidate.Cost, Cost: candidate.Cost, CostKnown: candidate.CostKnown, CostEstimated: candidate.CostEstimated, DurationMs: candidate.DurationMs, Attempts: attempts, CandidateExecutionID: candidate.ExecutionID, JudgeExecutionIDs: []string{}, Usage: candidate.Usage, Artifacts: append([]domain.ArtifactRef(nil), candidate.Artifacts...), Criteria: []domain.CriterionResult{}, CreatedAt: trial.CreatedAt, StartedAt: &started}
 }
 
 func trialEvent(runID string, trial domain.RunTrial, eventType string, at time.Time) domain.RunEvent {
@@ -492,7 +626,7 @@ func (s *Service) aggregateRun(ctx context.Context, run domain.Run) error {
 	run.DurationMs = completed.Sub(run.CreatedAt).Milliseconds()
 	run.Passed, run.ValidTrials, run.Total = 0, 0, 0
 	run.Cost, run.CandidateCost, run.EvaluationCost = 0, 0, 0
-	run.CostKnown, run.EvaluationComplete = true, true
+	run.CostKnown, run.CostEstimated, run.EvaluationComplete = true, false, true
 	run.Results = results
 	passHatSum, passHatCases := 0.0, 0
 	for _, result := range results {
@@ -506,6 +640,7 @@ func (s *Service) aggregateRun(ctx context.Context, run domain.Run) error {
 			if !trial.CostKnown {
 				run.CostKnown = false
 			}
+			run.CostEstimated = run.CostEstimated || trial.CostEstimated
 			if trial.FailureClass == domain.FailureInfra {
 				run.InfraFailures++
 				run.EvaluationComplete = false
@@ -569,6 +704,7 @@ func aggregateCase(caseItem domain.Case, trialCount int, trials []domain.TrialRe
 		if !trial.CostKnown {
 			result.CostKnown = false
 		}
+		result.CostEstimated = result.CostEstimated || trial.CostEstimated
 		if trial.Valid {
 			result.ValidTrials++
 			score += trial.Score

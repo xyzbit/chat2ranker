@@ -13,13 +13,15 @@ const Version = 1
 const EventPrefix = "@@chat2ranker-event "
 
 type Request struct {
-	ProtocolVersion int               `json:"protocolVersion"`
-	ExecutionID     string            `json:"executionId"`
-	Spec            contract.Spec     `json:"spec"`
-	WorkspaceDir    string            `json:"workspaceDir"`
-	ArtifactDir     string            `json:"artifactDir"`
-	HarnessHome     string            `json:"harnessHome"`
-	Metadata        map[string]string `json:"metadata,omitempty"`
+	ProtocolVersion int                       `json:"protocolVersion"`
+	ExecutionID     string                    `json:"executionId"`
+	Spec            contract.Spec             `json:"spec"`
+	WorkspaceDir    string                    `json:"workspaceDir"`
+	ArtifactDir     string                    `json:"artifactDir"`
+	HarnessHome     string                    `json:"harnessHome"`
+	Metadata        map[string]string         `json:"metadata,omitempty"`
+	ModelConnection *contract.ModelConnection `json:"modelConnection,omitempty"`
+	Credential      string                    `json:"credential,omitempty"`
 }
 
 type Response struct {

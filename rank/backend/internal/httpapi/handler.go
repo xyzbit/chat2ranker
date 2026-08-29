@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -10,17 +11,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xyzbit/chat2ranker/execution/backend/contract"
 	"github.com/xyzbit/chat2ranker/rank/backend/internal/app"
 	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
 )
 
 type Options struct {
 	ControlToken string
+	ControlURL   string
 }
 
 type Handler struct {
 	service      *app.Service
 	controlToken string
+	controlURL   string
 }
 
 func New(service *app.Service, options ...Options) http.Handler {
@@ -28,10 +32,16 @@ func New(service *app.Service, options ...Options) http.Handler {
 	if len(options) > 0 {
 		configured = options[0]
 	}
-	handler := &Handler{service: service, controlToken: configured.ControlToken}
+	handler := &Handler{service: service, controlToken: configured.ControlToken, controlURL: strings.TrimRight(configured.ControlURL, "/")}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", handler.health)
 	mux.HandleFunc("GET /api/bootstrap", handler.bootstrap)
+	mux.HandleFunc("GET /api/model-connections", handler.listModelConnections)
+	mux.HandleFunc("POST /api/model-connections", handler.createModelConnection)
+	mux.HandleFunc("PATCH /api/model-connections/{id}", handler.updateModelConnection)
+	mux.HandleFunc("POST /api/model-connections/{id}/verify", handler.verifyModelConnection)
+	mux.HandleFunc("DELETE /api/model-connections/{id}", handler.deleteModelConnection)
+	mux.HandleFunc("PUT /api/system-models/{role}", handler.saveSystemModel)
 	mux.HandleFunc("POST /api/experiments", handler.createExperiment)
 	mux.HandleFunc("GET /api/experiments/{id}", handler.getExperiment)
 	mux.HandleFunc("PATCH /api/experiments/{id}", handler.updateExperiment)
@@ -52,11 +62,34 @@ func New(service *app.Service, options ...Options) http.Handler {
 	return recoverMiddleware(cors(mux))
 }
 
+func (h *Handler) saveSystemModel(response http.ResponseWriter, request *http.Request) {
+	var input contract.SystemModelBindingInput
+	if err := decode(request, &input); err != nil {
+		writeError(response, err)
+		return
+	}
+	value, err := h.service.SaveSystemModel(request.Context(), request.PathValue("role"), input)
+	if err != nil {
+		writeError(response, err)
+		return
+	}
+	if value.Role == contract.SystemModelControl && h.controlURL != "" {
+		reload, reloadErr := http.NewRequestWithContext(request.Context(), http.MethodPost, h.controlURL+"/control/v1/reload", bytes.NewReader([]byte("{}")))
+		if reloadErr == nil {
+			reload.Header.Set("X-Rank-Control-Token", h.controlToken)
+			if result, callErr := http.DefaultClient.Do(reload); callErr == nil {
+				result.Body.Close()
+			}
+		}
+	}
+	writeJSON(response, 200, value)
+}
+
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Access-Control-Allow-Origin", "*")
 		response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key, X-Rank-Action-Token, X-Rank-Control-Token")
-		response.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS")
+		response.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
 		if request.Method == http.MethodOptions {
 			response.WriteHeader(http.StatusNoContent)
 			return
@@ -223,18 +256,23 @@ func (h *Handler) executeA2UICommand(response http.ResponseWriter, request *http
 		return
 	}
 	if input.Type == app.ControlStartRun {
-		var options app.RunOptions
+		var settings struct {
+			TrialCount      int      `json:"trialCount"`
+			AgentVersionIDs []string `json:"agentVersionIds"`
+		}
 		if len(input.Payload) > 0 {
-			var settings struct {
-				TrialCount int `json:"trialCount"`
-			}
 			if err := json.Unmarshal(input.Payload, &settings); err != nil {
 				writeError(response, &app.Error{Status: 400, Code: "invalid_run_options", Message: "运行参数无效"})
 				return
 			}
-			options.TrialCount = settings.TrialCount
 		}
-		run, startErr := h.service.StartRun(request.Context(), experimentID, key, options)
+		var run any
+		var startErr error
+		if len(settings.AgentVersionIDs) > 1 {
+			run, startErr = h.service.StartComparison(request.Context(), experimentID, key, app.ComparisonOptions{AgentVersionIDs: settings.AgentVersionIDs, TrialCount: settings.TrialCount})
+		} else {
+			run, startErr = h.service.StartRun(request.Context(), experimentID, key, app.RunOptions{TrialCount: settings.TrialCount})
+		}
 		if startErr != nil {
 			writeError(response, startErr)
 			return
@@ -336,8 +374,9 @@ func (h *Handler) appendControlTranscript(response http.ResponseWriter, request 
 func (h *Handler) startRun(response http.ResponseWriter, request *http.Request) {
 	key := strings.TrimSpace(request.Header.Get("Idempotency-Key"))
 	var input struct {
-		IdempotencyKey string `json:"idempotencyKey"`
-		TrialCount     int    `json:"trialCount"`
+		IdempotencyKey  string   `json:"idempotencyKey"`
+		TrialCount      int      `json:"trialCount"`
+		AgentVersionIDs []string `json:"agentVersionIds"`
 	}
 	if request.ContentLength != 0 {
 		if err := decode(request, &input); err != nil {
@@ -348,7 +387,13 @@ func (h *Handler) startRun(response http.ResponseWriter, request *http.Request) 
 	if key == "" {
 		key = input.IdempotencyKey
 	}
-	value, err := h.service.StartRun(request.Context(), request.PathValue("id"), key, app.RunOptions{TrialCount: input.TrialCount})
+	var value any
+	var err error
+	if len(input.AgentVersionIDs) > 1 {
+		value, err = h.service.StartComparison(request.Context(), request.PathValue("id"), key, app.ComparisonOptions{AgentVersionIDs: input.AgentVersionIDs, TrialCount: input.TrialCount})
+	} else {
+		value, err = h.service.StartRun(request.Context(), request.PathValue("id"), key, app.RunOptions{TrialCount: input.TrialCount})
+	}
 	if err != nil {
 		writeError(response, err)
 		return
@@ -396,19 +441,61 @@ func (h *Handler) createDatasetVersion(response http.ResponseWriter, request *ht
 }
 
 type agentRequest struct {
-	Name         string   `json:"name"`
-	Handle       string   `json:"handle"`
-	RunnerType   string   `json:"runnerType"`
-	Model        string   `json:"model"`
-	Preset       string   `json:"preset"`
-	SystemPrompt string   `json:"systemPrompt"`
-	Description  string   `json:"description"`
-	Tools        []string `json:"tools"`
-	Skills       []string `json:"skills"`
+	Name              string   `json:"name"`
+	Handle            string   `json:"handle"`
+	RunnerType        string   `json:"runnerType"`
+	Model             string   `json:"model"`
+	ModelConnectionID string   `json:"modelConnectionId"`
+	Preset            string   `json:"preset"`
+	SystemPrompt      string   `json:"systemPrompt"`
+	Description       string   `json:"description"`
+	Tools             []string `json:"tools"`
+	Skills            []string `json:"skills"`
 }
 
 func (input agentRequest) appInput() app.CreateAgentInput {
-	return app.CreateAgentInput{Name: input.Name, Handle: input.Handle, RunnerType: input.RunnerType, Model: input.Model, Preset: input.Preset, SystemPrompt: input.SystemPrompt, Description: input.Description, Tools: input.Tools, Skills: input.Skills}
+	return app.CreateAgentInput{Name: input.Name, Handle: input.Handle, RunnerType: input.RunnerType, Model: input.Model, ModelConnectionID: input.ModelConnectionID, Preset: input.Preset, SystemPrompt: input.SystemPrompt, Description: input.Description, Tools: input.Tools, Skills: input.Skills}
+}
+
+func (h *Handler) listModelConnections(response http.ResponseWriter, request *http.Request) {
+	value, err := h.service.ListModelConnections(request.Context())
+	writeResult(response, value, err, 200)
+}
+func (h *Handler) createModelConnection(response http.ResponseWriter, request *http.Request) {
+	var input contract.ModelConnectionInput
+	if err := decode(request, &input); err != nil {
+		writeError(response, err)
+		return
+	}
+	value, err := h.service.CreateModelConnection(request.Context(), input)
+	writeResult(response, value, err, 201)
+}
+func (h *Handler) updateModelConnection(response http.ResponseWriter, request *http.Request) {
+	var input contract.ModelConnectionInput
+	if err := decode(request, &input); err != nil {
+		writeError(response, err)
+		return
+	}
+	value, err := h.service.UpdateModelConnection(request.Context(), request.PathValue("id"), input)
+	writeResult(response, value, err, 200)
+}
+func (h *Handler) verifyModelConnection(response http.ResponseWriter, request *http.Request) {
+	value, err := h.service.VerifyModelConnection(request.Context(), request.PathValue("id"))
+	writeResult(response, value, err, 200)
+}
+func (h *Handler) deleteModelConnection(response http.ResponseWriter, request *http.Request) {
+	if err := h.service.DeleteModelConnection(request.Context(), request.PathValue("id")); err != nil {
+		writeError(response, err)
+		return
+	}
+	response.WriteHeader(204)
+}
+func writeResult(response http.ResponseWriter, value any, err error, status int) {
+	if err != nil {
+		writeError(response, err)
+		return
+	}
+	writeJSON(response, status, value)
 }
 func (h *Handler) createAgent(response http.ResponseWriter, request *http.Request) {
 	var input agentRequest

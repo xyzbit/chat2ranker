@@ -35,6 +35,55 @@ func (client *Client) Probe(ctx context.Context, harness string) (contract.Avail
 	return result, err
 }
 
+func (client *Client) ListModelConnections(ctx context.Context) ([]contract.ModelConnection, error) {
+	var result []contract.ModelConnection
+	err := client.call(ctx, http.MethodGet, "/v1/model-connections", nil, &result)
+	return result, err
+}
+func (client *Client) ListModelCatalog(ctx context.Context) ([]contract.ModelProvider, error) {
+	var result []contract.ModelProvider
+	err := client.call(ctx, http.MethodGet, "/v1/model-catalog", nil, &result)
+	return result, err
+}
+func (client *Client) GetModelConnection(ctx context.Context, id string) (contract.ModelConnection, error) {
+	var result contract.ModelConnection
+	err := client.call(ctx, http.MethodGet, "/v1/model-connections/"+url.PathEscape(id), nil, &result)
+	return result, err
+}
+func (client *Client) CreateModelConnection(ctx context.Context, input contract.ModelConnectionInput) (contract.ModelConnection, error) {
+	var result contract.ModelConnection
+	err := client.call(ctx, http.MethodPost, "/v1/model-connections", input, &result)
+	return result, err
+}
+func (client *Client) UpdateModelConnection(ctx context.Context, id string, input contract.ModelConnectionInput) (contract.ModelConnection, error) {
+	var result contract.ModelConnection
+	err := client.call(ctx, http.MethodPatch, "/v1/model-connections/"+url.PathEscape(id), input, &result)
+	return result, err
+}
+func (client *Client) VerifyModelConnection(ctx context.Context, id string) (contract.ModelConnection, error) {
+	var result contract.ModelConnection
+	err := client.call(ctx, http.MethodPost, "/v1/model-connections/"+url.PathEscape(id)+"/verify", map[string]any{}, &result)
+	return result, err
+}
+func (client *Client) DeleteModelConnection(ctx context.Context, id string) error {
+	return client.call(ctx, http.MethodDelete, "/v1/model-connections/"+url.PathEscape(id), nil, nil)
+}
+func (client *Client) ListSystemModelBindings(ctx context.Context) ([]contract.SystemModelBinding, error) {
+	var result []contract.SystemModelBinding
+	err := client.call(ctx, http.MethodGet, "/v1/system-model-bindings", nil, &result)
+	return result, err
+}
+func (client *Client) GetSystemModelBinding(ctx context.Context, role string) (contract.SystemModelBinding, error) {
+	var result contract.SystemModelBinding
+	err := client.call(ctx, http.MethodGet, "/v1/system-model-bindings/"+url.PathEscape(role), nil, &result)
+	return result, err
+}
+func (client *Client) SaveSystemModelBinding(ctx context.Context, role string, input contract.SystemModelBindingInput) (contract.SystemModelBinding, error) {
+	var result contract.SystemModelBinding
+	err := client.call(ctx, http.MethodPut, "/v1/system-model-bindings/"+url.PathEscape(role), input, &result)
+	return result, err
+}
+
 func (client *Client) Submit(ctx context.Context, request contract.SubmitRequest) (contract.Execution, error) {
 	var result contract.Execution
 	err := client.call(ctx, http.MethodPost, "/v1/executions", request, &result)

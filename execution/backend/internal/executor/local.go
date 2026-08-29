@@ -23,12 +23,13 @@ import (
 )
 
 type LocalConfig struct {
-	WorkerBinary   string
-	RepositoryRoot string
-	ArtifactRoot   string
-	SandboxRoot    string
-	Timeout        time.Duration
-	Harnesses      *harness.Registry
+	WorkerBinary           string
+	RepositoryRoot         string
+	ArtifactRoot           string
+	SandboxRoot            string
+	Timeout                time.Duration
+	Harnesses              *harness.Registry
+	ResolveModelConnection func(context.Context, string) (contract.ModelConnection, string, error)
 }
 
 type Local struct{ config LocalConfig }
@@ -65,6 +66,16 @@ func (executor *Local) Run(ctx context.Context, executionID string, spec contrac
 		ArtifactDir:     artifactDir,
 		HarnessHome:     filepath.Join(artifactDir, "harness-home"),
 		Metadata:        spec.Metadata,
+	}
+	if spec.ModelConnectionID != "" {
+		if executor.config.ResolveModelConnection == nil {
+			return contract.Result{}, errors.New("model connection resolver is not configured")
+		}
+		connection, credential, err := executor.config.ResolveModelConnection(ctx, spec.ModelConnectionID)
+		if err != nil {
+			return contract.Result{}, err
+		}
+		request.ModelConnection, request.Credential = &connection, credential
 	}
 	response, err := executor.invoke(ctx, request, emit)
 	if err != nil {
@@ -171,8 +182,11 @@ func (executor *Local) invoke(ctx context.Context, request workerprotocol.Reques
 }
 
 func workerEnvironment(repositoryRoot string) []string {
-	allowed := map[string]bool{"PATH": true, "TMPDIR": true, "LANG": true, "LC_ALL": true, "NODE_EXTRA_CA_CERTS": true, "SSL_CERT_FILE": true, "SSL_CERT_DIR": true, "DEEPSEEK_API_KEY": true, "DEEPSEEK_BASE_URL": true, "ANTHROPIC_API_KEY": true, "OPENAI_API_KEY": true, "GOOGLE_API_KEY": true, "EXECUTION_HARNESS_DSH_ARGV": true, "EXECUTION_HARNESS_PI_ARGV": true, "EXECUTION_HARNESS_CLAUDE_CODE_ARGV": true, "EXECUTION_HARNESS_CODEX_ARGV": true, "EXECUTION_HARNESS_HERMES_ARGV": true}
+	allowed := map[string]bool{"PATH": true, "TMPDIR": true, "LANG": true, "LC_ALL": true, "NODE_EXTRA_CA_CERTS": true, "SSL_CERT_FILE": true, "SSL_CERT_DIR": true, "DEEPSEEK_API_KEY": true, "DEEPSEEK_BASE_URL": true, "ANTHROPIC_API_KEY": true, "OPENAI_API_KEY": true, "GOOGLE_API_KEY": true, "RANK_DSH_BIN": true, "EXECUTION_HARNESS_DSH_ARGV": true, "EXECUTION_HARNESS_PI_ARGV": true, "EXECUTION_HARNESS_CLAUDE_CODE_ARGV": true, "EXECUTION_HARNESS_CODEX_ARGV": true, "EXECUTION_HARNESS_HERMES_ARGV": true}
 	result := []string{"EXECUTION_REPO_ROOT=" + repositoryRoot}
+	if userHome, err := os.UserHomeDir(); err == nil {
+		result = append(result, "EXECUTION_USER_HOME="+userHome)
+	}
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
 		if allowed[name] {

@@ -51,7 +51,7 @@ func evaluatorForDataset(dataset domain.DatasetVersion) domain.EvaluatorVersion 
 			criterion.Name = criterion.ID
 		}
 	}
-	if len(evaluator.Rubric) == 0 {
+	if len(evaluator.Rubric) == 0 && !datasetHasDeterministicContract(dataset) {
 		evaluator.Rubric = []domain.RubricCriterion{{ID: "task-success", Name: "任务完成质量", Description: "输出满足用例目标和期望结果", Weight: 1, Threshold: defaultRubricThreshold, Critical: true}}
 	}
 	for index := range evaluator.Rubric {
@@ -78,18 +78,30 @@ func evaluatorForDataset(dataset domain.DatasetVersion) domain.EvaluatorVersion 
 	return evaluator
 }
 
+func datasetHasDeterministicContract(dataset domain.DatasetVersion) bool {
+	if len(dataset.Cases) == 0 {
+		return false
+	}
+	for _, item := range dataset.Cases {
+		if len(expectedCriteria(item.Expected)) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Service) freezeEvaluator(dataset domain.DatasetVersion, agent domain.AgentVersion) domain.EvaluatorVersion {
 	evaluator := dataset.Evaluator
 	if evaluator.ID == "" {
 		evaluator = evaluatorForDataset(dataset)
 	}
-	if strings.TrimSpace(evaluator.Judge.Harness) == "" {
-		evaluator.Judge.Harness = s.judgeHarness
-	}
 	if agent.RunnerType == "mock" {
 		evaluator.Judge.Harness = "mock"
-	}
-	if strings.TrimSpace(evaluator.Judge.Model) == "" {
+		evaluator.Judge.Model = ""
+	} else {
+		// Judge execution is platform-owned. Dataset versions freeze criteria and
+		// thresholds, while the global system binding chooses the Judge model.
+		evaluator.Judge.Harness = s.judgeHarness
 		evaluator.Judge.Model = s.judgeModel
 	}
 	return evaluator

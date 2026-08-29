@@ -48,7 +48,7 @@ func main() {
 	defer store.Close()
 	execution := executionclient.New(*executionURL, *executionTimeout)
 	runners := app.ExecutionRunners(app.ExecutionRunnerConfig{Client: execution, JudgeHarness: os.Getenv("RANK_JUDGE_RUNNER"), JudgeModel: os.Getenv("RANK_JUDGE_MODEL"), Timeout: *executionTimeout})
-	service := app.NewService(store, app.Options{Workers: true, ActionSecret: actionSecret, Runners: runners, Artifacts: app.ExecutionArtifactReader{Client: execution}, JudgeHarness: os.Getenv("RANK_JUDGE_RUNNER"), JudgeModel: os.Getenv("RANK_JUDGE_MODEL")})
+	service := app.NewService(store, app.Options{Workers: true, ActionSecret: actionSecret, Runners: runners, Artifacts: app.ExecutionArtifactReader{Client: execution}, Connections: execution, JudgeHarness: os.Getenv("RANK_JUDGE_RUNNER"), JudgeModel: os.Getenv("RANK_JUDGE_MODEL")})
 	if err := service.EnsureSeed(ctx); err != nil {
 		slog.Error("seed database", "error", err)
 		os.Exit(1)
@@ -57,7 +57,7 @@ func main() {
 		slog.Error("recover active runs", "error", err)
 		os.Exit(1)
 	}
-	server := &http.Server{Addr: *address, Handler: httpapi.New(service, httpapi.Options{ControlToken: controlToken}), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Addr: *address, Handler: httpapi.New(service, httpapi.Options{ControlToken: controlToken, ControlURL: envOr("RANK_CONTROL_URL", "http://127.0.0.1:8788")}), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		slog.Info("rankd listening", "address", *address, "database", *databasePath)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

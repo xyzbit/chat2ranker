@@ -24,13 +24,16 @@ type ProgressEvent struct {
 // Invocation contains the immutable execution specification and the private
 // directories materialized for one worker attempt.
 type Invocation struct {
-	ExecutionID string
-	Spec        contract.Spec
-	Workspace   string
-	ArtifactDir string
-	HarnessHome string
-	Metadata    map[string]string
-	Emit        func(ProgressEvent) error
+	ExecutionID     string
+	Spec            contract.Spec
+	Workspace       string
+	ArtifactDir     string
+	HarnessHome     string
+	Metadata        map[string]string
+	ModelConnection *contract.ModelConnection
+	Credential      string
+	Environment     map[string]string
+	Emit            func(ProgressEvent) error
 }
 
 // Adapter executes one invocation using a specific agent harness.
@@ -74,7 +77,7 @@ func (registry *Registry) Run(ctx context.Context, invocation Invocation) (contr
 		return contract.Result{}, fmt.Errorf("unknown harness %q", invocation.Spec.Harness)
 	}
 	availability := adapter.Probe(ctx)
-	if !availability.Available {
+	if !availability.Available && invocation.ModelConnection == nil {
 		return contract.Result{}, fmt.Errorf("harness %q unavailable: %s", invocation.Spec.Harness, availability.Reason)
 	}
 	return adapter.Run(ctx, invocation)
@@ -107,6 +110,18 @@ func DefaultRegistry(repositoryRoot string) (*Registry, error) {
 		}
 		if definition.id == "dsh" {
 			adapters = append(adapters, NewDSH(repositoryRoot))
+			continue
+		}
+		if definition.id == "codex" {
+			adapters = append(adapters, NewCodex())
+			continue
+		}
+		if definition.id == "claude-code" {
+			adapters = append(adapters, NewClaudeCode())
+			continue
+		}
+		if definition.id == "hermes" {
+			adapters = append(adapters, NewHermes())
 			continue
 		}
 		adapters = append(adapters, NewCommand(CommandConfig{ID: definition.id, Label: definition.label, MissingReason: "未配置 " + key}))
