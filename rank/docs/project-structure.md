@@ -4,41 +4,43 @@ This reference defines where chat2ranker source belongs. It complements the upst
 
 ```text
 chat2ranker/
+├── execution/
+│   └── backend/
+│       ├── cmd/executiond/            generic execution control service
+│       ├── cmd/execution-worker/      one harness invocation payload
+│       ├── client/                    versioned Go service client
+│       ├── contract/                  public HTTP request and result types
+│       ├── harness/                   public Adapter interface and registry
+│       └── internal/                  execution domain, app, Repository, Executor implementations
 ├── apps/
 │   ├── cli/ and web/                 upstream DSH applications
-│   └── rank-web/                     Control DSH product assembly
+│   └── rank-web/                     Rank UI and Control DSH product assembly
 ├── packages/
 │   ├── ...                           upstream DSH plugins
-│   ├── rank/                         Rank-only DSH extensions
-│   │   ├── protocol/                 generated TypeScript API client and event types
-│   │   ├── control-host/             Rank tools, Remote methods, and Go API bridge
-│   │   └── client-ui/                conversation UI and A2UI projections
-│   └── bundle/rank-control/          Control DSH plugin composition
+│   └── ...                           upstream DSH plugins consumed by rank-web
 ├── rank/
-│   ├── api/                          versioned Control and Runner wire definitions
 │   ├── backend/
-│   │   ├── cmd/rankd/                product API and scheduler process
-│   │   ├── cmd/rank-worker/          Sandbox worker process
-│   │   └── internal/                 domain, application, ports, and adapters
-│   ├── runners/
-│   │   ├── mock/                     deterministic protocol implementation
-│   │   └── dsh/                      isolated DSH harness implementation
+│   │   ├── cmd/rankd/                product API and case scheduler process
+│   │   └── internal/                 Rank domain, application, Repository, and adapters
+│   ├── runners/                      Runner deployment and adapter documentation
 │   ├── assets/                       Control Skill, presets, and Judge defaults
 │   ├── deploy/                       Compose, container, and cluster manifests
 │   ├── tests/                        contract and end-to-end verification
 │   └── docs/                         product architecture and decisions
-└── var/                              ignored local sessions, artifacts, and sandboxes
+│   └── var/                          ignored SQLite, sessions, artifacts, binaries, and sandboxes
+└── scripts/rank-dev.mjs              one-command local process assembly
 ```
 
 ## Ownership rules
 
-- `apps/rank-web` assembles plugins but does not own experiment business logic.
-- `packages/rank` integrates with DSH but does not execute tested harnesses.
-- `rank/backend` owns business state but does not import DSH internals.
-- `rank/runners/<harness>` owns harness-specific launch and event normalization but cannot access the Rank database.
+- `apps/rank-web` owns presentation and the Rank-specific Control DSH plugin but does not own experiment business logic or tested execution.
+- `rank/backend` owns business state and judging policy but does not import DSH internals or start harness processes.
+- `execution/backend` owns generic execution state and runtime lifecycle but cannot import Rank domain packages.
+- `execution/backend/contract` and `execution/backend/client` are the only Go packages shared from the execution plane into Rank.
+- `execution/backend/harness` owns harness-specific launch and event normalization but cannot access the Rank database.
 - `rank/api` owns every cross-process field and terminal state.
 - Mutable local runtime data belongs under ignored `var/`, never under source or fixtures.
 
 ## Dependency direction
 
-Control DSH calls the versioned Rank API. `rankd` depends on domain interfaces and dispatches work through the queue or local executor. `rank-worker` starts the selected Runner. A Runner depends only on the Runner protocol and its harness. Results and native traces flow back through the worker; they never bypass Rank persistence to update the browser directly.
+Control DSH calls the versioned Rank API. `rankd` depends on Rank Repository ports and the Execution Service client. `executiond` depends on its own Repository and Executor ports. `execution-worker` starts one selected Harness Adapter; it does not know whether the invocation is part of an experiment. Progress and results return through durable Execution events, then Rank maps them into Run events and Case Results. Native traces never update the browser or Rank database directly.

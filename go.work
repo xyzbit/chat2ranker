@@ -1,3 +1,6 @@
 go 1.24.0
 
-use ./rank/backend
+use (
+	./execution/backend
+	./rank/backend
+)

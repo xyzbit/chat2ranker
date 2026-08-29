@@ -4,7 +4,14 @@ import fs from 'node:fs'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 
-import config from './config.json' with { type: 'json' }
+import repositoryConfig from './config.json' with { type: 'json' }
+
+const [organization, repository] = (process.env.GITHUB_REPOSITORY ?? '').split('/')
+const config = {
+  ...repositoryConfig,
+  organization: organization || repositoryConfig.organization,
+  repository: repository || repositoryConfig.repository,
+}
 
 const API_VERSION = '2026-03-10'
 const BODY_LIMIT = 50

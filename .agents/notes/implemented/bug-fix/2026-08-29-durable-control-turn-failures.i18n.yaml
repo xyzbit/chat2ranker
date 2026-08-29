@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-29-durable-control-turn-failures.md
+2026-08-29-durable-control-turn-failures.md: 0e420cf2fad3054bdfe3735b738a5df7cd242c4d
+2026-08-29-durable-control-turn-failures.zh.md: cd7240c71a1fd8b264a7dfefd5364a8476bb4add

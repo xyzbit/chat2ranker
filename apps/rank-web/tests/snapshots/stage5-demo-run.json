@@ -1,0 +1,32 @@
+{
+  "summary": {
+    "status": "complete",
+    "passed": 50,
+    "total": 60,
+    "passRate": 83,
+    "reliableCases": 10,
+    "caseCount": 12,
+    "passHat3": 83.3,
+    "cost": 2.035,
+    "costKnown": true
+  },
+  "failures": [
+    {
+      "caseId": "web-07",
+      "title": "校验失效链接",
+      "reason": "任务完成质量：有一个来源链接无法访问",
+      "cost": 0.175
+    },
+    {
+      "caseId": "web-11",
+      "title": "引用回溯",
+      "reason": "任务完成质量：两个脚注无法回溯到原文",
+      "cost": 0.12
+    }
+  ],
+  "isolation": {
+    "candidateWorkers": 60,
+    "judgeWorkers": 60,
+    "artifactsPerCase": [20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20]
+  }
+}

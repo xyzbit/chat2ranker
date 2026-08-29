@@ -49,6 +49,8 @@ const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.
 const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
 /** Directories whose packages this repository publishes: one release member each. */
 const releaseMemberDirectory = /^(?:packages\/[^/]+\/[^/]+|apps\/[^/]+|vendor\/[^/]+)$/
+/** Product-only assemblies that are workspace members but are not npm release artifacts. */
+const privateAssemblyDirectories = new Set(['apps/rank-web'])
 
 const localArtifactDirs = new Set(['node_modules'])
 const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
@@ -239,6 +241,10 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
       || manifest.repository.url !== repositoryUrl
       || manifest.repository.directory !== expectedDirectory) {
       errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
+    }
+  } else if (privateAssemblyDirectories.has(dir)) {
+    if (manifest.private !== true) {
+      errors.push(`${label}: product-only assembly must set "private": true`)
     }
   } else if (releaseMemberDirectory.test(dir)) {
     // Release members state that they are publishable: npm refuses a private

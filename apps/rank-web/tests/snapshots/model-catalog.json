@@ -1,0 +1,56 @@
+[
+  {
+    "id": "deepseek",
+    "baseUrl": "https://api.deepseek.com",
+    "protocol": "openai-chat-completions",
+    "sourceUrl": "https://api-docs.deepseek.com/quick_start/pricing",
+    "defaultModel": "deepseek-v4-flash",
+    "defaultPrice": { "input": 0.44, "output": 1.32, "cacheRead": 0.014 },
+    "modelCount": 3
+  },
+  {
+    "id": "minimax",
+    "baseUrl": "https://api.minimaxi.com/v1",
+    "protocol": "openai-chat-completions",
+    "sourceUrl": "https://platform.minimaxi.com/docs/guides/pricing-paygo",
+    "defaultModel": "MiniMax-M3",
+    "defaultPrice": { "input": 0.3, "output": 1.2, "cacheRead": 0.06 },
+    "modelCount": 5
+  },
+  {
+    "id": "glm",
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "protocol": "openai-chat-completions",
+    "sourceUrl": "https://bigmodel.cn/pricing",
+    "defaultModel": "glm-5.2",
+    "defaultPrice": { "input": 1.1428571428571428, "output": 4, "cacheRead": 0.2857142857142857 },
+    "modelCount": 7
+  },
+  {
+    "id": "openai",
+    "baseUrl": "https://api.openai.com/v1",
+    "protocol": "openai-responses",
+    "sourceUrl": "https://developers.openai.com/api/docs/pricing",
+    "defaultModel": "gpt-5.6-sol",
+    "defaultPrice": { "input": 4, "output": 20, "cacheRead": 0.4, "cacheWrite": 5 },
+    "modelCount": 3
+  },
+  {
+    "id": "anthropic",
+    "baseUrl": "https://api.anthropic.com",
+    "protocol": "anthropic-messages",
+    "sourceUrl": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "defaultModel": "claude-sonnet-5",
+    "defaultPrice": { "input": 2, "output": 10, "cacheRead": 0.2, "cacheWrite": 2.5 },
+    "modelCount": 4
+  },
+  {
+    "id": "kimi",
+    "baseUrl": "https://api.moonshot.cn/v1",
+    "protocol": "openai-chat-completions",
+    "sourceUrl": "https://platform.kimi.com/docs/pricing/chat",
+    "defaultModel": "kimi-k3",
+    "defaultPrice": { "input": 2.857142857142857, "output": 14.285714285714286, "cacheRead": 0.2857142857142857 },
+    "modelCount": 4
+  }
+]

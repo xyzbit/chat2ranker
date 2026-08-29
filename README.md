@@ -10,6 +10,7 @@ The repository is a product fork of [DeepSeek Harness](https://github.com/deepse
 
 ## Start here
 
+- [Quick start](rank/docs/local-acceptance.md)
 - [Product source](rank/README.md)
 - [System architecture](rank/docs/architecture.md)
 - [Core data flow](rank/docs/core-data-flow.md)
@@ -28,27 +29,34 @@ The repository is a product fork of [DeepSeek Harness](https://github.com/deepse
 - Node.js `^22.19.0 || >=24.0.0`
 - pnpm `11.7.0`
 - Go `1.24`
-- Docker or another supported Sandbox executor for real Runner jobs
+- Optional Docker or another Sandbox executor for remote or containerized Runner jobs
 
-DSH development commands remain documented in [AGENTS.md](AGENTS.md). Rank commands will be added under `rank/` as the executable services are implemented.
+DSH development commands remain documented in [AGENTS.md](AGENTS.md). The complete local Rank assembly uses one repository-root command.
 
 ## Run
 
-The upstream DSH Web UI remains available while the Rank assembly is under development:
+### One-command install
+
+After the first public release, no source checkout is required:
 
 ```sh
-npx @deepseek-ai/dsh web
+npx -y @xyzbit/chat2ranker start
 ```
+
+The launcher downloads the prebuilt runtime for the current platform, opens the browser, and keeps databases, credentials, logs, and artifacts under `~/.chat2ranker`. Use `--home <path>` for an isolated clean profile; `start --detach`, `status`, `open`, and `stop` manage a background instance.
 
 ### Run from source
 
 ```sh
 pnpm install
-pnpm run build
-pnpm dsh web
+pnpm rank:dev
 ```
 
-The Rank-specific development command will replace this entry point after `apps/rank-web` becomes executable.
+Open `http://127.0.0.1:4173`. On first use, choose a provider and model and enter an API key; Rank creates persistent Control and Judge bindings. You can also initialize them at startup with `pnpm rank:dev -- --provider minimax --model MiniMax-M3 --api-key '...'`, or use `--home /tmp/chat2ranker-clean` to test a clean profile. See the [quick start](rank/docs/local-acceptance.md) for all options.
+
+Maintainers can run `pnpm rank:package` to produce the current platform runtime archive, its SHA256 file, and the publishable npm package. The script prints local acceptance and release commands when it finishes.
+
+The upstream DSH Web UI remains independently available through `npx @deepseek-ai/dsh web`; it is not the Rank product assembly.
 
 ## Upstream synchronization
 

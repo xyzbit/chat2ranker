@@ -2,11 +2,12 @@
 
 English | [中文](README.zh.md)
 
-This Go module will produce two binaries:
+This Go module produces one binary:
 
-- `rankd`: Rank API, version freezing, scheduling, result aggregation, and business persistence.
-- `rank-worker`: job leasing, Sandbox lifecycle, Runner invocation, event forwarding, and cleanup.
+- `rankd`: Rank API, version freezing, case scheduling, judging policy, result aggregation, and business persistence.
 
-The backend depends on Runner and storage interfaces. It does not import DSH implementation packages and does not call `ctx.agents.create()`.
+The backend depends on Rank Repository interfaces and the versioned Execution Service client. It does not import DSH implementation packages, start harness processes, or call `ctx.agents.create()`.
 
-Runner processes receive only an immutable execution specification and scoped credentials. They do not access the Rank database.
+`rankd` freezes DatasetVersion, AgentVersion, and EvaluatorVersion, then expands a Run into Case × Trial records. Each Run always owns one Agent version. A comparison request persists one RunGroup and atomically creates one child Run per selected Agent version before dispatching them independently. Each Trial submits a candidate invocation, runs required deterministic checks first, and submits independent Rubric Judge invocations only when needed. The default is five Trials per case. Rank keeps quality, infrastructure, and grading failures separate; aggregates valid-Trial pass rate, reliable cases, pass^3, and split candidate/evaluation cost; and stores only Execution and Artifact references.
+
+Browser clients follow `GET /api/runs/{id}/events` instead of polling worker processes. The local persistence adapter is SQLite; PostgreSQL can implement the same Repository interfaces without entering Rank domain or application code.

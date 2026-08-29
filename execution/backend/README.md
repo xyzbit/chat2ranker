@@ -1,0 +1,20 @@
+# Execution backend
+
+English | [中文](README.zh.md)
+
+This Go module is a reusable execution control plane. It produces:
+
+- `executiond`: versioned HTTP API, idempotent execution records, lifecycle control, Repository access, Executor selection, and Artifact authorization.
+- `execution-worker`: one immutable Harness Adapter invocation with a private workspace and Harness Home.
+
+The public `contract` and `client` packages are the only integration surface. Domain and application code depend on Repository and Executor interfaces. The local assembly uses SQLite and `LocalExecutor`; PostgreSQL, Docker, Kubernetes Job, Kata, and remote Sandbox adapters can replace them without importing Rank business types.
+
+Harness integrations implement the public `harness.Adapter` interface and register by stable Runner type. The built-in registry contains the deterministic Demo adapter, the first-party DSH adapter, native event-aware adapters for Claude Code, Codex, and Hermes, and a shell-free deployment adapter for Pi. Codex consumes ephemeral `exec --json` runs, Claude Code consumes non-persistent `stream-json` runs, and Hermes consumes its usage report. Native Codex and Claude Code runs reuse the invoking user's CLI authentication while keeping each task workspace and Harness home isolated. Default Codex runs ignore user configuration, Claude Code runs in safe mode, and both receive the frozen Agent model as an invocation flag; a Codex model connection instead generates a private per-run provider configuration.
+
+`/v1/model-catalog` supplies official connection defaults for DeepSeek, MiniMax, Zhipu GLM, OpenAI, Claude, and Kimi: endpoint, protocol, selectable model IDs, USD-per-million-token defaults, pricing notes, source URL, and refresh date. MiniMax, Zhipu, and Kimi default to their official mainland-China OpenAI-compatible endpoints; international endpoints remain available as custom connections. Official CNY rates are normalized to USD estimates with the catalog's fixed `CNY 7.00 = USD 1` conversion and disclosed in every affected model's pricing note, so cross-provider plots retain one currency. Chat Completions, Responses, and Anthropic Messages connections are verified with their native model-list and minimal inference requests. A successful model-list refresh replaces discovered models; a failed refresh preserves the last successful list, and a provider without `/models` can still verify an explicit model through the minimal request. A connection can override any inherited rate without changing the local catalog. Cost resolution remains provider-reported actual cost, then connection override, then catalog default; missing usage or price stays unknown.
+
+Model connections are managed through `/v1/model-connections`, and `/v1/model-catalog` exposes built-in provider endpoint, model, and default-price metadata. A connection can override prices for its models. Metadata is stored in the execution Repository, while API keys are stored separately in the local credential directory and are never serialized into execution specifications, events, or artifacts. Verification synchronizes `/models` when available and performs one minimal request using the selected protocol. DSH accepts all three protocols, Hermes accepts Chat Completions, Codex accepts Responses, and Claude Code uses its own CLI authentication.
+
+Execution cost uses provider-reported actual cost first, then the matching connection price, then the built-in catalog price. Calculated costs retain a frozen price snapshot and are marked as estimates. If usage or a matching price is absent, cost remains unknown instead of using a different provider's price or an invented estimate.
+
+`GET /v1/executions/{id}/events` exposes the durable per-execution event log as SSE. Each event has a monotonic sequence, attempt number, type, status, optional data, and timestamp. Reconnecting clients pass `Last-Event-ID` or `?after=` and replay persisted lifecycle and Harness progress before following live events.

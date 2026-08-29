@@ -2,6 +2,6 @@
 
 English | [中文](README.zh.md)
 
-Local development will use Compose for Control DSH, `rankd`, `rank-worker`, PostgreSQL, and artifact storage. Production deployment will assign one case to one isolated Sandbox and keep one writer for every DSH Session store.
+Local development runs Control DSH, `rankd`, `executiond`, `execution-worker`, two SQLite repositories, and filesystem artifact storage. Production deployment can replace each Repository with PostgreSQL and assign each invocation to an isolated container, Kubernetes Job, Kata runtime, or remote Sandbox.
 
-Control DSH, `rankd`, and Runner workloads use separate persistent resources and credentials. Raw DSH Web access must sit behind product authentication and a reverse proxy; DSH trusted-host checks are not an authentication layer.
+Control DSH, `rankd`, `executiond`, and Harness workloads use separate persistent resources and credentials. Raw DSH Web access must sit behind product authentication and a reverse proxy; DSH trusted-host checks are not an authentication layer.
