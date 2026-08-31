@@ -15,9 +15,9 @@ Chat2Ranker 把一个目标变成版本化测试集、可比较的 Agent 运行�
 
 ## 看一次完整实验
 
-[![创建、运行并查看 Chat2Ranker 实验](rank/docs/assets/chat2ranker-demo.gif)](rank/docs/assets/chat2ranker-demo.mp4)
+[![创建、运行并查看 Chat2Ranker 实验](rank/docs/assets/chat2ranker-demo-poster.jpg)](rank/docs/assets/chat2ranker-demo.mp4)
 
-描述一个目标，让 Rank 准备可复用的数据与 Agents，确认运行，用成本或时延对照质量；需要细节时再展开侧边工作区。点击动画可查看 1080p 视频。
+描述一个目标，让 Rank 准备可复用的数据与 Agents，确认运行，用成本或时延对照质量；需要细节时再展开侧边工作区。点击图片可查看 1080p 视频。
 
 <a id="run"></a>
 

@@ -15,9 +15,9 @@ Chat2Ranker turns a goal into a versioned dataset, comparable Agent runs, and ev
 
 ## See one experiment end to end
 
-[![Create, run, and inspect a Chat2Ranker experiment](rank/docs/assets/chat2ranker-demo.gif)](rank/docs/assets/chat2ranker-demo.mp4)
+[![Create, run, and inspect a Chat2Ranker experiment](rank/docs/assets/chat2ranker-demo-poster.jpg)](rank/docs/assets/chat2ranker-demo.mp4)
 
-Describe one goal, let Rank prepare reusable data and Agents, confirm the run, compare quality against cost or duration, and open the side workspace only when you need details. Click the animation for the 1080p video.
+Describe one goal, let Rank prepare reusable data and Agents, confirm the run, compare quality against cost or duration, and open the side workspace only when you need details. Click the image to play the 1080p video.
 
 <a id="run"></a>
 

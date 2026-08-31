@@ -12,7 +12,7 @@ The product README explains the evaluation workflow before naming the decisions 
 
 The root README introduces four concrete uses before installation: comparing model versions, comparing Harnesses, comparing Agent configurations, and detecting regressions. Each use names the variables that remain fixed and the metrics available for comparison.
 
-A short product-native animation demonstrates one experiment from a stated goal through data and Agent preparation, explicit run confirmation, result comparison, and side-workspace inspection. The README embeds a lightweight GIF linked to the 1080p MP4 and removes screenshots that repeat the same sequence.
+A short product-native film demonstrates one experiment from a stated goal through data and Agent preparation, explicit run confirmation, result comparison, and side-workspace inspection. The README embeds a high-resolution poster linked to the 1080p MP4 and removes screenshots that repeat the same sequence.
 
 ## Alternatives considered
 
@@ -20,7 +20,7 @@ A short product-native animation demonstrates one experiment from a stated goal 
 
 **Keep separate screenshots for every step.** Static images are easier to update independently but make the workflow longer to scan and duplicate the animation.
 
-**Autoplay video directly in Markdown.** GitHub README rendering does not provide a portable autoplay video element, so an animated image with a video link is more reliable.
+**Embed an animated GIF.** GitHub renders it reliably, but GIF palette conversion and README downscaling make small interface text visibly soft. A lossless-looking poster linked to the MP4 preserves legibility.
 
 ## Consequences
 
