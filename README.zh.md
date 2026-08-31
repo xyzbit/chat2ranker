@@ -4,7 +4,20 @@
 
 [English](README.md) | 中文
 
-通过对话准备测试集、配置 Agent，并运行可复现的评测。无需先编写评测脚本。
+Chat2Ranker 把一个目标变成版本化测试集、可比较的 Agent 运行和可追溯证据。无需先编写评测脚本。
+
+## 可以比较什么？
+
+- **最新模型效果**：固定测试集、Harness、工具和评审规则，从通过率、成本、耗时与稳定性比较模型版本。
+- **不同 Harness**：让同一个模型在 DeepSeek Harness、Codex、Claude Code 或 Hermes 中运行相同用例，测出运行时差异。
+- **不同 Agent 配置**：自由组合模型、System Prompt、工具和 Skill，在一个实验中比较冻结后的 Agent 版本。
+- **版本回归**：发布前重复运行，定位不稳定用例，并查看失败原因与执行轨迹。
+
+## 看一次完整实验
+
+[![创建、运行并查看 Chat2Ranker 实验](rank/docs/assets/chat2ranker-demo.gif)](rank/docs/assets/chat2ranker-demo.mp4)
+
+描述一个目标，让 Rank 准备可复用的数据与 Agents，确认运行，用成本或时延对照质量；需要细节时再展开侧边工作区。点击动画可查看 1080p 视频。
 
 <a id="run"></a>
 
@@ -18,8 +31,6 @@ npx -y @xyzbit/chat2ranker@latest start
 
 首次打开时选择 Provider 和模型，再填写 API Key。随后直接描述目标，例如“整理一组 Web 研究用例，对比两个 Agent 的准确率和成本”。Rank 只会询问缺少的信息，并在运行确认卡中等待你明确开始。
 
-![通过对话准备数据集和多 Agent 运行](rank/docs/assets/conversation-run.jpg)
-
 完整的首次使用、后台运行和独立数据目录说明见[一分钟上手](rank/docs/quickstart.md)。
 
 ## 从对话到可比较的结果
@@ -28,8 +39,6 @@ npx -y @xyzbit/chat2ranker@latest start
 - **运行**：每个 Trial 使用独立上下文；一个运行组可同时比较多个 Agent 版本。
 - **评审**：优先使用确定性规则，只有需要语义判断时才调用 Rubric 与 LLM Judge。
 - **分析**：汇总通过率、稳定用例、成本、耗时、失败原因和原始执行产物。
-
-![在实验表现卡片中对比 Agent 通过率和耗时](rank/docs/assets/evaluation-results.jpg)
 
 ## Harness 与架构
 

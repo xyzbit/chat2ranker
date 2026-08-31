@@ -4,7 +4,20 @@
 
 English | [中文](README.zh.md)
 
-Prepare datasets, configure agents, and run reproducible evaluations through conversation. No evaluation script is required up front.
+Chat2Ranker turns a goal into a versioned dataset, comparable Agent runs, and evidence you can inspect. No evaluation script is required up front.
+
+## What can you compare?
+
+- **New models:** keep the dataset, Harness, tools, and judging rules fixed to compare model versions on pass rate, cost, duration, and stability.
+- **Harnesses:** run the same model and cases through DeepSeek Harness, Codex, Claude Code, or Hermes to measure runtime differences.
+- **Agent configurations:** freely combine models, system prompts, tools, and Skills, then compare the frozen Agent versions in one experiment.
+- **Regressions:** repeat trials before a release, find unstable cases, and inspect failures and execution traces.
+
+## See one experiment end to end
+
+[![Create, run, and inspect a Chat2Ranker experiment](rank/docs/assets/chat2ranker-demo.gif)](rank/docs/assets/chat2ranker-demo.mp4)
+
+Describe one goal, let Rank prepare reusable data and Agents, confirm the run, compare quality against cost or duration, and open the side workspace only when you need details. Click the animation for the 1080p video.
 
 <a id="run"></a>
 
@@ -18,8 +31,6 @@ npx -y @xyzbit/chat2ranker@latest start
 
 On first open, choose a provider and model, then enter an API key. Describe the outcome you want, such as “Build a Web research dataset and compare two agents on accuracy and cost.” Rank asks only for missing information and waits for explicit confirmation in the run card.
 
-![Prepare a dataset and multi-agent run through conversation](rank/docs/assets/conversation-run.jpg)
-
 See the [one-minute quick start](rank/docs/quickstart.md) for first-run setup, background operation, and isolated data directories.
 
 ## From conversation to comparable results
@@ -28,8 +39,6 @@ See the [one-minute quick start](rank/docs/quickstart.md) for first-run setup, b
 - **Run:** isolate every trial and compare multiple agent versions in one run group.
 - **Evaluate:** prefer deterministic checks and invoke rubric-based LLM judging only when semantic evaluation is needed.
 - **Inspect:** aggregate pass rate, stable cases, cost, duration, failures, and raw execution artifacts.
-
-![Compare agent pass rate and duration in the experiment performance card](rank/docs/assets/evaluation-results.jpg)
 
 ## Harnesses and architecture
 

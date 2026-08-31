@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-08-31-use-case-first-readme-demo.md
+2026-08-31-use-case-first-readme-demo.md: 25511e153eb55d421295c69d4a617c4962fd8234
+2026-08-31-use-case-first-readme-demo.zh.md: 57df14287f08cc0ded9a9a766b11d0113a555b34
