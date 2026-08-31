@@ -20,6 +20,20 @@ test("keeps incomplete streaming JSON out of the visible message", () => {
   assert.deepEqual(parsed.blocks, [{ type: "summary", text: "完成" }]);
 });
 
+test("repairs common model-generated JSON mistakes", () => {
+  const content = [
+    '{"type":"summary","text":"整理"热点/非热点"测试集",}',
+    '{\\"type\\":\\"paragraph\\",\\"text\\":\\"继续 C:\\project 配置\\"}]',
+  ].join("\n");
+  assert.deepEqual(parseMessageContent(content), {
+    format: "rank-jsonl",
+    blocks: [
+      { type: "summary", text: '整理"热点/非热点"测试集' },
+      { type: "paragraph", text: "继续 C:\\project 配置" },
+    ],
+  });
+});
+
 test("renders existing Markdown messages through the legacy fallback", () => {
   const content = "配置已就绪：\n\n- **测试集**：基准集 v1\n- **Agent**：@dsh/research v2\n\n| Agent | 通过率 |\n|---|---|\n| v2 | 93% |";
   const parsed = parseMessageContent(content);

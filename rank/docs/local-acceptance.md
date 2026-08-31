@@ -1,25 +1,6 @@
-# Quick start and local acceptance
+# Local development and acceptance
 
-This tutorial starts the complete local Rank product either from the published launcher or from source. Both paths own the same four-service lifecycle.
-
-## 用户一条命令启动
-
-正式发布后，用户只需要 Node.js：
-
-```sh
-npx -y @xyzbit/chat2ranker start
-```
-
-首次运行会下载匹配当前系统和 CPU 的预编译 runtime，校验 SHA256，保存到 `~/.chat2ranker/runtime/`，启动服务并打开浏览器。数据库、凭据、日志和产物也都位于 `~/.chat2ranker/`，npm 的临时缓存只保存启动器，不承载用户数据。
-
-```sh
-npx -y @xyzbit/chat2ranker start --detach
-npx -y @xyzbit/chat2ranker status
-npx -y @xyzbit/chat2ranker open
-npx -y @xyzbit/chat2ranker stop
-```
-
-使用 `--home /tmp/chat2ranker-clean` 可隔离一套全新初始化环境，不需要删除已有模型连接或实验数据。
+This tutorial starts Chat2Ranker from source and verifies the complete local product. Published-launcher users should follow the [one-minute quick start](quickstart.md) or [Chinese quick start](quickstart.zh.md).
 
 ## Prerequisites
 

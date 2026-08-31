@@ -1,70 +1,55 @@
-# chat2ranker
+# Chat2Ranker
+
+[![npm](https://img.shields.io/npm/v/@xyzbit/chat2ranker?color=5454e8)](https://www.npmjs.com/package/@xyzbit/chat2ranker) [![Release](https://img.shields.io/github/v/release/xyzbit/chat2ranker)](https://github.com/xyzbit/chat2ranker/releases/latest) [![CI](https://github.com/xyzbit/chat2ranker/actions/workflows/ci.yml/badge.svg)](https://github.com/xyzbit/chat2ranker/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/xyzbit/chat2ranker)](LICENSE)
 
 English | [中文](README.zh.md)
 
-Conversation-first evaluation for agent harnesses.
+Prepare datasets, configure agents, and run reproducible evaluations through conversation. No evaluation script is required up front.
 
-chat2ranker turns a conversation into a versioned dataset and agent configuration, executes every case in an isolated harness runtime, and reports pass rate, cost, duration, failures, and raw traces.
+<a id="run"></a>
 
-The repository is a product fork of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). DSH hosts the control conversation, Skill runtime, and A2UI. The Go Rank service owns experiments and dispatches DSH, Pi, Claude Code, Codex, Hermes, and future harnesses as peer Runner implementations.
+## Start in one minute
 
-## Start here
-
-- [Quick start](rank/docs/local-acceptance.md)
-- [Product source](rank/README.md)
-- [System architecture](rank/docs/architecture.md)
-- [Core data flow](rank/docs/core-data-flow.md)
-- [Repository structure](rank/docs/project-structure.md)
-- [Architecture decisions](rank/docs/adr/0001-control-and-execution-separation.md)
-
-## Repository ownership
-
-- Upstream DSH source remains under its existing `apps/`, `packages/`, `python/`, `native/`, and `vendor/` trees.
-- Rank-specific backend, Runner, deployment, test, and product documentation live under `rank/`.
-- Rank-specific DSH packages will live under `packages/rank/`; the Control DSH product assembly will live under `apps/rank-web/`.
-- Product behavior extends DSH through plugins and profiles. Changes to DSH core packages require a missing extension point to be documented first.
-
-## Development prerequisites
-
-- Node.js `^22.19.0 || >=24.0.0`
-- pnpm `11.7.0`
-- Go `1.24`
-- Optional Docker or another Sandbox executor for remote or containerized Runner jobs
-
-DSH development commands remain documented in [AGENTS.md](AGENTS.md). The complete local Rank assembly uses one repository-root command.
-
-## Run
-
-### One-command install
-
-After the first public release, no source checkout is required:
+Requires Node.js 22.19 or newer on macOS or Linux, x64 or arm64.
 
 ```sh
-npx -y @xyzbit/chat2ranker start
+npx -y @xyzbit/chat2ranker@latest start
 ```
 
-The launcher downloads the prebuilt runtime for the current platform, opens the browser, and keeps databases, credentials, logs, and artifacts under `~/.chat2ranker`. Use `--home <path>` for an isolated clean profile; `start --detach`, `status`, `open`, and `stop` manage a background instance.
+On first open, choose a provider and model, then enter an API key. Describe the outcome you want, such as “Build a Web research dataset and compare two agents on accuracy and cost.” Rank asks only for missing information and waits for explicit confirmation in the run card.
 
-### Run from source
+![Prepare a dataset and multi-agent run through conversation](rank/docs/assets/conversation-run.jpg)
+
+See the [one-minute quick start](rank/docs/quickstart.md) for first-run setup, background operation, and isolated data directories.
+
+## From conversation to comparable results
+
+- **Prepare:** create or select versioned datasets and agent configurations through conversation.
+- **Run:** isolate every trial and compare multiple agent versions in one run group.
+- **Evaluate:** prefer deterministic checks and invoke rubric-based LLM judging only when semantic evaluation is needed.
+- **Inspect:** aggregate pass rate, stable cases, cost, duration, failures, and raw execution artifacts.
+
+![Compare agent pass rate and duration in the experiment performance card](rank/docs/assets/evaluation-results.jpg)
+
+## Harnesses and architecture
+
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) is the first-party runtime and control-conversation foundation. Pi, Claude Code, Codex, and Hermes connect through peer Runner adapters; an uninstalled or unconfigured Runner is not presented as runnable.
+
+The Go Rank service owns experiments, frozen versions, scheduling, and aggregation. The Execution Service runs candidates and judges in isolated processes or sandboxes. Read the [system architecture](rank/docs/architecture.md) and [core data flow](rank/docs/core-data-flow.md) for details.
+
+## Run from source
 
 ```sh
+git clone https://github.com/xyzbit/chat2ranker.git
+cd chat2ranker
 pnpm install
 pnpm rank:dev
 ```
 
-Open `http://127.0.0.1:4173`. On first use, choose a provider and model and enter an API key; Rank creates persistent Control and Judge bindings. You can also initialize them at startup with `pnpm rank:dev -- --provider minimax --model MiniMax-M3 --api-key '...'`, or use `--home /tmp/chat2ranker-clean` to test a clean profile. See the [quick start](rank/docs/local-acceptance.md) for all options.
+See [local development and acceptance](rank/docs/local-acceptance.md) for source prerequisites, health checks, and acceptance flows. See the [repository structure](rank/docs/project-structure.md) for code ownership.
 
-Maintainers can run `pnpm rank:package` to produce the current platform runtime archive, its SHA256 file, and the publishable npm package. The script prints local acceptance and release commands when it finishes.
+## Contributing
 
-The upstream DSH Web UI remains independently available through `npx @deepseek-ai/dsh web`; it is not the Rank product assembly.
+Issues and pull requests are welcome. If Chat2Ranker is useful to you, consider starring the repository.
 
-## Upstream synchronization
-
-The product repository uses `origin` for `xyzbit/chat2ranker` and `upstream` for `deepseek-ai/deepseek-harness`.
-
-```sh
-git fetch upstream
-git merge upstream/master
-```
-
-Resolve product assembly conflicts inside Rank-owned directories where possible. Keep the upstream source layout intact so future synchronization remains reviewable.
+Released under the [MIT License](LICENSE).

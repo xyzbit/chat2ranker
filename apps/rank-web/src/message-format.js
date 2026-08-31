@@ -1,5 +1,44 @@
 const TEXT_TYPES = new Set(["summary", "paragraph", "note"]);
 
+function repairJSON(line) {
+  let output = "";
+  let string = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === "\\" && string) {
+      const next = line[index + 1];
+      if ('"\\/bfnrt'.includes(next) || next === "u") { output += character + next; index += 1; }
+      else output += "\\\\";
+      continue;
+    }
+    if (character === '"') {
+      if (!string) string = true;
+      else {
+        const next = line.slice(index + 1).match(/^\s*(.)/)?.[1];
+        if (!next || ":,}]".includes(next)) string = false;
+        else output += "\\";
+      }
+    }
+    output += character;
+  }
+  const repaired = output.replace(/,\s*([}\]])/g, "$1");
+  return repaired.startsWith("{") && repaired.endsWith("}]") ? repaired.slice(0, -1) : repaired;
+}
+
+function parseJSON(line) {
+  const candidates = [line];
+  if (line.startsWith('{\\"') || line.startsWith('[\\"')) candidates.push(line.replace(/\\"/g, '"'));
+  for (const candidate of candidates) {
+    for (const value of [candidate, repairJSON(candidate)]) {
+      try {
+        const parsed = JSON.parse(value);
+        return typeof parsed === "string" && /^[{[]/.test(parsed.trim()) ? JSON.parse(parsed) : parsed;
+      } catch { /* try the next conservative repair */ }
+    }
+  }
+  throw new SyntaxError("invalid JSON");
+}
+
 function normalizeBlock(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   if (TEXT_TYPES.has(value.type) && typeof value.text === "string") {
@@ -73,7 +112,7 @@ export function parseMessageContent(content, { streaming = false } = {}) {
   const blocks = [];
   for (let index = 0; index < lines.length; index += 1) {
     try {
-      const block = normalizeBlock(JSON.parse(lines[index]));
+      const block = normalizeBlock(parseJSON(lines[index]));
       if (!block) throw new Error("unsupported block");
       blocks.push(block);
     } catch {
