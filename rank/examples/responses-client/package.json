@@ -1,0 +1,12 @@
+{
+  "name": "rank-responses-client-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env main.mjs",
+    "verify:local": "node --env-file-if-exists=.env verify-local.mjs",
+    "test": "node --test client.test.mjs"
+  },
+  "engines": { "node": ">=22.19" },
+  "dependencies": { "openai": "7.13.0" }
+}
