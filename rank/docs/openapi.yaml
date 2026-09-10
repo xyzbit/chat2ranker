@@ -1,0 +1,893 @@
+openapi: 3.1.0
+info:
+  title: Chat2Ranker Agent Serving API
+  version: 0.6.0
+  description: >-
+    OpenAI Responses-compatible API for invoking a governed
+    Chat2Ranker Deployment. The model field selects deployment@version-or-alias,
+    and previous_response_id continues a durable version-pinned Conversation.
+servers:
+  - url: http://127.0.0.1:8787
+    description: Local development server
+tags:
+  - name: Responses
+  - name: Webhook endpoints
+paths:
+  /v1/responses:
+    post:
+      tags: [Responses]
+      operationId: createResponse
+      summary: Create a Response
+      description: >-
+        Resolves the Deployment reference once, persists the exact Agent version
+        and optional release revision, then dispatches an isolated Execution.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResponseRequest'
+            examples:
+              synchronous:
+                value:
+                  model: research-public@production
+                  input: Summarize the deployment status.
+              streaming:
+                value:
+                  model: research-public@v1
+                  input:
+                    - role: user
+                      content:
+                        - type: input_text
+                          text: Summarize the deployment status.
+                  stream: true
+              continuation:
+                value:
+                  model: research-public@production
+                  input: Continue from the prior answer.
+                  previous_response_id: resp_019...
+              richInput:
+                value:
+                  model: research-public@production
+                  input:
+                    - role: user
+                      content:
+                        - type: input_text
+                          text: Compare this screenshot with the brief.
+                        - type: input_image
+                          image_url: data:image/png;base64,iVBORw0KGgo...
+                          detail: auto
+                        - type: input_file
+                          filename: brief.pdf
+                          file_data: JVBERi0xLjQK...
+      responses:
+        '200':
+          description: >-
+            Response object, or an SSE stream when stream is true. A non-background
+            JSON request waits for a terminal state.
+          headers:
+            X-Idempotent-Replayed:
+              description: Present with value true when the idempotency key replayed a request.
+              schema:
+                type: string
+                const: 'true'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /v1/responses/{response_id}:
+    get:
+      tags: [Responses]
+      operationId: retrieveResponse
+      summary: Retrieve a Response or replay its events
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResponseID'
+        - name: stream
+          in: query
+          description: Set to true to replay and follow durable SSE events.
+          schema:
+            type: boolean
+            default: false
+        - name: starting_after
+          in: query
+          description: Return SSE events with a sequence number greater than this cursor.
+          schema:
+            type: integer
+            minimum: 0
+        - name: Last-Event-ID
+          in: header
+          description: SSE resume cursor used when starting_after is absent.
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Current Response projection or durable SSE stream.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/responses/{response_id}/cancel:
+    post:
+      tags: [Responses]
+      operationId: cancelResponse
+      summary: Cancel a non-terminal Response
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResponseID'
+      responses:
+        '200':
+          description: Current Response projection after the cancellation request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/responses/{response_id}/approval:
+    post:
+      tags: [Responses]
+      operationId: decideResponseApproval
+      summary: Approve or reject a pending caller function
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ResponseID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [approved]
+              properties:
+                approved:
+                  type: boolean
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Response after the idempotent approval decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Response'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/webhook-endpoints:
+    get:
+      tags: [Webhook endpoints]
+      operationId: listWebhookEndpoints
+      summary: List Webhook endpoints for a tenant
+      parameters:
+        - name: tenantId
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Endpoint projections without signing secrets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebhookEndpoint'
+    post:
+      tags: [Webhook endpoints]
+      operationId: createWebhookEndpoint
+      summary: Create a deployment-scoped Webhook endpoint
+      description: The signingSecret field is returned only by this operation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookEndpointRequest'
+      responses:
+        '201':
+          description: Endpoint plus its one-time signing secret.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/WebhookEndpoint'
+                  - type: object
+                    required: [signingSecret]
+                    properties:
+                      signingSecret:
+                        type: string
+                        pattern: '^whsec_'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/webhook-endpoints/{webhook_endpoint_id}/deliveries:
+    get:
+      tags: [Webhook endpoints]
+      operationId: listWebhookDeliveries
+      summary: List delivery attempts for one endpoint
+      parameters:
+        - $ref: '#/components/parameters/WebhookEndpointID'
+      responses:
+        '200':
+          description: Newest deliveries first; payload and signing material are omitted.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebhookDelivery'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/webhook-endpoints/{webhook_endpoint_id}/enable:
+    post:
+      tags: [Webhook endpoints]
+      operationId: enableWebhookEndpoint
+      summary: Enable future delivery attempts
+      parameters:
+        - $ref: '#/components/parameters/WebhookEndpointID'
+      responses:
+        '200':
+          description: Updated endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpoint'
+  /api/webhook-endpoints/{webhook_endpoint_id}/disable:
+    post:
+      tags: [Webhook endpoints]
+      operationId: disableWebhookEndpoint
+      summary: Disable future delivery attempts
+      parameters:
+        - $ref: '#/components/parameters/WebhookEndpointID'
+      responses:
+        '200':
+          description: Updated endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpoint'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: rnk_live
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: >-
+        Request identity scoped to the credential. Reuse with a different
+        normalized request returns a conflict.
+      schema:
+        type: string
+    ResponseID:
+      name: response_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^resp_[0-9a-f-]+$'
+    WebhookEndpointID:
+      name: webhook_endpoint_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^wh_[0-9a-f-]+$'
+  schemas:
+    CreateResponseRequest:
+      type: object
+      additionalProperties: false
+      required: [model, input]
+      properties:
+        model:
+          type: string
+          description: Deployment reference in deployment@version-or-alias form.
+          examples: [research-public@production, research-public@v1]
+        input:
+          oneOf:
+            - type: string
+              minLength: 1
+            - type: array
+              minItems: 1
+              items:
+                oneOf:
+                  - $ref: '#/components/schemas/InputMessage'
+                  - $ref: '#/components/schemas/FunctionCallOutput'
+        instructions:
+          type: string
+          description: Additional instructions accepted only when the Deployment policy allows them.
+        metadata:
+          type: object
+          maxProperties: 16
+          additionalProperties:
+            type: string
+            maxLength: 512
+        background:
+          type: boolean
+          default: false
+        text:
+          $ref: '#/components/schemas/ResponseTextConfig'
+        previous_response_id:
+          type: string
+          pattern: '^resp_[0-9a-f-]+$'
+          description: >-
+            Completed latest Response in the Conversation to continue. The new
+            Response inherits its exact Agent version and release revision even
+            if the requested alias has advanced.
+        stream:
+          type: boolean
+          default: false
+        store:
+          type: boolean
+          const: true
+          default: true
+        tools:
+          type: array
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/FunctionTool'
+          description: Caller-owned functions; the Deployment must enable caller tools.
+    InputMessage:
+      type: object
+      additionalProperties: false
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          const: user
+        content:
+          oneOf:
+            - type: string
+              minLength: 1
+            - type: array
+              minItems: 1
+              items:
+                oneOf:
+                  - $ref: '#/components/schemas/InputText'
+                  - $ref: '#/components/schemas/InputImage'
+                  - $ref: '#/components/schemas/InputFile'
+    InputText:
+      type: object
+      additionalProperties: false
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          const: input_text
+        text:
+          type: string
+          minLength: 1
+    InputImage:
+      type: object
+      additionalProperties: false
+      required: [type, image_url]
+      properties:
+        type:
+          type: string
+          const: input_image
+        image_url:
+          type: string
+          minLength: 1
+          description: Base64 data URL or public HTTPS URL fetched and frozen before admission.
+        detail:
+          type: string
+          const: auto
+          default: auto
+    InputFile:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          type: string
+          const: input_file
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 128
+        file_url:
+          type: string
+          minLength: 1
+          description: Public HTTPS URL fetched and frozen before admission.
+        file_data:
+          type: string
+          minLength: 1
+          description: Raw base64 content or a base64 data URL; filename is required.
+      oneOf:
+        - required: [file_url]
+          not:
+            required: [file_data]
+        - required: [file_data, filename]
+          not:
+            required: [file_url]
+    FunctionCallOutput:
+      type: object
+      additionalProperties: false
+      required: [type, call_id, output]
+      properties:
+        type:
+          type: string
+          const: function_call_output
+        call_id:
+          type: string
+          minLength: 1
+        output:
+          type: string
+          minLength: 1
+    FunctionTool:
+      type: object
+      additionalProperties: false
+      required: [type, name, parameters]
+      properties:
+        type:
+          type: string
+          const: function
+        name:
+          type: string
+          pattern: '^[A-Za-z_][A-Za-z0-9_-]{0,63}$'
+        description:
+          type: string
+          maxLength: 512
+        parameters:
+          type: object
+          description: Draft 2020-12 object schema without external references.
+        strict:
+          type: boolean
+          const: true
+          default: true
+        require_approval:
+          type: boolean
+          default: false
+    ResponseTextConfig:
+      type: object
+      additionalProperties: false
+      required: [format]
+      properties:
+        format:
+          $ref: '#/components/schemas/ResponseTextFormat'
+    ResponseTextFormat:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type]
+          properties:
+            type:
+              type: string
+              const: text
+        - type: object
+          additionalProperties: false
+          required: [type, name, schema, strict]
+          properties:
+            type:
+              type: string
+              const: json_schema
+            name:
+              type: string
+              pattern: '^[A-Za-z0-9_-]{1,64}$'
+            description:
+              type: string
+              maxLength: 512
+            schema:
+              type: object
+              description: Draft 2020-12 JSON Schema without external references.
+            strict:
+              type: boolean
+              const: true
+    Response:
+      type: object
+      required:
+        - id
+        - object
+        - created_at
+        - status
+        - error
+        - incomplete_details
+        - instructions
+        - model
+        - output
+        - parallel_tool_calls
+        - tools
+        - metadata
+        - background
+        - store
+        - previous_response_id
+        - text
+        - usage
+        - deployment
+        - conversation
+        - cost
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          const: response
+        created_at:
+          type: integer
+        completed_at:
+          type: [integer, 'null']
+        status:
+          type: string
+          enum: [queued, in_progress, requires_action, completed, failed, cancelled]
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/ResponseFailure'
+            - type: 'null'
+        incomplete_details:
+          type: ['null', object]
+        instructions:
+          type: [string, 'null']
+        model:
+          type: string
+        output:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/OutputMessage'
+              - $ref: '#/components/schemas/FunctionCall'
+        parallel_tool_calls:
+          type: boolean
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunctionTool'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        background:
+          type: boolean
+        store:
+          type: boolean
+          const: true
+        previous_response_id:
+          type: [string, 'null']
+        text:
+          $ref: '#/components/schemas/ResponseTextConfig'
+        usage:
+          oneOf:
+            - $ref: '#/components/schemas/Usage'
+            - type: 'null'
+        deployment:
+          $ref: '#/components/schemas/ResolvedDeployment'
+        conversation:
+          $ref: '#/components/schemas/Conversation'
+        cost:
+          $ref: '#/components/schemas/Cost'
+    Conversation:
+      type: object
+      required: [id, agent_version_id]
+      properties:
+        id:
+          type: string
+          pattern: '^conv_[0-9a-f-]+$'
+        agent_version_id:
+          type: string
+    OutputMessage:
+      type: object
+      required: [id, type, status, role, content]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          const: message
+        status:
+          type: string
+          const: completed
+        role:
+          type: string
+          const: assistant
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutputText'
+    OutputText:
+      type: object
+      required: [type, text, annotations]
+      properties:
+        type:
+          type: string
+          const: output_text
+        text:
+          type: string
+        annotations:
+          type: array
+          items: {}
+    FunctionCall:
+      type: object
+      required: [id, type, status, call_id, name, arguments]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          const: function_call
+        status:
+          type: string
+          enum: [in_progress, completed]
+        call_id:
+          type: string
+        name:
+          type: string
+        arguments:
+          type: string
+          description: Compact JSON object matching the selected function parameters.
+        approval_required:
+          type: boolean
+        approval_status:
+          type: string
+          enum: [pending, approved, rejected]
+    Usage:
+      type: object
+      required: [input_tokens, input_token_details, output_tokens, output_token_details, total_tokens]
+      properties:
+        input_tokens:
+          type: integer
+        input_token_details:
+          type: object
+          additionalProperties:
+            type: integer
+        output_tokens:
+          type: integer
+        output_token_details:
+          type: object
+          additionalProperties:
+            type: integer
+        total_tokens:
+          type: integer
+    ResolvedDeployment:
+      type: object
+      required: [id, name, requested_reference, resolution_kind, agent_version_id]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        requested_reference:
+          type: string
+        resolution_kind:
+          type: string
+          enum: [exact, alias, conversation]
+        release_revision_id:
+          type: string
+          description: >-
+            Present when an alias selected the initial version, including later
+            Responses that inherit that pinned release through a Conversation.
+        agent_version_id:
+          type: string
+    Cost:
+      type: object
+      required: [amount, currency, known]
+      properties:
+        amount:
+          type: number
+        currency:
+          type: string
+          const: USD
+        known:
+          type: boolean
+    ResponseFailure:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    CreateWebhookEndpointRequest:
+      type: object
+      additionalProperties: false
+      required: [tenantId, name, url, events, deploymentIds]
+      properties:
+        tenantId:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+        events:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+        deploymentIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+    WebhookEndpoint:
+      type: object
+      required: [id, tenantId, name, url, events, deploymentIds, enabled, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+        deploymentIds:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    WebhookEventType:
+      type: string
+      enum: [response.completed, response.failed, response.cancelled, response.requires_action]
+    WebhookDelivery:
+      type: object
+      required: [id, endpointId, responseId, eventType, status, attempts, nextAttemptAt, createdAt]
+      properties:
+        id:
+          type: string
+          pattern: '^evt_[0-9a-f-]+$'
+        endpointId:
+          type: string
+        responseId:
+          type: string
+        eventType:
+          $ref: '#/components/schemas/WebhookEventType'
+        status:
+          type: string
+          enum: [pending, delivering, delivered, failed]
+        attempts:
+          type: integer
+          minimum: 0
+        nextAttemptAt:
+          type: string
+          format: date-time
+        leaseUntil:
+          type: string
+          format: date-time
+        lastError:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type: string
+          format: date-time
+    WebhookEvent:
+      type: object
+      description: >-
+        Thin outbound event. The raw JSON body and webhook-id,
+        webhook-timestamp, and webhook-signature headers follow Standard
+        Webhooks; the signature input is id.timestamp.raw_body.
+      required: [id, object, created_at, type, data]
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          const: event
+        created_at:
+          type: integer
+        type:
+          $ref: '#/components/schemas/WebhookEventType'
+        data:
+          type: object
+          required: [id, object]
+          properties:
+            id:
+              type: string
+            object:
+              type: string
+              const: response
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, type, param, code]
+          properties:
+            message:
+              type: string
+            type:
+              type: string
+              enum: [invalid_request_error, authentication_error, rate_limit_error, server_error]
+            param:
+              type: ['string', 'null']
+            code:
+              type: string
+  responses:
+    BadRequest:
+      description: Invalid or unsupported request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing, invalid, or revoked API credential.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Credential lacks the required scope or Deployment access.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Response is absent or outside the credential's tenant and Deployment scope.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Idempotency key was reused with a different request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Deployment request-rate or concurrent-Response limit was exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

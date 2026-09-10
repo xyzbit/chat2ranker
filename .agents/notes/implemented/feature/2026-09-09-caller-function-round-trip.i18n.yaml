@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-09-caller-function-round-trip.md
+2026-09-09-caller-function-round-trip.md: ddfeaf65d2f4ce849f0bf23bcb7f926f746c6f7f
+2026-09-09-caller-function-round-trip.zh.md: 9ec442f22e60e1a083787dbb0cda41d5bd531d0e

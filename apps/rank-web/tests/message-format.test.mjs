@@ -20,6 +20,20 @@ test("keeps incomplete streaming JSON out of the visible message", () => {
   assert.deepEqual(parsed.blocks, [{ type: "summary", text: "完成" }]);
 });
 
+test("isolates an empty duplicate list field without exposing JSON or losing adjacent content", () => {
+  const content = '{"type":"summary","text":"Ready"}\n{"type":"list","items":["Review"],"items":[]}\n{"type":"note","text":"No changes"}';
+  const parsed=parseMessageContent(content);
+  assert.equal(parsed.format,"rank-jsonl");
+  assert.deepEqual(parsed.blocks.map((v)=>v.type),["summary","error","note"]);
+  assert.equal(parsed.blocks[1].formatError,true);
+  assert.equal(parsed.blocks[2].text,"No changes");
+  assert.ok(!messageContentToMarkdown(content).includes('"items"'));
+});
+
+test("streams complete adjacent objects while withholding the unfinished object", () => {
+  assert.deepEqual(parseMessageContent('{"type":"summary","text":"Ready"}{"type":"list","items":[', {streaming:true}).blocks,[{type:"summary",text:"Ready"}]);
+});
+
 test("repairs common model-generated JSON mistakes", () => {
   const content = [
     '{"type":"summary","text":"整理"热点/非热点"测试集",}',
@@ -34,11 +48,39 @@ test("repairs common model-generated JSON mistakes", () => {
   });
 });
 
+test("parses adjacent Rank Message objects when a model omits a newline", () => {
+  const content = '{"type":"summary","text":"已读取"}{"type":"note","tone":"info","text":"未启动运行"}';
+  assert.deepEqual(parseMessageContent(content), {
+    format: "rank-jsonl",
+    blocks: [
+      { type: "summary", text: "已读取" },
+      { type: "note", tone: "info", text: "未启动运行" },
+    ],
+  });
+});
+
 test("renders existing Markdown messages through the legacy fallback", () => {
   const content = "配置已就绪：\n\n- **测试集**：基准集 v1\n- **Agent**：@dsh/research v2\n\n| Agent | 通过率 |\n|---|---|\n| v2 | 93% |";
   const parsed = parseMessageContent(content);
   assert.equal(parsed.format, "legacy-markdown");
   assert.deepEqual(parsed.blocks.map((block) => block.type), ["paragraph", "list", "table"]);
+  assert.equal(messageContentToMarkdown(content), content);
+});
+
+test("renders a plain-text preface followed by Rank JSONL without exposing protocol text", () => {
+  const content = '卡片已准备好。\n\n{"type":"summary","text":"等待确认"}\n{"type":"facts","items":[{"label":"Agent","value":"v2"}]}\n{"type":"note","text":"未执行"}';
+  const parsed = parseMessageContent(content);
+  assert.equal(parsed.format, "mixed");
+  assert.deepEqual(parsed.blocks.map((block) => block.type), ["paragraph", "summary", "facts", "note"]);
+  assert.equal(messageContentToMarkdown(content), "卡片已准备好。\n\n**等待确认**\n\n- **Agent：** v2\n\n> 未执行");
+  assert.deepEqual(parseMessageContent('卡片已准备好。\n{"type":"summary","text":"等待', { streaming: true }).blocks, [{ type: "paragraph", text: "卡片已准备好。" }]);
+});
+
+test("keeps intentional code fences and non-protocol JSON in legacy replies", () => {
+  const content = 'Example:\n\n```json\n{"type":"summary","text":"sample"}\n```\n\n{"type":"invoice","total":8}';
+  const parsed = parseMessageContent(content);
+  assert.equal(parsed.format, "legacy-markdown");
+  assert.deepEqual(parsed.blocks.map((block) => block.type), ["paragraph", "code", "paragraph"]);
   assert.equal(messageContentToMarkdown(content), content);
 });
 

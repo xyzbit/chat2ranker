@@ -10,6 +10,10 @@ var (
 	ErrNotFound          = errors.New("not found")
 	ErrConflict          = errors.New("conflict")
 	ErrIdempotencyReplay = errors.New("idempotency replay")
+	ErrRateLimited       = errors.New("rate limited")
+	ErrConcurrencyLimit  = errors.New("concurrency limit")
+	ErrConversationBusy  = errors.New("conversation has an active response")
+	ErrConversationHead  = errors.New("conversation head changed")
 )
 
 type UnitOfWork interface {
@@ -51,6 +55,7 @@ type ControlRepository interface {
 }
 
 type RunRepository interface {
+	ListAgentEvaluationSummaries(ctx context.Context, agentVersionID string) ([]AgentEvaluationSummary, error)
 	GetRun(ctx context.Context, id string) (Run, error)
 	GetRunByIdempotencyKey(ctx context.Context, experimentID, key string) (Run, error)
 	ListRunsByExperiment(ctx context.Context, experimentID string) ([]Run, error)
@@ -75,6 +80,47 @@ type RunGroupRepository interface {
 	CreateRunGroup(ctx context.Context, group RunGroup) error
 }
 
+type ReleaseRepository interface {
+	ListReleaseHistory(ctx context.Context, aliasID DeploymentAliasID, before int64, limit int) (ReleaseHistoryPage, error)
+	CreateDeployment(ctx context.Context, deployment Deployment, aliases []DeploymentAlias) error
+	GetDeployment(ctx context.Context, id DeploymentID) (Deployment, error)
+	GetDeploymentByName(ctx context.Context, tenantID, name string) (Deployment, error)
+	ListDeployments(ctx context.Context, tenantID string) ([]Deployment, error)
+	ListDeploymentsByAgentFamily(ctx context.Context, familyID string) ([]Deployment, error)
+	GetDeploymentAlias(ctx context.Context, deploymentID DeploymentID, name string) (DeploymentAlias, error)
+	AppendReleaseRevision(ctx context.Context, revision ReleaseRevision, expectedReleaseRevisionID ReleaseRevisionID) (ReleaseRevision, error)
+}
+
+type ServingRepository interface {
+	ListAPICredentials(ctx context.Context, tenantID string) ([]APICredential, error)
+	RevokeAPICredential(ctx context.Context, id APICredentialID, tenantID string, at time.Time) error
+	ListResponsesPage(ctx context.Context, filter ResponseListFilter) (ResponsePage, error)
+	CreateAPICredential(ctx context.Context, credential APICredential) error
+	GetAPICredentialBySecretHash(ctx context.Context, secretHash string) (APICredential, error)
+	AdmitResponse(ctx context.Context, response ServingResponse, conversation *Conversation, created ResponseEvent, requestsPerMinute, maxConcurrent int) error
+	GetConversation(ctx context.Context, id ConversationID) (Conversation, error)
+	GetResponse(ctx context.Context, id ResponseID) (ServingResponse, error)
+	GetResponseByIdempotencyKey(ctx context.Context, credentialID APICredentialID, key string) (ServingResponse, error)
+	ListConversationResponses(ctx context.Context, conversationID ConversationID) ([]ServingResponse, error)
+	ListActiveResponses(ctx context.Context) ([]ServingResponse, error)
+	UpdateResponse(ctx context.Context, response ServingResponse, expectedStatus string, events []ResponseEvent) error
+	ListResponseEvents(ctx context.Context, responseID ResponseID, afterSequence int64) ([]ResponseEvent, error)
+}
+
+type WebhookRepository interface {
+	ReplayWebhookDelivery(ctx context.Context, endpointID WebhookEndpointID, deliveryID WebhookDeliveryID, at time.Time) error
+	CreateWebhookEndpoint(ctx context.Context, endpoint WebhookEndpoint) error
+	GetWebhookEndpoint(ctx context.Context, id WebhookEndpointID) (WebhookEndpoint, error)
+	ListWebhookEndpoints(ctx context.Context, tenantID string) ([]WebhookEndpoint, error)
+	SetWebhookEndpointEnabled(ctx context.Context, id WebhookEndpointID, enabled bool, updatedAt time.Time) error
+	CreateWebhookDelivery(ctx context.Context, delivery WebhookDelivery) error
+	ListWebhookDeliveries(ctx context.Context, endpointID WebhookEndpointID) ([]WebhookDelivery, error)
+	ListDueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]WebhookDelivery, error)
+	ClaimWebhookDelivery(ctx context.Context, id WebhookDeliveryID, now, leaseUntil time.Time, leaseToken string) (WebhookDelivery, bool, error)
+	CompleteWebhookDelivery(ctx context.Context, id WebhookDeliveryID, leaseToken string, deliveredAt time.Time) error
+	RetryWebhookDelivery(ctx context.Context, id WebhookDeliveryID, leaseToken string, nextAttemptAt time.Time, terminal bool, message string) error
+}
+
 // Repository is the composite persistence port owned by the Rank domain.
 // Application services depend on these interfaces; SQL and SQLite types stay
 // entirely inside persistence adapters.
@@ -86,4 +132,7 @@ type Repository interface {
 	ControlRepository
 	RunRepository
 	RunGroupRepository
+	ReleaseRepository
+	ServingRepository
+	WebhookRepository
 }

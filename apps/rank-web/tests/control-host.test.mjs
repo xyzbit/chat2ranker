@@ -117,6 +117,13 @@ test("Control DSH resumes one persistent experiment session and executes Rank to
     assert.ok(selected.experiment.controlEvents.some((event) => event.type === "a2ui/select_dataset"));
     assert.ok(selected.events.some((event) => event.type === "tool.started" && event.name === "rank_select_dataset"));
     assert.ok(selected.events.some((event) => event.type === "tool.completed" && event.name === "rank_select_dataset"));
+    const selectedSeedAgent = await sendTurn(controlURL, rankURL, created.id, "使用 agent-research-demo-v1");
+    assert.equal(selectedSeedAgent.experiment.agentVersionId, "agent-research-demo-v1");
+    const preparedRelease = await sendTurn(controlURL, rankURL, created.id, "将当前 Agent 发布到 production");
+    const releaseEvent = preparedRelease.experiment.controlEvents.findLast((event) => event.type === "a2ui/prepare_release");
+    assert.equal(releaseEvent.payload.alias, "production");
+    assert.equal(releaseEvent.payload.candidateAgentVersionId, "agent-research-demo-v1");
+    assert.ok(preparedRelease.events.some((event) => event.type === "tool.started" && event.name === "rank_prepare_release"));
     const createdDataset = await sendTurn(controlURL, rankURL, created.id, "创建测试集 {\"name\":\"对话采集集\",\"source\":\"conversation\",\"cases\":[{\"id\":\"chat-1\",\"title\":\"对话用例\",\"input\":\"完成一次检索\",\"expected\":{\"demoOutcome\":\"pass\"}}]}");
     assert.equal(createdDataset.experiment.dataset.name, "对话采集集");
     assert.ok(createdDataset.experiment.controlEvents.some((event) => event.type === "control/create_dataset"));

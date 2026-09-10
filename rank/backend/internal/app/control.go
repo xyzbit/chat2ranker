@@ -22,6 +22,7 @@ const (
 	ControlCreateAgent        = "create_agent"
 	ControlCreateAgentVersion = "create_agent_version"
 	ControlPrepareRun         = "prepare_run"
+	ControlPrepareRelease     = "prepare_release"
 	ControlShowResults        = "show_experiment_results"
 	ControlStartRun           = "start_run"
 )
@@ -94,7 +95,7 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 		return domain.ControlCommand{}, problem(400, "invalid_control_command", "实验、Session 和幂等键不能为空")
 	}
 	switch input.Type {
-	case ControlSelectDataset, ControlSelectAgent, ControlCreateDataset, ControlAddDatasetCases, ControlCreateAgent, ControlCreateAgentVersion, ControlPrepareRun, ControlShowResults, ControlStartRun:
+	case ControlSelectDataset, ControlSelectAgent, ControlCreateDataset, ControlAddDatasetCases, ControlCreateAgent, ControlCreateAgentVersion, ControlPrepareRun, ControlPrepareRelease, ControlShowResults, ControlStartRun:
 	default:
 		return domain.ControlCommand{}, problem(400, "unknown_control_command", "不支持的实验命令")
 	}
@@ -334,6 +335,62 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 			result["dataset"] = map[string]any{"id": dataset.ID, "name": dataset.Name, "version": dataset.Version, "caseCount": len(dataset.Cases)}
 			result["agent"] = map[string]any{"id": agent.ID, "handle": agent.Handle, "version": agent.Version, "runnerType": agent.RunnerType}
 			result["trialCount"] = trialCount
+			result["state"] = "confirmation_required"
+		case ControlPrepareRelease:
+			if experiment.AgentVersionID == "" {
+				return problem(409, "experiment_agent_required", "请先选择 Agent 版本")
+			}
+			var value struct {
+				DeploymentID   domain.DeploymentID `json:"deploymentId"`
+				Alias          string              `json:"alias"`
+				AgentVersionID string              `json:"agentVersionId"`
+			}
+			if err := json.Unmarshal(payload, &value); err != nil {
+				return problem(400, "invalid_release_options", "发布参数无效")
+			}
+			if value.AgentVersionID == "" {
+				value.AgentVersionID = experiment.AgentVersionID
+			}
+			candidate, getErr := repo.GetAgentVersion(ctx, value.AgentVersionID)
+			if getErr != nil {
+				return mapNotFound(getErr, "agent_not_found", "Agent 版本不存在")
+			}
+			if value.DeploymentID == "" {
+				deployments, listErr := repo.ListDeploymentsByAgentFamily(ctx, candidate.FamilyID)
+				if listErr != nil {
+					return listErr
+				}
+				if len(deployments) == 0 {
+					return problem(409, "deployment_required", "当前 Agent 还没有 Deployment")
+				}
+				value.DeploymentID = deployments[0].ID
+			}
+			deployment, getErr := repo.GetDeployment(ctx, value.DeploymentID)
+			if getErr != nil {
+				return mapNotFound(getErr, "deployment_not_found", "Deployment 不存在")
+			}
+			if deployment.AgentFamilyID != candidate.FamilyID {
+				return problem(400, "release_agent_family_mismatch", "目标 Agent 版本不属于 Deployment 的 Agent 资产")
+			}
+			value.Alias = strings.TrimSpace(value.Alias)
+			if value.Alias == "" {
+				value.Alias = DeploymentAliasProduction
+			}
+			if value.Alias == DeploymentAliasLatest {
+				return problem(400, "latest_alias_managed", "latest 由 Agent 版本发布自动维护")
+			}
+			alias, getErr := repo.GetDeploymentAlias(ctx, deployment.ID, value.Alias)
+			if getErr != nil {
+				return mapNotFound(getErr, "deployment_alias_not_found", "Deployment 路由不存在")
+			}
+			result["deploymentId"] = deployment.ID
+			result["deploymentName"] = deployment.Name
+			result["alias"] = value.Alias
+			result["candidateAgentVersionId"] = candidate.ID
+			if alias.CurrentRelease != nil {
+				result["currentAgentVersionId"] = alias.CurrentRelease.AgentVersionID
+				result["currentReleaseRevisionId"] = alias.CurrentRelease.ID
+			}
 			result["state"] = "confirmation_required"
 		case ControlShowResults:
 			runs, listErr := repo.ListRunsByExperiment(ctx, experiment.ID)

@@ -1,5 +1,7 @@
 # Rank Web
 
+`ManagementUI.jsx` 管理共用页面标题、错误提示、状态标签、空状态、分页和行内确认。页面直接引用该模块，无需通过其他页面导入组件。翻页可用性、请求和确认操作仍由调用页面负责。
+
 [English](README.md) | 中文
 
 本目录承载 chat2ranker 的 Control DSH 产品组合与会话优先 UI。
@@ -12,6 +14,20 @@
 
 消息解析器会先修复模型常见的引号、转义和尾逗号错误，仍无法解析时再回退为可读文本。
 
+助手头像采用纯蓝圆形与白色眼睛。闲置时眼睛会左右看；鼠标进入周围 140 CSS 像素内时，视线跟随鼠标。离开该区域、滚动页面或窗口失焦后恢复闲置动作。减少动态效果设置会关闭闲置动画和鼠标跟随；触摸输入不会移动眼睛。
+
+默认悬浮助手共用这套形象与视线行为。点击入口会打开已有助手抽屉；显示开关、自定义形象导入与工作状态圆点仍由助手设置管理。
+
+对话和最近会话区域隐藏滚动条，仅在仍有内容的边缘显示渐隐。键盘滚动保持可用；只有读者已接近底部时，对话更新才跟随最新内容。表单采用实底，移动端固定导航采用轻微半透明。原生模态弹窗约束焦点并在关闭时恢复焦点；可搜索模型菜单使用浏览器顶层，支持方向键、Enter 和 Escape。参见 [UI 交互决策](../../.agents/notes/implemented/feature/2026-09-10-rank-ui-interaction.md)。
+
+本地验收会话可用时，`playwright-cli run-code --filename apps/rank-web/tests/ui-layout.browser.js` 检查组装后的页面、桌面和移动端布局、语言切换、弹窗焦点、对话滚动和模型选择，不提交表单或模型请求。截图保存在 `output/playwright/`。
+
+在 Playwright CLI 中打开已配置的本地 Rank 对话后，运行 `playwright-cli run-code --filename apps/rank-web/tests/assistant-avatar.browser.js` 可检查视线交互，并将桌面和移动端截图保存到 `output/playwright/`，不发送模型请求。
+
 模型选择会合并平台内置目录与已保存连接发现的模型，标明来源并支持搜索；手动模型 ID 仅在需要时展开。保存密钥后可以重新同步模型列表；同步失败会保留上次成功结果，避免 Provider 临时故障清空配置。
 
 在仓库根目录运行 `pnpm rank:dev` 即可启动完整本地组合。无密钥与真实 Provider 验收流程见 [`rank/docs/local-acceptance.md`](../../rank/docs/local-acceptance.md)。
+
+所有单选字段使用基于 Radix Select 的 `SelectField`。页面提供 `value`、`onValueChange` 和带标签的选项；共用组件负责空值、禁用项、必填校验、键盘导航、焦点恢复及适配模态弹窗的菜单挂载。可编辑模型联想和可搜索模型发现保留专用输入控件。`theme.css` 管理视觉变量，`controls.css` 管理共用控件外观和焦点，`ui-config.js` 管理菜单定位。语言选项位于 `i18n.js`，Provider 和协议选项位于 `model-connections.js`。表单草稿保持本地状态，模型目录来自服务端。参见 [共用控件决策](../../.agents/notes/implemented/feature/2026-09-10-rank-shared-controls.md)。
+
+导航语言控件共用一个翻译图标组件，提供本地化提示和无障碍名称。`playwright-cli run-code --filename apps/rank-web/tests/ui-controls.browser.js` 检查组装后的设置和筛选器、桌面和移动端布局、模态归属、嵌套 Escape 行为、禁用占位项及可选空值筛选，不保存表单。`playwright-cli run-code --filename apps/rank-web/tests/deployment-switcher.browser.js` 覆盖部署导航和语言切换。

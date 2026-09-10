@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-10-rank-assistant-gaze.md
+2026-09-10-rank-assistant-gaze.md: ddc8324d3f20d5416a36df96563063eeccb96225
+2026-09-10-rank-assistant-gaze.zh.md: 0760c0cd7767c35cb4930d26657b02f5e0503b2d

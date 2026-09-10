@@ -28,15 +28,30 @@ func problem(status int, code, message string) error {
 }
 
 type Options struct {
-	Runners       RunnerRegistry
-	Artifacts     ArtifactReader
-	Workers       bool
-	Clock         func() time.Time
-	WorkerLatency time.Duration
-	ActionSecret  string
-	JudgeHarness  string
-	JudgeModel    string
-	Connections   ModelConnectionClient
+	Runners               RunnerRegistry
+	Artifacts             ArtifactReader
+	Workers               bool
+	Clock                 func() time.Time
+	WorkerLatency         time.Duration
+	ActionSecret          string
+	JudgeHarness          string
+	JudgeModel            string
+	Connections           ModelConnectionClient
+	Execution             ServingExecutionClient
+	TenantID              string
+	InputFetcher          ResponseInputFetcher
+	WebhookSecrets        WebhookSecretStore
+	WebhookSender         WebhookSender
+	WebhookPollInterval   time.Duration
+	WebhookAttemptTimeout time.Duration
+	WebhookRetrySchedule  []time.Duration
+}
+
+type ServingExecutionClient interface {
+	Submit(context.Context, contract.SubmitRequest) (contract.Execution, error)
+	Get(context.Context, string) (contract.Execution, error)
+	Watch(context.Context, string, int64, func(contract.Event) error) (int64, error)
+	Cancel(context.Context, string) (contract.Execution, error)
 }
 
 type ModelConnectionClient interface {
@@ -53,18 +68,28 @@ type ModelConnectionClient interface {
 }
 
 type Service struct {
-	repo          domain.Repository
-	runners       RunnerRegistry
-	workers       bool
-	now           func() time.Time
-	workerLatency time.Duration
-	actionSecret  []byte
-	artifacts     ArtifactReader
-	judgeHarness  string
-	judgeModel    string
-	connections   ModelConnectionClient
-	mu            sync.Mutex
-	cancels       map[string]context.CancelFunc
+	repo                  domain.Repository
+	runners               RunnerRegistry
+	workers               bool
+	now                   func() time.Time
+	workerLatency         time.Duration
+	actionSecret          []byte
+	artifacts             ArtifactReader
+	judgeHarness          string
+	judgeModel            string
+	connections           ModelConnectionClient
+	execution             ServingExecutionClient
+	inputFetcher          ResponseInputFetcher
+	webhookSecrets        WebhookSecretStore
+	webhookSender         WebhookSender
+	webhookPollInterval   time.Duration
+	webhookAttemptTimeout time.Duration
+	webhookRetrySchedule  []time.Duration
+	mu                    sync.Mutex
+	cancels               map[string]context.CancelFunc
+	responseWorkers       map[domain.ResponseID]struct{}
+	responseSubscriptions map[domain.ResponseID]map[chan struct{}]struct{}
+	tenantID              string
 }
 
 func NewService(repo domain.Repository, options Options) *Service {
@@ -83,7 +108,36 @@ func NewService(repo domain.Repository, options Options) *Service {
 	if strings.TrimSpace(options.JudgeHarness) == "" {
 		options.JudgeHarness = "dsh"
 	}
-	return &Service{repo: repo, runners: options.Runners, artifacts: options.Artifacts, connections: options.Connections, workers: options.Workers, now: options.Clock, workerLatency: options.WorkerLatency, actionSecret: []byte(options.ActionSecret), judgeHarness: options.JudgeHarness, judgeModel: options.JudgeModel, cancels: map[string]context.CancelFunc{}}
+	if strings.TrimSpace(options.TenantID) == "" {
+		options.TenantID = "local"
+	}
+	if options.InputFetcher == nil {
+		options.InputFetcher = newSecureResponseInputFetcher()
+	}
+	if options.WebhookAttemptTimeout <= 0 {
+		options.WebhookAttemptTimeout = 20 * time.Second
+	}
+	if options.WebhookPollInterval <= 0 {
+		options.WebhookPollInterval = time.Second
+	}
+	if len(options.WebhookRetrySchedule) == 0 {
+		options.WebhookRetrySchedule = []time.Duration{5 * time.Second, 5 * time.Minute, 30 * time.Minute, 2 * time.Hour, 5 * time.Hour, 10 * time.Hour, 14 * time.Hour, 20 * time.Hour, 24 * time.Hour}
+	}
+	if options.WebhookSender == nil {
+		options.WebhookSender = newSecureWebhookSender(options.WebhookAttemptTimeout)
+	}
+	return &Service{
+		repo: repo, runners: options.Runners, artifacts: options.Artifacts,
+		connections: options.Connections, execution: options.Execution, inputFetcher: options.InputFetcher, workers: options.Workers,
+		webhookSecrets: options.WebhookSecrets, webhookSender: options.WebhookSender,
+		webhookPollInterval: options.WebhookPollInterval, webhookAttemptTimeout: options.WebhookAttemptTimeout,
+		webhookRetrySchedule: append([]time.Duration(nil), options.WebhookRetrySchedule...),
+		now:                  options.Clock, workerLatency: options.WorkerLatency, actionSecret: []byte(options.ActionSecret),
+		judgeHarness: options.JudgeHarness, judgeModel: options.JudgeModel,
+		tenantID: options.TenantID,
+		cancels:  map[string]context.CancelFunc{}, responseWorkers: map[domain.ResponseID]struct{}{},
+		responseSubscriptions: map[domain.ResponseID]map[chan struct{}]struct{}{},
+	}
 }
 
 func newID(prefix string) string {
@@ -147,6 +201,10 @@ func (s *Service) Bootstrap(ctx context.Context) (domain.Bootstrap, error) {
 	if err != nil {
 		return domain.Bootstrap{}, err
 	}
+	deployments, err := s.repo.ListDeployments(ctx, s.tenantID)
+	if err != nil {
+		return domain.Bootstrap{}, err
+	}
 	connections := []contract.ModelConnection{}
 	catalog := []contract.ModelProvider{}
 	systemModels := []contract.SystemModelBinding{}
@@ -159,7 +217,7 @@ func (s *Service) Bootstrap(ctx context.Context) (domain.Bootstrap, error) {
 	for name, runner := range s.runners {
 		runtimes[name] = runner.Probe(ctx, domain.AgentVersion{RunnerType: name})
 	}
-	return domain.Bootstrap{Datasets: datasets, Agents: agents, Experiments: experiments, ModelConnections: connections, ModelCatalog: catalog, SystemModels: systemModels, Runtimes: runtimes}, nil
+	return domain.Bootstrap{TenantID: s.tenantID, Datasets: datasets, Agents: agents, Deployments: deployments, Experiments: experiments, ModelConnections: connections, ModelCatalog: catalog, SystemModels: systemModels, Runtimes: runtimes}, nil
 }
 
 func (s *Service) SaveSystemModel(ctx context.Context, role string, input contract.SystemModelBindingInput) (contract.SystemModelBinding, error) {
@@ -400,7 +458,10 @@ func (s *Service) createAgentVersion(ctx context.Context, repo domain.Repository
 		next = versions[0].Version + 1
 	}
 	created := domain.AgentVersion{ID: fmt.Sprintf("%s-v%d", familyID, next), FamilyID: familyID, Name: family.Name, Handle: family.Handle, Version: next, RunnerType: input.RunnerType, Description: input.Description, Model: input.Model, ModelConnectionID: input.ModelConnectionID, Preset: agentPreset(input.RunnerType, input.Preset), SystemPrompt: strings.TrimSpace(input.SystemPrompt), Tools: normalizeTools(input.Tools), Skills: normalizeTools(input.Skills), CreatedAt: s.now().UTC()}
-	return created, repo.CreateAgentVersion(ctx, created)
+	if err := repo.CreateAgentVersion(ctx, created); err != nil {
+		return domain.AgentVersion{}, err
+	}
+	return created, s.syncLatestAliases(ctx, repo, created)
 }
 
 func agentPreset(runnerType, preset string) string {

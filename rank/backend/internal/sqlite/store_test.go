@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,6 +156,49 @@ func TestRepositoryContractPersistsSnapshotsAndIdempotentCallbacks(t *testing.T)
 	}
 	if len(loaded.Results) != 1 || loaded.AgentSnapshot.ID != agent.ID {
 		t.Fatalf("restart lost persisted state: %#v", loaded)
+	}
+}
+
+func TestServingTablesUseIntegerPrimaryKeysAndPublicIDs(t *testing.T) {
+	store, _ := openStore(t)
+	ctx := context.Background()
+	type column struct {
+		name       string
+		columnType string
+		primaryKey int
+	}
+	for _, table := range []string{"deployments", "deployment_aliases", "release_revisions", "api_credentials", "conversations", "responses", "webhook_endpoints", "webhook_deliveries"} {
+		rows, err := store.DB().QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		columns := map[string]column{}
+		for rows.Next() {
+			var cid, notNull, primaryKey int
+			var name, columnType string
+			var defaultValue any
+			if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+				rows.Close()
+				t.Fatal(err)
+			}
+			columns[name] = column{name: name, columnType: columnType, primaryKey: primaryKey}
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if columns["id"].columnType != "INTEGER" || columns["id"].primaryKey != 1 {
+			t.Fatalf("%s.id is not an INTEGER PRIMARY KEY: %#v", table, columns["id"])
+		}
+		if columns["public_id"].columnType != "TEXT" || columns["public_id"].primaryKey != 0 {
+			t.Fatalf("%s.public_id is not a separate public identifier: %#v", table, columns["public_id"])
+		}
+		var schema string
+		if err := store.DB().QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&schema); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(strings.ToUpper(schema), "AUTOINCREMENT") {
+			t.Fatalf("%s uses unnecessary AUTOINCREMENT: %s", table, schema)
+		}
 	}
 }
 

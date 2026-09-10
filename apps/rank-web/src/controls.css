@@ -1,0 +1,88 @@
+/* Shared controls load after page layouts; pages own placement, not control appearance. */
+:is(button, a, input, textarea, summary, [tabindex]):focus-visible {
+  outline: var(--control-focus-width) solid var(--accent);
+  outline-offset: var(--control-focus-offset);
+}
+.composer textarea:focus-visible { outline: none; }
+:where(.management-page, .form-fields, .connection-fields, .advanced-fields, .price-fields, .release-dialog-body, .system-setup) :is(label > input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [role="combobox"]), label > textarea), input.management-search, .manual-model > input {
+  min-height: var(--control-height);
+  padding: 8px var(--control-padding);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--control-font-size);
+  line-height: 20px;
+}
+button:is(.primary-action, .secondary-action), .management-actions > button, .binding-form > button {
+  min-height: var(--control-height);
+  border-radius: var(--control-radius);
+  font-size: var(--control-font-size);
+}
+button.ui-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--control-height);
+  padding: 8px var(--control-padding);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--control-font-size);
+  font-weight: 400;
+  line-height: 20px;
+  text-align: left;
+  box-shadow: none;
+  cursor: pointer;
+}
+label .ui-select { width: 100%; }
+.ui-select > span:first-of-type { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select > svg { flex-shrink: 0; color: var(--muted); }
+button.ui-select:hover:not(:disabled), button.ui-select[data-state="open"] { border-color: var(--muted); background: var(--surface-subtle); }
+button.ui-select:disabled { opacity: .48; cursor: not-allowed; }
+.ui-select-menu, .model-combobox-menu {
+  border: 1px solid var(--line);
+  border-radius: var(--menu-radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--menu-shadow);
+}
+.ui-select-menu {
+  z-index: var(--menu-z-index);
+  min-width: var(--radix-select-trigger-width);
+  width: max(var(--menu-min-width), var(--radix-select-trigger-width));
+  max-width: calc(100vw - 2 * var(--menu-viewport-padding));
+  max-height: min(var(--menu-max-height), var(--radix-select-content-available-height));
+  overflow: hidden;
+}
+.ui-select-options { padding: var(--menu-padding); }
+.ui-select-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: var(--menu-option-height);
+  padding: 8px var(--control-padding);
+  border-radius: var(--menu-option-radius);
+  font-size: var(--control-font-size);
+  line-height: 20px;
+  cursor: pointer;
+  user-select: none;
+}
+.ui-select-option > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.ui-select-option > span:last-child:not(:first-child) { display: flex; flex-shrink: 0; color: var(--accent); }
+.ui-select-option[data-state="checked"] { font-weight: 600; }
+.ui-select-option[data-highlighted] { background: var(--surface-subtle); }
+.ui-select-option[data-disabled] { color: var(--muted); opacity: .55; cursor: not-allowed; }
+.ui-select-option:focus { outline: none; }
+.ui-select-scroll { display: grid; height: 24px; place-items: center; color: var(--muted); }
+@media (forced-colors: active) {
+  .ui-select-option[data-highlighted] { outline: 1px solid Highlight; outline-offset: -1px; }
+}

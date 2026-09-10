@@ -348,6 +348,15 @@ func validateSpec(spec contract.Spec) error {
 	if spec.Kind == contract.KindJudge && strings.TrimSpace(spec.CandidateOutput) == "" {
 		return problem(400, "invalid_judge_spec", "candidateOutput is required for judge executions")
 	}
+	if spec.Kind == contract.KindJudge && spec.StructuredOutput != nil {
+		return problem(400, "invalid_judge_spec", "structuredOutput is available only for agent executions")
+	}
+	if err := contract.ValidateStructuredOutput(spec.StructuredOutput); err != nil {
+		return problem(400, "invalid_structured_output", err.Error())
+	}
+	if err := contract.ValidateInputAttachments(spec.InputAttachments); err != nil {
+		return problem(400, "invalid_input_attachments", err.Error())
+	}
 	return nil
 }
 

@@ -2,9 +2,11 @@ package app_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,6 +70,44 @@ func TestExecutionServicePersistsAndRunsAnIsolatedInvocation(t *testing.T) {
 		if event.Sequence != int64(index+1) {
 			t.Fatalf("event sequence is not monotonic: %#v", events)
 		}
+	}
+}
+
+func TestExecutionServiceRejectsInvalidStructuredOutputSchema(t *testing.T) {
+	store, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "execution.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	service := app.NewService(store, nil, app.Options{})
+	_, err = service.Submit(context.Background(), contract.SubmitRequest{
+		IdempotencyKey: "invalid-structured",
+		Spec: contract.Spec{
+			ProtocolVersion: contract.ProtocolVersion, Kind: contract.KindAgent, Harness: "mock", Prompt: "test",
+			StructuredOutput: &contract.StructuredOutput{Name: "result", Schema: json.RawMessage(`{"$ref":"https://example.com/schema.json"}`)},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "must be a local fragment reference") {
+		t.Fatalf("invalid structured schema returned %v", err)
+	}
+}
+
+func TestExecutionServiceRejectsAttachmentDigestMismatch(t *testing.T) {
+	store, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "execution.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	service := app.NewService(store, nil, app.Options{})
+	_, err = service.Submit(context.Background(), contract.SubmitRequest{
+		IdempotencyKey: "invalid-attachment",
+		Spec: contract.Spec{
+			ProtocolVersion: contract.ProtocolVersion, Kind: contract.KindAgent, Harness: "mock", Prompt: "test",
+			InputAttachments: []contract.InputAttachment{{ID: "sha256:wrong", Type: "input_file", Name: "brief.txt", MediaType: "text/plain", Data: []byte("brief")}},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "content digest") {
+		t.Fatalf("invalid attachment returned %v", err)
 	}
 }
 

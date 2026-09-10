@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { SelectField } from "./SelectField.jsx";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowClockwise, ArrowLeft, ArrowRight, CaretDown, CheckCircle, CircleNotch, Key, MagnifyingGlass, Plus, Robot, Trash, WarningCircle } from "@phosphor-icons/react";
-import { isManualModel, modelOptions } from "./model-connections.js";
+import { isManualModel, modelOptions, protocolOptions, providerOptions } from "./model-connections.js";
+import { menuConfig, menuStyle } from "./ui-config.js";
 
 const emptyPrice = { input: "", output: "", cacheRead: "", cacheWrite: "" };
 
@@ -46,8 +48,62 @@ function ModelPicker({ value, options, onChange }) {
   const [open, setOpen] = useState(false);
   const [manual, setManual] = useState(() => !options.length || isManualModel(value, options));
   const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const trigger = useRef(null);
+  const menu = useRef(null);
+  const listId = useId();
   const visible = options.filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(query.trim().toLowerCase()));
   const selected = options.find((item) => item.id === value);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const node = menu.current;
+    const place = () => {
+      const rect = trigger.current.getBoundingClientRect();
+      const { gap, viewportPadding, maxHeight, minWidth } = menuConfig;
+      const width = Math.min(Math.max(rect.width, minWidth), innerWidth - viewportPadding * 2);
+      const below = innerHeight - rect.bottom - viewportPadding;
+      const above = rect.top - viewportPadding;
+      const height = Math.min(maxHeight, Math.max(below, above));
+      Object.assign(node.style, {
+        width: `${width}px`,
+        left: `${Math.max(viewportPadding, Math.min(rect.left, innerWidth - width - viewportPadding))}px`,
+        top: below >= height ? `${rect.bottom + gap}px` : "auto",
+        bottom: below >= height ? "auto" : `${innerHeight - rect.top + gap}px`,
+        maxHeight: `${height}px`,
+      });
+    };
+    const toggle = (event) => { if (event.newState === "closed") setOpen(false); };
+    node.addEventListener("toggle", toggle);
+    node.showPopover();
+    place();
+    node.querySelector("input").focus();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      node.removeEventListener("toggle", toggle);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
+
+  function choose(item) {
+    onChange(item.id);
+    setOpen(false);
+    setQuery("");
+    trigger.current.focus();
+  }
+
+  function handleKey(event) {
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); trigger.current.focus(); }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const next = Math.max(0, Math.min(visible.length - 1, active + (event.key === "ArrowDown" ? 1 : -1)));
+      setActive(next);
+      document.getElementById(`${listId}-${next}`)?.scrollIntoView({ block: "nearest" });
+    }
+    if (event.key === "Enter" && visible[active]) { event.preventDefault(); choose(visible[active]); }
+  }
 
   if (manual) return <div className="manual-model">
     <input required autoFocus value={value} onChange={(event) => onChange(event.target.value)} placeholder="输入模型 ID" />
@@ -56,15 +112,15 @@ function ModelPicker({ value, options, onChange }) {
   </div>;
 
   return <div className="model-combobox" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
-    <button type="button" className="model-combobox-trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+    <button ref={trigger} type="button" className="model-combobox-trigger" aria-label="选择模型" aria-haspopup="listbox" aria-controls={open ? listId : undefined} aria-expanded={open} onClick={() => { setActive(0); setOpen((current) => !current); }}>
       <span><strong>{selected?.name || value}</strong><small>{selected?.id || value}</small></span><CaretDown size={14} />
     </button>
-    {open && <div className="model-combobox-menu">
-      <label><MagnifyingGlass size={14} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索模型" /></label>
-      <div role="listbox">{visible.map((item) => <button type="button" role="option" aria-selected={item.id === value} key={item.id} onClick={() => { onChange(item.id); setOpen(false); setQuery(""); }}>
+    {open && <div ref={menu} popover="auto" className="model-combobox-menu" style={menuStyle}>
+      <label><MagnifyingGlass size={14} /><input role="combobox" aria-label="搜索模型" aria-expanded="true" aria-controls={listId} aria-activedescendant={visible[active] ? `${listId}-${active}` : undefined} value={query} onKeyDown={handleKey} onChange={(event) => { setQuery(event.target.value); setActive(0); }} placeholder="搜索模型" /></label>
+      <div id={listId} role="listbox" aria-label="模型">{visible.map((item, index) => <button id={`${listId}-${index}`} tabIndex={-1} className={index === active ? "keyboard-active" : ""} type="button" role="option" aria-selected={item.id === value} key={item.id} onClick={() => choose(item)}>
         <span><strong>{item.name}</strong><small>{item.id}</small></span><em>{item.source === "official" ? "官方目录" : "连接发现"}</em>
       </button>)}{!visible.length && <p>没有匹配模型</p>}</div>
-      <button type="button" className="manual-model-action" onClick={() => { setManual(true); setOpen(false); }}>＋ 使用其他模型 ID</button>
+      <button type="button" className="manual-model-action" onClick={() => { setManual(true); setOpen(false); }}><Plus size={14} />使用其他模型 ID</button>
     </div>}
   </div>;
 }
@@ -124,7 +180,7 @@ export function ModelConnectionCenter({ connections, catalog, systemModels = [],
       <header><div><small>LLM CONNECTIONS</small><h3>模型连接</h3><p>Agent 只需选择已验证的连接和模型。</p></div><button type="button" onClick={() => setDraft(draftFor(null, catalog))}><Plus size={15} />添加</button></header>
       <div className="system-model-slots">{[["control", "对话模型"], ["judge", "评审模型"]].map(([role, label]) => {
         const binding = systemModels.find((item) => item.role === role);
-        return <label key={role}><span><strong>{label}</strong><small>{role === "control" ? "Rank 对话" : "LLM Judge"}</small></span><select value={binding?.connectionId || ""} onChange={(event) => onBind(role, event.target.value)}><option value="" disabled>未配置</option>{connections.filter((item) => item.status === "verified").map((item) => <option key={item.id} value={item.id}>{item.name} · {item.defaultModel}</option>)}</select></label>;
+        return <label key={role}><span><strong>{label}</strong><small>{role === "control" ? "Rank 对话" : "LLM Judge"}</small></span><SelectField value={binding?.connectionId || ""} onValueChange={nextValue => onBind(role, nextValue)} aria-label={label} options={[{ value: "", label: "未配置", disabled: true }, ...connections.filter(item => item.status === "verified").map(item => ({ value: item.id, label: <>{item.name} · {item.defaultModel}</> }))]} /></label>;
       })}</div>
       <div className="connection-list">
         {connections.map((connection) => <button type="button" key={connection.id} onClick={() => setDraft(draftFor(connection, catalog))}>
@@ -142,7 +198,7 @@ export function ModelConnectionCenter({ connections, catalog, systemModels = [],
       <button type="button" className="connection-back" onClick={() => { setDraft(null); setError(""); }}><ArrowLeft size={14} />返回模型连接</button>
       <header><div><small>{draft.id ? "MODEL CONNECTION" : "NEW CONNECTION"}</small><h3>{draft.id ? draft.name : "添加模型连接"}</h3></div>{draft.id && <div className="connection-header-actions"><span className={`connection-status ${draft.status === "verified" ? "ready" : "missing"}`}>{draft.status === "verified" ? `已同步 ${draft.models.length} 个模型` : draft.status === "failed" ? "同步失败" : draft.hasCredential ? "待同步" : "缺少凭据"}</span>{draft.hasCredential && <button type="button" onClick={sync} disabled={busy}><ArrowClockwise className={busy ? "spin" : ""} size={14} />同步模型</button>}</div>}</header>
       <div className="connection-fields">
-        <label><span>Provider</span><select value={draft.provider} onChange={(event) => selectProvider(event.target.value)}>{catalog.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}<option value="custom">自定义 Provider</option></select></label>
+        <label><span>Provider</span><SelectField value={draft.provider} onValueChange={selectProvider} aria-label="Provider" options={providerOptions(catalog, "自定义 Provider")} /></label>
         <label><span>名称</span><input required value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="团队 DeepSeek" /></label>
         <label className="wide"><span>Base URL</span><input required value={draft.baseUrl} onChange={(event) => update("baseUrl", event.target.value)} placeholder="https://api.example.com/v1" /></label>
         <label><span>API Key</span><input type="password" autoComplete="new-password" value={draft.apiKey} onChange={(event) => update("apiKey", event.target.value)} placeholder={draft.hasCredential ? "留空保留当前凭据" : "安全保存到 executiond"} /></label>
@@ -156,7 +212,7 @@ export function ModelConnectionCenter({ connections, catalog, systemModels = [],
       <details className="connection-advanced">
         <summary>高级设置</summary>
         <div className="advanced-fields">
-          <label><span>协议</span><select value={draft.protocol} onChange={(event) => update("protocol", event.target.value)}><option value="openai-chat-completions">Chat Completions</option><option value="openai-responses">Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label>
+          <label><span>协议</span><SelectField value={draft.protocol} onValueChange={nextValue => update("protocol", nextValue)} aria-label="协议" options={protocolOptions} /></label>
           <label className="price-toggle"><input type="checkbox" checked={draft.overridePrice} onChange={(event) => update("overridePrice", event.target.checked)} /><span>为 {draft.defaultModel || "当前模型"} 设置本地价格</span></label>
           {draft.overridePrice && <div className="price-fields">{[["input", "输入"], ["output", "输出"], ["cacheRead", "缓存读取"], ["cacheWrite", "缓存写入"]].map(([key, label]) => <label key={key}><span>{label} · $/1M</span><input type="number" min="0" step="any" value={draft.price[key] ?? ""} onChange={(event) => update("price", { ...draft.price, [key]: event.target.value })} placeholder="0" /></label>)}</div>}
         </div>

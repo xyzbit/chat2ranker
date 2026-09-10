@@ -1,3 +1,4 @@
+import { SelectField } from "./SelectField.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -21,8 +22,6 @@ import {
   Play,
   Plus,
   Robot,
-  SidebarSimple,
-  Smiley,
   Stop,
   Timer,
   User,
@@ -35,10 +34,28 @@ import { messageContentToMarkdown, parseMessageContent } from "./message-format.
 import { agentConversationPrompt, experimentTitleFromMessage } from "./conversation-config.js";
 import { filterMentionItems, mentionSearchQuery } from "./mention-search.js";
 import { ModelConnectionCenter } from "./ModelConnectionCenter.jsx";
+import { AssistantAvatar } from "./AssistantAvatar.jsx";
+import { ScrollRegion } from "./ScrollRegion.jsx";
+import { Modal } from "./Modal.jsx";
+import { DeploymentCenter } from "./DeploymentCenter.jsx";
+import { WorkspaceShell } from "./WorkspaceShell.jsx";
+import { AgentCenter, ResponseCenter, CredentialCenter } from "./ManagementPages.jsx";
+import { SettingsCenter } from "./SettingsCenter.jsx";
+import { useCompanion, CompanionLauncher, CompanionSettings } from "./Companion.jsx";
+import "./management.css";
+import { createTranslator, initialLocale } from "./i18n.js";
 
 const ACTIVE_STATES = new Set(["queued", "preparing", "running", "scoring"]);
 const runnerLabels = { dsh: "DeepSeek Harness", pi: "Pi", "claude-code": "Claude Code", codex: "Codex", hermes: "Hermes", mock: "Demo" };
 const defaultModelSources = { dsh: "运行环境 DeepSeek", pi: "Pi Adapter 配置", "claude-code": "Execution Service · Claude Code 登录", codex: "Execution Service · Codex 登录", hermes: "Hermes 运行环境", mock: "Demo 内置模型" };
+
+const knownRoutes = new Set(["agent", "agents", "deployments", "responses", "credentials", "settings"]);
+
+function routeFromLocation() {
+  const route = globalThis.location?.hash?.replace(/^#\/?/, "").split(/[?&]/)[0] || "agent";
+  if (route === "experiments") return "agent";
+  return knownRoutes.has(route) ? route : "agent";
+}
 
 function modelSource(item, connections = []) {
   return connections.find((connection) => connection.id === item?.modelConnectionId)?.name || defaultModelSources[item?.runnerType] || "运行环境默认";
@@ -54,6 +71,10 @@ function modelSourceHint(runnerType, custom) {
     pi: "模型和凭据由部署的 Pi Adapter 决定。",
     mock: "无需模型凭据，仅用于验证评测流程。",
   })[runnerType] || "由 Runner 所在运行环境提供。";
+}
+
+function conversationTitle(item, t) {
+  return !item?.title || item.title === "未命名实验" ? t("untitledConversation") : item.title;
 }
 
 function SystemModelSetup({ catalog, connections, onComplete }) {
@@ -90,8 +111,8 @@ function SystemModelSetup({ catalog, connections, onComplete }) {
 
   return <main className="system-setup"><form onSubmit={submit}>
     <span className="eyebrow">WELCOME TO RANK</span><h1>连接一个模型</h1><p>用于对话与评审。之后可分别切换，不会影响已完成的实验。</p>
-    {!adding && <label><span>已有连接</span><select value={existingId} onChange={(event) => setExistingId(event.target.value)}>{verified.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.defaultModel}</option>)}</select></label>}
-    {adding && <><label><span>Provider</span><select value={provider} onChange={(event) => chooseProvider(event.target.value)}>{catalog.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label><span>模型</span><select value={model} onChange={(event) => setModel(event.target.value)}>{template?.models.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label><span>API Key</span><input type="password" autoComplete="new-password" required value={apiKey} onChange={(event) => setAPIKey(event.target.value)} placeholder="只保存在本机 Execution Service" /></label></>}
+    {!adding && <label><span>已有连接</span><SelectField value={existingId} onValueChange={setExistingId} aria-label={"已有连接"} options={[...verified.map(item => ({ value: item.id, label: <>{item.name} · {item.defaultModel}</> }))]} /></label>}
+    {adding && <><label><span>Provider</span><SelectField value={provider} onValueChange={chooseProvider} aria-label={"Provider"} options={[...catalog.map(item => ({ value: item.id, label: item.name }))]} /></label><label><span>模型</span><SelectField value={model} onValueChange={setModel} aria-label={"模型"} options={[...(template?.models.map(item => ({ value: item.id, label: item.name })) ?? [])]} /></label><label><span>API Key</span><input type="password" autoComplete="new-password" required value={apiKey} onChange={(event) => setAPIKey(event.target.value)} placeholder="只保存在本机 Execution Service" /></label></>}
     {error && <div className="setup-error"><WarningCircle size={16} />{error}</div>}
     <button className="primary-action" type="submit" disabled={busy || (adding ? !apiKey || !model : !existingId)}>{busy ? <CircleNotch className="spin" size={17} /> : <CheckCircle size={17} />}验证并开始</button>
     {verified.length > 0 && <button className="setup-switch" type="button" onClick={() => setAdding((value) => !value)}>{adding ? "使用已有连接" : "添加新连接"}</button>}
@@ -121,16 +142,16 @@ function formatCost(value) {
   return `$${amount.toFixed(2)}`;
 }
 
-function displayedCost(item) {
+function displayedCost(item, t = createTranslator("zh")) {
   const amount = Number(item?.cost);
   if (!Number.isFinite(amount)) return "—";
-  if (item?.costKnown === false) return "缺少计价配置";
+  if (item?.costKnown === false) return t("missingPrice");
   return `${item?.costEstimated ? "≈" : ""}${formatCost(amount)}`;
 }
 
-function displayedCostLabel(item) {
-  if (item?.costKnown === false) return "成本";
-  return item?.costEstimated ? "估算成本" : "总成本";
+function displayedCostLabel(item, t = createTranslator("zh")) {
+  if (item?.costKnown === false) return t("cost");
+  return t(item?.costEstimated ? "estimatedCost" : "totalCost");
 }
 
 function a2uiPayload(event) {
@@ -166,9 +187,10 @@ function eventDetail(event) {
 }
 
 function Avatar({ role = "assistant" }) {
+  if (role === "assistant") return <AssistantAvatar />;
   return (
     <span className={`avatar avatar-${role}`} aria-hidden="true">
-      {role === "assistant" ? <Smiley size={21} /> : <User size={20} />}
+      <User size={20} />
     </span>
   );
 }
@@ -182,7 +204,7 @@ function InlineText({ text }) {
   });
 }
 
-function MessageContent({ content, streaming = false, onRetry }) {
+function MessageContent({ content, streaming = false, onRetry, t }) {
   const parsed = parseMessageContent(content, { streaming });
   return <div className={`message-content ${parsed.format}`}>{parsed.blocks.map((block, index) => {
     if (block.type === "summary") return <p className="message-summary" key={index}><InlineText text={block.text} /></p>;
@@ -193,7 +215,7 @@ function MessageContent({ content, streaming = false, onRetry }) {
       return <List key={index}>{block.items.map((item, itemIndex) => <li key={itemIndex}><InlineText text={item} /></li>)}</List>;
     }
     if (block.type === "facts") return <dl className="message-facts" key={index}>{block.items.map((item, itemIndex) => <div key={itemIndex}><dt>{item.label}</dt><dd><InlineText text={item.value} /></dd></div>)}</dl>;
-    if (block.type === "error") return <aside className="message-error" key={index}><div><WarningCircle size={15} /><strong>{block.text}</strong>{onRetry && <button type="button" onClick={onRetry}>重试</button>}</div>{block.detail && <details><summary>技术信息</summary><code>{block.detail}</code></details>}</aside>;
+    if (block.type === "error") return <aside className="message-error" key={index}><div><WarningCircle size={15} /><strong>{block.formatError ? t("messageFormatError") : block.text}</strong>{onRetry && <button type="button" onClick={onRetry}>{t("retry")}</button>}</div>{block.detail && <details><summary>{t("technicalDetails")}</summary><code>{block.detail}</code></details>}</aside>;
     if (block.type === "table") return <div className="message-table" key={index}><table><thead><tr>{block.headers.map((cell, cellIndex) => <th key={cellIndex}><InlineText text={cell} /></th>)}</tr></thead><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex}><InlineText text={cell} /></td>)}</tr>)}</tbody></table></div>;
     return <pre key={index} data-language={block.language}><code>{block.code}</code></pre>;
   })}</div>;
@@ -213,7 +235,7 @@ async function writeClipboard(text) {
   finally { input.remove(); }
 }
 
-function Message({ message, onRetry }) {
+function Message({ message, onRetry, t }) {
   const [copyState, setCopyState] = useState("idle");
   async function copyMessage() {
     setCopyState(await writeClipboard(messageContentToMarkdown(message.content)) ? "copied" : "failed");
@@ -223,8 +245,8 @@ function Message({ message, onRetry }) {
     <article className={`message-row ${message.role}`}>
       {message.role === "assistant" && <Avatar />}
       <div className="message-stack">
-        <div className="message-bubble">{message.role === "assistant" ? <MessageContent content={message.content} onRetry={onRetry} /> : message.content}</div>
-        <div className="message-meta"><time className="message-time">{formatTime(message.createdAt)}{message.pending ? " · 发送中" : message.failed ? " · 发送失败" : ""}</time>{message.role === "assistant" && <button type="button" className={copyState} onClick={copyMessage} aria-label="复制为 Markdown" title="复制为 Markdown" aria-live="polite">{copyState === "copied" ? <Check size={12} /> : copyState === "failed" ? <WarningCircle size={12} /> : <Copy size={12} />}{copyState === "copied" ? "已复制为 Markdown" : copyState === "failed" ? "复制失败" : "复制"}</button>}</div>
+        <div className="message-bubble">{message.role === "assistant" ? <MessageContent content={message.content} onRetry={onRetry} t={t} /> : message.content}</div>
+        <div className="message-meta"><time className="message-time">{formatTime(message.createdAt)}{message.pending ? ` · ${t("sending")}` : message.failed ? ` · ${t("sendFailed")}` : ""}</time>{message.role === "assistant" && <button type="button" className={copyState} onClick={copyMessage} aria-label={t("copyMarkdown")} title={t("copyMarkdown")} aria-live="polite">{copyState === "copied" ? <Check size={12} /> : copyState === "failed" ? <WarningCircle size={12} /> : <Copy size={12} />}{t(copyState === "copied" ? "copiedMarkdown" : copyState === "failed" ? "copyFailed" : "copy")}</button>}</div>
       </div>
       {message.role === "user" && <Avatar role="user" />}
     </article>
@@ -285,48 +307,47 @@ function ExperimentChart({ runs, onInspect, compact = false }) {
   );
 }
 
-function ReadyCard({ experiment, agents, trialCount, onTrialCount, onPickDataset, onPickAgent, onSwitchDataset, onSelectAgents, onStart, busy }) {
+function ReadyCard({ experiment, agents, trialCount, onTrialCount, onPickDataset, onPickAgent, onSwitchDataset, onSelectAgents, onStart, busy, t }) {
 	const unavailable = agents.find((agent) => agent.runtime && !agent.runtime.available);
-	const estimate = agents.every((agent) => agent.runnerType === "mock") ? `预计 $${(experiment.dataset.caseCount * trialCount * agents.length * 0.034).toFixed(2)}` : "按运行时实际计费";
   return (
     <A2UIRow>
-      <section className="ready-card" aria-label="确认运行">
+      <section className="ready-card" aria-label={t("confirmRun")}>
         <header>
-          <div><small>运行快照</small><h2>可以开始了</h2></div>
-          <span className="ready-mark"><CheckCircle size={18} weight="fill" /> 已就绪</span>
+          <div><small>{t("runSnapshot")}</small><h2>{t("readyToRun")}</h2></div>
+          <span className="ready-mark"><CheckCircle size={18} weight="fill" />{t("ready")}</span>
         </header>
         <div className="snapshot-list">
           <div className="snapshot-item">
             <button type="button" className="snapshot-main" onClick={onPickDataset}>
-              <Database size={18} /><span><small>测试集</small><strong>{experiment.dataset.name} v{experiment.dataset.version}</strong></span><em>{experiment.dataset.caseCount} 条</em>
+              <Database size={18} /><span><small>{t("dataset")}</small><strong>{experiment.dataset.name} v{experiment.dataset.version}</strong></span><em>{experiment.dataset.caseCount} {t("cases")}</em>
             </button>
-            <button type="button" className="asset-quick-switch" onClick={onSwitchDataset} title="切换测试集" aria-label="切换测试集"><ArrowsClockwise size={15} /></button>
+            <button type="button" className="asset-quick-switch" onClick={onSwitchDataset} title={t("switchDataset")} aria-label={t("switchDataset")}><ArrowsClockwise size={15} /></button>
           </div>
           <div className="snapshot-item snapshot-agents">
             <div className="snapshot-agent-head">
-              <span><Robot size={18} /><span><small>Agent</small><strong>{agents.length > 1 ? `${agents.length} 个版本参与对比` : "已选择 1 个版本"}</strong></span></span>
-              <button type="button" className="asset-quick-switch" onClick={onSelectAgents} title="选择 Agent" aria-label="选择 Agent"><Plus size={15} /></button>
+              <span><Robot size={18} /><span><small>Agent</small><strong>{t(agents.length > 1 ? "compareVersions" : "selectedVersions", { count: agents.length })}</strong></span></span>
+              <button type="button" className="asset-quick-switch" onClick={onSelectAgents} title={t("selectAgent")} aria-label={t("selectAgent")}><Plus size={15} /></button>
             </div>
             <div className={`snapshot-agent-list ${agents.length > 2 ? "overflowing" : ""}`}>
               {agents.map((agent) => <button type="button" key={agent.id} onClick={() => onPickAgent(agent)}>
-                <span><strong>{agent.handle} v{agent.version}</strong><small>{agent.runnerType} · {agent.model || "默认模型"}</small></span><ArrowRight size={13} />
+                <span><strong>{agent.handle} v{agent.version}</strong><small>{agent.runnerType} · {agent.model || t("runtimeModel")}</small></span><ArrowRight size={13} />
               </button>)}
             </div>
           </div>
         </div>
-        <div className="trial-choice" aria-label="每个用例运行次数">
-          <span><strong>重复运行</strong><small>独立上下文，避免偶然结果</small></span>
+        <div className="trial-choice" aria-label={t("repeatsPerCase")}>
+          <span><strong>{t("repeatRuns")}</strong><small>{t("repeatHint")}</small></span>
           <div>
-            <button type="button" className={trialCount === 1 ? "selected" : ""} onClick={() => onTrialCount(1)}>快速 · 1 次</button>
-            <button type="button" className={trialCount === 5 ? "selected" : ""} onClick={() => onTrialCount(5)}>可靠 · 5 次</button>
+            <button type="button" className={trialCount === 1 ? "selected" : ""} onClick={() => onTrialCount(1)}>{t("quickTrial")}</button>
+            <button type="button" className={trialCount === 5 ? "selected" : ""} onClick={() => onTrialCount(5)}>{t("reliableTrials")}</button>
           </div>
         </div>
         {unavailable && <div className="runtime-warning"><WarningCircle size={17} />{unavailable.handle}：{unavailable.runtime.reason}</div>}
         <footer>
-          <span><Coins size={16} /> {estimate} · {experiment.dataset.caseCount * trialCount * agents.length} 个 Trial · {agents.length > 1 ? `${agents.length} 个独立 Run` : "并发 5"}</span>
+          <span><Coins size={16} />{t("actualBilling")} · {t("trialCount", { count: experiment.dataset.caseCount * trialCount * agents.length })} · {t(agents.length > 1 ? "independentRuns" : "runConcurrency", { count: agents.length > 1 ? agents.length : 5 })}</span>
           <button type="button" className="primary-action" onClick={onStart} disabled={busy || unavailable}>
             {busy ? <CircleNotch size={18} className="spin" /> : <Play size={18} weight="fill" />}
-            {busy ? "正在创建" : agents.length > 1 ? "开始对比" : "开始运行"}
+            {t(busy ? "creating" : agents.length > 1 ? "startComparison" : "startRun")}
           </button>
         </footer>
       </section>
@@ -334,14 +355,14 @@ function ReadyCard({ experiment, agents, trialCount, onTrialCount, onPickDataset
   );
 }
 
-function RunSteps({ run }) {
+function RunSteps({ run, t }) {
   const states = ["prepare", "run", "score"];
   const activeIndex = run.status === "queued" || run.status === "preparing" ? 0 : run.status === "running" ? 1 : 2;
   const complete = run.status === "complete";
   const multiTrial = Number(run.scheduledTrials) > 0;
   const completed = multiTrial ? (run.completedTrials || 0) : run.results.length;
   const scheduled = multiTrial ? (run.scheduledTrials || run.total) : run.total;
-  const labels = ["准备数据", "Agent 运行", "评分"];
+  const labels = ["prepareData", "executeAgent", "gradeRun"];
   return (
     <div className="run-steps">
       <div className={`step-line ${complete ? "complete" : ""}`} aria-hidden="true" />
@@ -353,8 +374,8 @@ function RunSteps({ run }) {
             <span className={`step-dot ${done ? "done" : ""} ${active ? "active" : ""}`}>
               {done ? <Check size={12} weight="bold" /> : active ? <CircleNotch size={12} className="spin" /> : null}
             </span>
-            <strong>{labels[index]}</strong>
-            <time>{done ? "完成" : active ? (index === 1 ? `${completed}/${scheduled}` : "进行中") : "待开始"}</time>
+            <strong>{t(labels[index])}</strong>
+            <time>{done ? t("complete") : active ? (index === 1 ? `${completed}/${scheduled}` : t("in_progress")) : t("notStarted")}</time>
           </div>
         );
       })}
@@ -362,7 +383,7 @@ function RunSteps({ run }) {
   );
 }
 
-function RunCard({ run, onCancel, onInspect }) {
+function RunCard({ run, onCancel, onInspect, t }) {
   const multiTrial = Number(run.scheduledTrials) > 0;
   const failures = run.results.filter((item) => multiTrial ? !item.reliable : !item.passed);
   const complete = run.status === "complete";
@@ -371,13 +392,13 @@ function RunCard({ run, onCancel, onInspect }) {
   const completedTrials = multiTrial ? (run.completedTrials || 0) : run.results.length;
   const progress = scheduled ? Math.round((completedTrials / scheduled) * 100) : 0;
   const latestProgress = [...run.events].reverse().find((event) => event.caseId || event.status || eventDetail(event));
-  const statusLabel = { queued: "排队中", preparing: "准备中", running: "运行中", scoring: "评分中", complete: "完成", failed: "失败", cancelled: "已停止" }[run.status] || run.status;
+  const statusLabel = t(run.status);
   return (
     <A2UIRow>
       <div className="run-result-stack">
         <section className={`run-card status-${run.status}`} aria-live="polite">
           <header className="run-card-head">
-            <div className="run-card-title"><span><small>#{run.id.slice(-6)}</small>{complete ? `评测已完成 · ${formatTime(run.completedAt, true)}` : `${run.agentSnapshot.handle} 正在执行`}</span><em>{run.datasetSnapshot.name} v{run.datasetSnapshot.version} · {run.caseCount} 个用例 · {run.agentSnapshot.handle} v{run.agentSnapshot.version}</em></div>
+            <div className="run-card-title"><span><small>#{run.id.slice(-6)}</small>{complete ? `${t("evaluationFinished")} · ${formatTime(run.completedAt, true)}` : t("agentExecuting", { handle: run.agentSnapshot.handle })}</span><em>{run.datasetSnapshot.name} v{run.datasetSnapshot.version} · {run.caseCount} {t("cases")} · {run.agentSnapshot.handle} v{run.agentSnapshot.version}</em></div>
             <span className={`status-badge ${complete ? "complete" : run.status}`}>
               {complete ? <CheckCircle size={16} weight="fill" /> : active ? <CircleNotch size={16} className="spin" /> : <WarningCircle size={16} />}
               {statusLabel}
@@ -385,21 +406,21 @@ function RunCard({ run, onCancel, onInspect }) {
           </header>
           {active && <div className="run-progress"><span style={{ width: `${Math.max(4, progress)}%` }} /></div>}
           <div className="metrics">
-            <div className="metric"><strong>{complete ? `${run.passed}/${run.total}` : `${completedTrials}/${scheduled}`}</strong><span>{complete ? (multiTrial ? "通过 Trial" : "通过用例") : (multiTrial ? "完成 Trial" : "完成用例")}</span></div>
-            <div className="metric"><strong className={complete ? "success" : ""}>{complete ? `${run.passRate}%` : `${progress}%`}</strong><span>{complete ? "通过率" : "进度"}</span></div>
-            <div className="metric"><strong>{complete ? (multiTrial ? `${run.reliableCases}/${run.caseCount}` : formatDuration(run.durationMs)) : (multiTrial ? `×${run.trialCount}` : "×1")}</strong><span>{complete ? (multiTrial ? "稳定用例" : "总耗时") : "每用例运行"}</span></div>
-            <div className="metric"><strong>{displayedCost(run)}</strong><span>{displayedCostLabel(run)}</span></div>
+            <div className="metric"><strong>{complete ? `${run.passed}/${run.total}` : `${completedTrials}/${scheduled}`}</strong><span>{t(complete ? (multiTrial ? "passedTrials" : "passedCases") : (multiTrial ? "completedTrials" : "completedCases"))}</span></div>
+            <div className="metric"><strong className={complete ? "success" : ""}>{complete ? `${run.passRate}%` : `${progress}%`}</strong><span>{t(complete ? "passRate" : "runProgress")}</span></div>
+            <div className="metric"><strong>{complete ? (multiTrial ? `${run.reliableCases}/${run.caseCount}` : formatDuration(run.durationMs)) : (multiTrial ? `×${run.trialCount}` : "×1")}</strong><span>{t(complete ? (multiTrial ? "reliableCases" : "totalDuration") : "runsPerCase")}</span></div>
+            <div className="metric"><strong>{displayedCost(run, t)}</strong><span>{displayedCostLabel(run, t)}</span></div>
           </div>
-          <RunSteps run={run} />
-          {complete && multiTrial && run.evaluationComplete === false && <div className="run-warning"><WarningCircle size={15} />有 {run.infraFailures + run.gradingFailures} 个异常 Trial 未计入质量分母</div>}
+          <RunSteps run={run} t={t} />
+          {complete && multiTrial && run.evaluationComplete === false && <div className="run-warning"><WarningCircle size={15} />{t("excludedTrials", { count: run.infraFailures + run.gradingFailures })}</div>}
           {active && latestProgress && <div className="live-event"><CircleNotch size={13} className="spin" /><code>{eventLabel(latestProgress.type)}</code><span>{eventDetail(latestProgress)}</span></div>}
-          {active && <div className="run-controls"><button type="button" onClick={() => onCancel(run.id)}><Stop size={15} weight="fill" />停止运行</button></div>}
-          {(run.status === "failed" || run.status === "cancelled") && <div className="run-error">{run.error || "运行已停止"}</div>}
+          {active && <div className="run-controls"><button type="button" onClick={() => onCancel(run.id)}><Stop size={15} weight="fill" />{t("stopRun")}</button></div>}
+          {(run.status === "failed" || run.status === "cancelled") && <div className="run-error">{run.error || t("runStopped")}</div>}
         </section>
         {complete && (
           <div className="result-actions">
-            <button type="button" onClick={() => onInspect({ kind: "run", data: run, failuresOnly: true })} disabled={!failures.length}>{failures.length ? `查看 ${failures.length} 个失败` : "全部通过"}<ArrowRight size={15} /></button>
-            <button type="button" onClick={() => onInspect({ kind: "run", data: run })}>完整结果<ArrowRight size={15} /></button>
+            <button type="button" onClick={() => onInspect({ kind: "run", data: run, failuresOnly: true })} disabled={!failures.length}>{failures.length ? t("viewFailures", { count: failures.length }) : t("allPassed")}<ArrowRight size={15} /></button>
+            <button type="button" onClick={() => onInspect({ kind: "run", data: run })}>{t("fullResults")}<ArrowRight size={15} /></button>
           </div>
         )}
       </div>
@@ -410,7 +431,7 @@ function RunCard({ run, onCancel, onInspect }) {
 const toolLabels = { rank_list_assets: "读取测试集和 Agent", rank_create_dataset: "创建测试集", rank_add_dataset_cases: "创建测试集新版本", rank_create_agent: "创建 Agent", rank_create_agent_version: "创建 Agent 新版本", rank_create_model_connection: "创建模型连接", rank_update_model_connection: "更新模型连接", rank_select_dataset: "选择测试集", rank_select_agent: "选择 Agent", rank_prepare_run: "准备运行", rank_show_experiment_results: "读取实验表现" };
 const runStatusLabels = { queued: "排队中", preparing: "准备中", running: "运行中", scoring: "评分中", complete: "完成", failed: "失败", cancelled: "已停止" };
 
-function TurnActivity({ turn }) {
+function TurnActivity({ turn, t }) {
   const draft = turn.events.filter((event) => event.type === "assistant.delta").map((event) => event.text).join("");
   const activity = turn.events.filter((event) => event.type !== "assistant.delta").slice(-3);
   return (
@@ -420,7 +441,7 @@ function TurnActivity({ turn }) {
           {event.type !== "tool.completed" && event.type !== "turn.failed" ? <CircleNotch size={13} className="spin" /> : event.type === "tool.completed" ? <Check size={13} /> : <WarningCircle size={13} />}
           <span>{event.label || (event.type === "tool.started" ? `正在${toolLabels[event.name] || `调用 ${event.name}`}…` : event.type === "tool.completed" ? `已完成${toolLabels[event.name] || event.name}` : event.error || "正在处理…")}</span>
         </div>)}
-        {draft && <MessageContent content={draft} streaming />}
+        {draft && <MessageContent content={draft} streaming t={t} />}
       </section>
     </A2UIRow>
   );
@@ -470,7 +491,9 @@ function PanelDetail({ target, modelConnections, onInspect, onAddCase, onEditCas
 
 function ExperimentPanel({ experiment, agentRuntime, modelConnections, modelCatalog, systemModels, target, tab, expanded, onTab, onTarget, onClose, onExpand, onPickDataset, onPickAgent, onAddCase, onEditCase, onEditAgent, onBindSystemModel, onSaveConnection, onSyncConnection, onDeleteConnection, onUseConnection }) {
   useEffect(() => {
-    const close = (event) => event.key === "Escape" && onClose();
+    const close = (event) => {
+      if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector("dialog[open], :popover-open")) onClose();
+    };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [onClose]);
@@ -488,10 +511,18 @@ function ExperimentPanel({ experiment, agentRuntime, modelConnections, modelCata
           <button type="button" onClick={onClose} aria-label="关闭实验工作区"><X size={19} /></button>
         </span>
       </header>
-      <div className="panel-tabs" role="tablist" aria-label="实验信息">
-        <button type="button" role="tab" aria-selected={tab === "config"} className={tab === "config" ? "selected" : ""} onClick={() => openTab("config")}>配置</button>
-        <button type="button" role="tab" aria-selected={tab === "runs"} className={tab === "runs" ? "selected" : ""} onClick={() => openTab("runs")}>运行记录 <span>{experiment.runs.length}</span></button>
-        <button type="button" role="tab" aria-selected={tab === "connections"} className={tab === "connections" ? "selected" : ""} onClick={() => openTab("connections")}>模型连接 <span>{modelConnections.length}</span></button>
+      <div className="panel-tabs" role="tablist" aria-label="实验信息" onKeyDown={(event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const tabs = [...event.currentTarget.querySelectorAll('[role="tab"]')];
+        const index = tabs.indexOf(document.activeElement);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next].focus();
+        tabs[next].click();
+      }}>
+        <button type="button" role="tab" tabIndex={tab === "config" ? 0 : -1} aria-selected={tab === "config"} className={tab === "config" ? "selected" : ""} onClick={() => openTab("config")}>配置</button>
+        <button type="button" role="tab" tabIndex={tab === "runs" ? 0 : -1} aria-selected={tab === "runs"} className={tab === "runs" ? "selected" : ""} onClick={() => openTab("runs")}>运行记录 <span>{experiment.runs.length}</span></button>
+        <button type="button" role="tab" tabIndex={tab === "connections" ? 0 : -1} aria-selected={tab === "connections"} className={tab === "connections" ? "selected" : ""} onClick={() => openTab("connections")}>模型连接 <span>{modelConnections.length}</span></button>
       </div>
       <div className="panel-body">
         {target ? <>
@@ -535,8 +566,8 @@ function Picker({ type, datasets, agents, selectedId, selectedIds = [], onClose,
 	const choose = (id) => isMulti ? setCheckedIds((items) => items.includes(id) ? items.length > 1 ? items.filter((item) => item !== id) : items : items.length < 4 ? [...items, id] : items) : onSelect(id);
 	const dismiss = () => isMulti ? onConfirm(checkedIds) : onClose();
   return (
-	<div className="modal-backdrop" role="presentation" onMouseDown={dismiss}>
-      <section className="picker" role="dialog" aria-modal="true" aria-label={isDataset ? "选择测试集" : "选择 Agent"} onMouseDown={(event) => event.stopPropagation()}>
+	<Modal label={isDataset ? "选择测试集" : "选择 Agent"} onClose={dismiss}>
+      <section className="picker" aria-label={isDataset ? "选择测试集" : "选择 Agent"} onMouseDown={(event) => event.stopPropagation()}>
         <header>
           <div><small>{isDataset ? "DATASET" : "AGENT"}</small><h2>{isDataset ? "选择测试集" : "选择 Agent"}</h2></div>
 		  <button type="button" onClick={dismiss} aria-label={isMulti ? "完成选择" : "关闭"}><X size={20} /></button>
@@ -599,7 +630,7 @@ function Picker({ type, datasets, agents, selectedId, selectedIds = [], onClose,
         </div>
 		{isMulti && <footer className="picker-confirm"><span>已选 {checkedIds.length}/4 · 关闭后自动保留</span><button type="button" onClick={() => onConfirm(checkedIds)}>完成</button></footer>}
       </section>
-    </div>
+    </Modal>
   );
 }
 
@@ -618,7 +649,7 @@ function capabilityOptions(agents, field) {
   return [...ids].sort().map((id) => ({ id, description: capabilityDescriptions[id] || "已在 Agent 配置中使用" }));
 }
 
-function CapabilitySelect({ label, value, options, onChange, kind }) {
+function CapabilitySelect({ label, value, options, onChange, kind, t }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const normalized = query.trim();
@@ -634,21 +665,21 @@ function CapabilitySelect({ label, value, options, onChange, kind }) {
       <div className={`capability-control ${open ? "open" : ""}`}>
         <div className="capability-values">
           {value.map((id) => <button type="button" key={id} onClick={() => toggle(id)}>{id}<X size={11} /></button>)}
-          <input value={query} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addCustom(); } else if (event.key === "Escape") setOpen(false); }} aria-label={`搜索或添加${label}`} placeholder={value.length ? "继续添加…" : `选择或输入 ${kind} ID`} />
+          <input value={query} onFocus={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addCustom(); } else if (event.key === "Escape") setOpen(false); }} aria-label={t("searchCapabilities", { label })} placeholder={value.length ? t("addMore") : t("selectCapability", { kind })} />
         </div>
-        <button type="button" className="capability-toggle" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label={`展开${label}`}><CaretDown size={15} /></button>
+        <button type="button" className="capability-toggle" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label={t("expandCapabilities", { label })}><CaretDown size={15} /></button>
       </div>
       {open && <div className="capability-menu">
-        {visible.map((item) => <button type="button" key={item.id} className={value.includes(item.id) ? "selected" : ""} onClick={() => toggle(item.id)}><span>{item.id}<small>{item.description}</small></span>{value.includes(item.id) && <Check size={15} weight="bold" />}</button>)}
-        {normalized && !options.some((item) => item.id === normalized) && <button type="button" className="custom-capability" onClick={addCustom}><Plus size={15} /><span>添加“{normalized}”<small>自定义 {kind} ID</small></span></button>}
-        {!visible.length && !normalized && <span className="capability-empty">没有可选项</span>}
+        {visible.map((item) => <button type="button" key={item.id} className={value.includes(item.id) ? "selected" : ""} onClick={() => toggle(item.id)}><span>{item.id}<small>{t(capabilityDescriptions[item.id] ? `capability_${item.id}` : "capabilityExisting")}</small></span>{value.includes(item.id) && <Check size={15} weight="bold" />}</button>)}
+        {normalized && !options.some((item) => item.id === normalized) && <button type="button" className="custom-capability" onClick={addCustom}><Plus size={15} /><span>{t("addCapability", { id: normalized })}<small>{t("customCapability", { kind })}</small></span></button>}
+        {!visible.length && !normalized && <span className="capability-empty">{t("noCapabilities")}</span>}
       </div>}
-      <small>{kind === "Tool" ? "Tool 必须由所选 Runner Adapter 提供；可输入自定义 ID 后按回车。" : "Skill 是随 Agent 版本冻结的引用；执行环境必须安装对应 Skill。"}</small>
+      <small>{t(kind === "Tool" ? "toolRequirements" : "skillRequirements")}</small>
     </div>
   );
 }
 
-function AgentForm({ family, baseVersion, initialForm, toolOptions, skillOptions, modelConnections, runtimes, onManageConnections, onClose, onSubmit, onAskRank, busy }) {
+function AgentForm({ family, baseVersion, initialForm, toolOptions, skillOptions, modelConnections, runtimes, onManageConnections, onClose, onSubmit, onAskRank, busy, t }) {
   const isNewVersion = Boolean(family);
   const [form, setForm] = useState(initialForm || {
     name: family?.name || "",
@@ -660,34 +691,35 @@ function AgentForm({ family, baseVersion, initialForm, toolOptions, skillOptions
     systemPrompt: baseVersion?.systemPrompt || "",
     tools: baseVersion?.tools || ["web_search", "browser"],
     skills: baseVersion?.skills || [],
-    description: baseVersion ? baseVersion.description || "" : "自定义 Agent 配置",
+    description: baseVersion ? baseVersion.description || "" : t("customAgentDescription"),
   });
   function update(field, value) { setForm((current) => ({ ...current, [field]: value })); }
   function selectRunner(runnerType) { setForm((current) => ({ ...current, runnerType, modelConnectionId: "", model: "", preset: runnerType === "dsh" ? "headless" : "" })); }
   const compatibleConnections = modelConnections.filter((item) => form.runnerType === "codex" ? item.protocol === "openai-responses" : form.runnerType === "hermes" ? item.protocol === "openai-chat-completions" : form.runnerType !== "claude-code");
   const selectedConnection = modelConnections.find((item) => item.id === form.modelConnectionId);
   const customConnections = ["dsh", "codex", "hermes"].includes(form.runnerType);
+  const runtimeAvailable = runtimes?.[form.runnerType]?.installed !== false && (selectedConnection?.status === "verified" || runtimes?.[form.runnerType]?.available);
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <form className="agent-form" onSubmit={(event) => { event.preventDefault(); onSubmit(form); }} onMouseDown={(event) => event.stopPropagation()}>
+    <Modal label={t(isNewVersion ? "newVersion" : "newAgent")} onClose={onClose}>
+      <form className="agent-form" aria-label={t(isNewVersion ? "newVersion" : "newAgent")} onSubmit={(event) => { event.preventDefault(); onSubmit(form); }} onMouseDown={(event) => event.stopPropagation()}>
         <header>
-          <div><small>AGENT VERSION</small><h2>{isNewVersion ? `${family.handle} 的新版本` : "新建 Agent 配置"}</h2></div>
-          <button type="button" onClick={onClose} aria-label="关闭"><X size={20} /></button>
+          <div><small>AGENT VERSION</small><h2>{isNewVersion ? t("agentVersionTitle", { handle: family.handle }) : t("agentFormTitle")}</h2></div>
+          <button type="button" onClick={onClose} aria-label={t("close")}><X size={20} /></button>
         </header>
         <div className="form-fields">
-          <label><span>名称</span><input required disabled={isNewVersion} value={form.name} onChange={(event) => update("name", event.target.value)} placeholder="Research Agent" /></label>
+          <label><span>{t("name")}</span><input required disabled={isNewVersion} value={form.name} onChange={(event) => update("name", event.target.value)} placeholder="Research Agent" /></label>
           <label><span>Handle</span><input disabled={isNewVersion} value={form.handle} onChange={(event) => update("handle", event.target.value)} placeholder="@team/research" /></label>
-          <label className="wide"><span>运行方式</span><select value={form.runnerType} onChange={(event) => selectRunner(event.target.value)}>{Object.entries(runnerLabels).map(([id,label]) => <option key={id} value={id}>{label}{runtimes?.[id]?.installed === false ? " · 未安装" : runtimes?.[id]?.available === false ? " · 未配置" : ""}</option>)}</select><small>{runtimes?.[form.runnerType]?.reason || "可运行"}</small></label>
-          <label className="model-source-field"><span>模型来源{customConnections && <button type="button" onClick={() => onManageConnections(form)}><Plus size={13} />添加连接</button>}</span>{customConnections ? <select value={form.modelConnectionId} onChange={(event) => { const connection = modelConnections.find((item) => item.id === event.target.value); setForm((current) => ({ ...current, modelConnectionId: event.target.value, model: connection?.defaultModel || "" })); }}><option value="">{defaultModelSources[form.runnerType]}</option>{compatibleConnections.map((item) => <option key={item.id} value={item.id} disabled={item.status !== "verified"}>{item.name} · {item.status === "verified" ? "已验证" : "待验证"}</option>)}</select> : <div className="readonly-field">{defaultModelSources[form.runnerType]}</div>}<small>{modelSourceHint(form.runnerType, selectedConnection)}</small></label>
-          <label><span>使用模型</span><input list="agent-models" value={form.model} onChange={(event) => update("model", event.target.value)} placeholder={selectedConnection?.defaultModel || "由运行环境决定"} /><datalist id="agent-models">{(selectedConnection?.models || []).map((model) => <option key={model} value={model} />)}</datalist><small>{form.model ? `将使用 ${form.model}` : `未指定时由 ${defaultModelSources[form.runnerType] || "运行环境"} 决定`}</small></label>
-          <label className="wide"><span>版本说明</span><input value={form.description} onChange={(event) => update("description", event.target.value)} placeholder="这次修改了什么" /></label>
-          <label className="wide"><span>System Prompt</span><textarea rows="3" value={form.systemPrompt} onChange={(event) => update("systemPrompt", event.target.value)} placeholder="Agent 在每个用例中遵循的稳定指令" /></label>
-          <CapabilitySelect label="Runner Tools" kind="Tool" value={form.tools} options={toolOptions} onChange={(value) => update("tools", value)} />
-          <CapabilitySelect label="Skills" kind="Skill" value={form.skills} options={skillOptions} onChange={(value) => update("skills", value)} />
+          <label className="wide"><span>{t("runner")}</span><SelectField aria-label={t("runner")} value={form.runnerType} onValueChange={selectRunner} options={[...Object.entries(runnerLabels).map(([id, label]) => ({ value: id, label: <>{label}{runtimes?.[id]?.installed === false ? ` · ${t("notInstalled")}` : runtimes?.[id]?.available === false && !(id === form.runnerType && runtimeAvailable) ? ` · ${t("notConfiguredRuntime")}` : ""}</> }))]} /><small title={runtimeAvailable ? undefined : runtimes?.[form.runnerType]?.reason}>{t(runtimeAvailable ? "runtimeReady" : "runtimeUnavailable")}</small></label>
+          <label className="model-source-field"><span>{t("modelSourceLabel")}{customConnections && <button type="button" onClick={() => onManageConnections(form)}><Plus size={13} />{t("addModelConnection")}</button>}</span>{customConnections ? <SelectField aria-label={t("modelSourceLabel")} value={form.modelConnectionId} onValueChange={nextValue => { const connection = modelConnections.find(item => item.id === nextValue); setForm(current => ({ ...current, modelConnectionId: nextValue, model: connection?.defaultModel || "" })); }} options={[{ value: "", label: t(`modelSource_${form.runnerType}`) }, ...compatibleConnections.map(item => ({ value: item.id, label: <>{item.name} · {t(item.status === "verified" ? "verified" : "unverified")}</>, disabled: item.status !== "verified" }))]} /> : <div className="readonly-field">{t(`modelSource_${form.runnerType}`)}</div>}<small>{t(`modelHint_${selectedConnection ? "verified" : form.runnerType}`)}</small></label>
+          <label><span>{t("useModel")}</span><input list="agent-models" value={form.model} onChange={(event) => update("model", event.target.value)} placeholder={selectedConnection?.defaultModel || t("runtimeModel")} /><datalist id="agent-models">{(selectedConnection?.models || []).map((model) => <option key={model} value={model} />)}</datalist><small>{form.model ? t("modelWillUse", { model: form.model }) : t("modelUnspecified", { source: t(`modelSource_${form.runnerType}`) })}</small></label>
+          <label className="wide"><span>{t("description")}</span><input value={form.description} onChange={(event) => update("description", event.target.value)} placeholder={t("versionNotesPlaceholder")} /></label>
+          <label className="wide"><span>{t("systemPrompt")}</span><textarea rows="3" value={form.systemPrompt} onChange={(event) => update("systemPrompt", event.target.value)} placeholder={t("systemPromptPlaceholder")} /></label>
+          <CapabilitySelect label="Runner Tools" kind="Tool" value={form.tools} options={toolOptions} onChange={(value) => update("tools", value)} t={t} />
+          <CapabilitySelect label="Skills" kind="Skill" value={form.skills} options={skillOptions} onChange={(value) => update("skills", value)} t={t} />
         </div>
-        <footer><button type="button" className="ask-rank" onClick={() => onAskRank(form)}>在对话中继续</button><span /><button type="button" onClick={onClose}>取消</button><button type="submit" className="primary-action" disabled={busy || !form.name.trim()}>{busy ? <CircleNotch size={18} className="spin" /> : <Plus size={18} />}{isNewVersion ? "创建版本并选择" : "创建并选择"}</button></footer>
+        <footer><button type="button" className="ask-rank" onClick={() => onAskRank(form)}>{t("continueInChat")}</button><span /><button type="button" onClick={onClose}>{t("cancel")}</button><button type="submit" className="primary-action" disabled={busy || !form.name.trim()}>{busy ? <CircleNotch size={18} className="spin" /> : <Plus size={18} />}{t(isNewVersion ? "createVersionSelect" : "createAgentSelect")}</button></footer>
       </form>
-    </div>
+    </Modal>
   );
 }
 
@@ -711,7 +743,7 @@ function CaseEditor({ dataset, item, onClose, onSave, busy, saveError }) {
     } catch (parseError) { setError(parseError.message); }
   }
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+    <Modal label={editing ? "编辑用例" : "新增用例"} onClose={onClose}>
       <form className="agent-form case-form" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
         <header><div><small>DATASET VERSION</small><h2>{editing ? "编辑用例" : "新增用例"}</h2></div><button type="button" onClick={onClose} aria-label="关闭"><X size={20} /></button></header>
         <div className="form-fields">
@@ -723,33 +755,91 @@ function CaseEditor({ dataset, item, onClose, onSave, busy, saveError }) {
         </div>
         <footer><p><GitBranch size={14} />不会修改 v{dataset.version}，将保存为 v{dataset.version + 1}</p><span /><button type="button" onClick={onClose}>取消</button><button type="submit" className="primary-action" disabled={busy || !form.id.trim() || !form.title.trim() || !form.input.trim()}>{busy ? <CircleNotch size={18} className="spin" /> : editing ? <PencilSimple size={17} /> : <Plus size={17} />}{editing ? "保存新版本" : "新增并保存"}</button></footer>
       </form>
-    </div>
+    </Modal>
   );
 }
 
-function HistoryPanel({ experiments, currentId, onClose, onOpen, onNew }) {
+function HistoryPanel({ experiments, currentId, onClose, onOpen, onNew, t }) {
   return (
-    <div className="history-backdrop" role="presentation" onMouseDown={onClose}>
-      <aside className="history-panel" role="dialog" aria-modal="true" aria-label="实验记录" onMouseDown={(event) => event.stopPropagation()}>
+    <Modal label={t("recentConversations")} className="history-backdrop" onClose={onClose}>
+      <aside className="history-panel" aria-label={t("recentConversations")} onMouseDown={(event) => event.stopPropagation()}>
         <div className="history-head">
-          <div><small>EXPERIMENTS</small><h2>实验记录</h2></div>
-          <button type="button" onClick={onClose} aria-label="关闭"><X size={20} /></button>
+          <div><small>{t("recentEyebrow")}</small><h2>{t("recentConversations")}</h2></div>
+          <button type="button" onClick={onClose} aria-label={t("close")}><X size={20} /></button>
         </div>
-        <button type="button" className="new-experiment" onClick={onNew}><Plus size={18} />新建实验</button>
+        <button type="button" className="new-experiment" onClick={onNew}><Plus size={18} />{t("newConversation")}</button>
         <div className="history-list">
           {experiments.map((item) => (
             <button type="button" className={item.id === currentId ? "current" : ""} key={item.id} onClick={() => onOpen(item.id)}>
-              <span><strong>{item.title}</strong><small>{item.runSummary ? `${item.runSummary.completed} 次运行 · ${item.runSummary.passed}/${item.runSummary.total} 通过 · ${displayedCost(item.runSummary)}` : item.datasetVersionId || item.agentVersionId ? "配置中" : "尚未配置"}</small></span>
+              <span><strong>{conversationTitle(item, t)}</strong><small>{item.runSummary ? t("conversationRunSummary", { completed: item.runSummary.completed, passed: item.runSummary.passed, total: item.runSummary.total, cost: displayedCost(item.runSummary) }) : item.datasetVersionId || item.agentVersionId ? t("configuring") : t("notConfigured")}</small></span>
               <time>{formatTime(item.updatedAt, true)}</time>
             </button>
           ))}
         </div>
       </aside>
-    </div>
+    </Modal>
   );
 }
 
+function ReleaseComparisonCard({ payload, deployments, agents, runs, t, onOpenDeployment, onReleased }) {
+  const deployment = deployments.find((item) => item.id === payload.deploymentId);
+  const target = deployment?.aliases.find((item) => item.name === payload.alias);
+  const versions = agents.flatMap((item) => item.versions || [item]);
+  const current = versions.find((item) => item.id === payload.currentAgentVersionId);
+  const candidate = versions.find((item) => item.id === payload.candidateAgentVersionId);
+  const evidence = [...runs].reverse().find((run) => run.status === "complete" && run.evaluationComplete && run.agentSnapshot?.id === candidate?.id);
+  const currentEvidence = [...runs].reverse().find((run) => run.status === "complete" && run.evaluationComplete && run.agentSnapshot?.id === current?.id);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [released, setReleased] = useState(false);
+  const [error, setError] = useState("");
+
+  if (!deployment || !candidate) return null;
+
+  async function release() {
+    setBusy(true);
+    setError("");
+    try {
+      await rankApi.promoteDeployment(deployment.id, payload.alias, {
+        agentVersionId: candidate.id,
+        expectedReleaseRevisionId: target?.currentReleaseRevisionId || "",
+        evidenceRunId: evidence?.id || "",
+        policyResult: evidence ? "passed" : "manual_override",
+        actor: "local-operator",
+        reason: evidence ? "evaluated release from Rank conversation" : reason.trim(),
+      });
+      await onReleased();
+      setReleased(true);
+    } catch (releaseError) {
+      setError(releaseError.status === 409 ? t("releaseConflict") : releaseError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const versionTitle = (version) => version ? `${version.handle || version.name} v${version.version}` : t("unconfigured");
+  const score = (run) => run ? `${Math.round((run.passRate || 0) * 100)}%` : "—";
+  return <A2UIRow>
+    <article className="release-comparison-card">
+      <header><div><small>{t("releaseCandidate")}</small><h2>{deployment.name}@{payload.alias}</h2></div><span className={evidence ? "release-evidence passed" : "release-evidence manual"}>{evidence ? t("evaluationPassed") : t("manualOverride")}</span></header>
+      <div className="release-version-comparison">
+        <section><small>{t("currentVersion")}</small><strong>{versionTitle(current)}</strong><dl><div><dt>{t("passRate")}</dt><dd>{score(currentEvidence)}</dd></div><div><dt>{t("totalCost")}</dt><dd>{currentEvidence ? displayedCost(currentEvidence) : "—"}</dd></div></dl></section>
+        <ArrowRight size={24} weight="bold" />
+        <section className="candidate"><small>{t("candidateVersion")}</small><strong>{versionTitle(candidate)}</strong><dl><div><dt>{t("passRate")}</dt><dd>{score(evidence)}</dd></div><div><dt>{t("totalCost")}</dt><dd>{evidence ? displayedCost(evidence) : "—"}</dd></div></dl></section>
+      </div>
+      {!evidence && !released && <label className="release-card-reason"><span>{t("releaseReason")}</span><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t("releaseReasonPlaceholder")} /></label>}
+      {error && <p className="release-error"><WarningCircle size={15} />{error}</p>}
+      <footer><button type="button" className="open-deployment-action" onClick={() => onOpenDeployment(deployment.id)}>{t("openDeployment")}<ArrowRight size={14} /></button><button type="button" className="primary-action" disabled={busy || released || (!evidence && !reason.trim())} onClick={release}>{busy ? <CircleNotch size={17} className="spin" /> : <CheckCircle size={17} />}{released ? t("releaseSuccess") : t("confirmRelease")}</button></footer>
+    </article>
+  </A2UIRow>;
+}
+
 export function App() {
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [compactAssistant, setCompactAssistant] = useState(() => matchMedia("(max-width: 640px)").matches);
+  const companion = useCompanion();
+  const [route, setRoute] = useState(routeFromLocation);
+  const [locale, setLocale] = useState(initialLocale);
   const [bootstrap, setBootstrap] = useState(null);
   const [experiment, setExperiment] = useState(null);
   const [composer, setComposer] = useState("");
@@ -776,7 +866,7 @@ export function App() {
 	const [comparisonAgentIds, setComparisonAgentIds] = useState([]);
   const fileInputRef = useRef(null);
   const versionFileInputRef = useRef(null);
-  const conversationEndRef = useRef(null);
+  const t = useMemo(() => createTranslator(locale), [locale]);
 
   const agentRuntime = useMemo(() => bootstrap?.agents
     .flatMap((item) => item.versions || [item])
@@ -789,12 +879,16 @@ export function App() {
       ...experiment.messages.map((message) => ({ type: "message", at: message.createdAt, data: message })),
       ...(pendingMessage ? [{ type: "message", at: pendingMessage.createdAt, data: pendingMessage }] : []),
       ...experiment.runs.map((run) => ({ type: "run", at: run.createdAt, data: run })),
-      ...experiment.controlEvents.filter((event) => ["a2ui/prepare_run", "a2ui/show_experiment_results"].includes(event.type)).map((event) => ({ type: "a2ui", at: event.createdAt, data: event })),
-    ].sort((a, b) => a.at.localeCompare(b.at));
+      ...experiment.controlEvents.filter((event) => ["a2ui/prepare_run", "a2ui/show_experiment_results", "a2ui/prepare_release"].includes(event.type)).map((event) => ({ type: "a2ui", at: event.createdAt, data: event })),
+    ].sort((a, b) => {
+      const elapsed = new Date(a.at).getTime() - new Date(b.at).getTime();
+      if (Math.abs(elapsed) >= 750) return elapsed;
+      const turnOrder = (item) => item.type === "message" && item.data.role === "user" ? 0 : item.type === "a2ui" ? 1 : item.type === "message" ? 2 : 1;
+      return turnOrder(a) - turnOrder(b) || elapsed;
+    });
   }, [experiment, pendingMessage]);
 	const activeRuns = experiment?.runs.filter((run) => ACTIVE_STATES.has(run.status)) || [];
 	const activeRunKey = activeRuns.map((run) => run.id).join(",");
-	const runProgressKey = experiment?.runs.map((run) => `${run.id}:${run.status}:${run.results.length}`).join(",") || "";
 	const allAgentVersions = useMemo(() => bootstrap?.agents.flatMap((item) => item.versions || [item]) || [], [bootstrap]);
   const mentionOptions = useMemo(() => {
     const query = mentionSearchQuery(composer);
@@ -804,6 +898,60 @@ export function App() {
   }, [bootstrap, composer, mentionPicker]);
 
   useEffect(() => setMentionIndex(0), [composer, mentionPicker]);
+
+  useEffect(() => {
+    const onHashChange = () => setRoute(routeFromLocation());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = locale === "en" ? "en" : "zh-CN";
+    document.title = t("documentTitle");
+    localStorage.setItem("rank.locale", locale);
+  }, [locale]);
+
+  function navigate(nextRoute) {
+    window.location.hash = `/${nextRoute}`;
+    setRoute(nextRoute);
+    setPanelOpen(false);
+    if (nextRoute === "agent") setAssistantOpen(false);
+  }
+
+  useEffect(() => {
+    if (!assistantOpen) return;
+    const previousFocus = document.activeElement;
+    document.getElementById("task-input")?.focus();
+    const close = (event) => { if (event.key === "Escape" && !panelOpen && !agentFormOpen && !picker) setAssistantOpen(false); };
+    window.addEventListener("keydown", close);
+    return () => { window.removeEventListener("keydown", close); if (previousFocus?.isConnected) previousFocus.focus(); };
+  }, [assistantOpen, panelOpen, agentFormOpen, picker]);
+
+  useEffect(() => {
+    const media = matchMedia("(max-width: 640px)");
+    const update = () => setCompactAssistant(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (!assistantOpen || !compactAssistant) return;
+    const drawer = document.querySelector(".assistant-route");
+    if (!drawer) return;
+    const background = [...document.querySelectorAll(".product-sidebar, .product-topbar, .mobile-navigation, .product-content > :not(.assistant-route)")];
+    const prior = background.map((el) => el.inert);
+    background.forEach((el) => { el.inert = true; });
+    const trap = (event) => {
+      if (event.key !== "Tab" || panelOpen || agentFormOpen || picker) return;
+      const targets = [...drawer.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary')].filter((el) => el.getClientRects().length);
+      if (!targets.length) return;
+      const first = targets[0], last = targets.at(-1);
+      if (event.shiftKey && (document.activeElement === first || !drawer.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !drawer.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", trap);
+    return () => { background.forEach((el, i) => { el.inert = prior[i]; }); window.removeEventListener("keydown", trap); };
+  }, [assistantOpen, compactAssistant, panelOpen, agentFormOpen, picker]);
 
   async function refreshBootstrap() {
     const next = await rankApi.bootstrap();
@@ -930,10 +1078,6 @@ export function App() {
     stream.onerror = () => { if (!closed && stream.readyState === EventSource.CLOSED) setError("对话事件流已断开，请重试"); };
     return () => { closed = true; stream.close(); };
   }, [controlTurn?.id]);
-
-  useEffect(() => {
-    conversationEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [timeline.length, runProgressKey, controlTurn?.events.length]);
 
   async function updateSelection(patch) {
     setBusy(true);
@@ -1063,6 +1207,7 @@ export function App() {
       setAgentFormOpen(false);
       setAgentVersionTarget(null);
       setAgentDraft(null);
+      navigate("agent");
     } catch (agentError) {
       setError(agentError.message);
     } finally {
@@ -1072,9 +1217,8 @@ export function App() {
 
   async function saveModelConnection(id, input) {
     const saved = id ? await rankApi.updateModelConnection(id, input) : await rankApi.createModelConnection(input);
-    const verified = input.apiKey || saved.hasCredential ? await rankApi.verifyModelConnection(saved.id) : saved;
-    await refreshBootstrap();
-    return verified;
+    try { return input.apiKey || saved.hasCredential ? await rankApi.verifyModelConnection(saved.id) : saved; }
+    finally { await refreshBootstrap(); }
   }
 
   async function deleteModelConnection(id) {
@@ -1087,9 +1231,9 @@ export function App() {
     finally { await refreshBootstrap(); }
   }
 
-  async function bindSystemModel(role, connectionId) {
+  async function bindSystemModel(role, connectionId, model) {
     const connection = (bootstrap.modelConnections || []).find((item) => item.id === connectionId);
-    await rankApi.setSystemModel(role, { connectionId, model: connection?.defaultModel });
+    await rankApi.setSystemModel(role, { connectionId, model: model || connection?.defaultModel });
     await refreshBootstrap();
   }
 
@@ -1098,7 +1242,7 @@ export function App() {
     setAgentFormOpen(false);
     setInspector(null);
     setPanelTab("connections");
-    setPanelOpen(true);
+    navigate("settings");
   }
 
   function useModelConnection(connection) {
@@ -1167,14 +1311,26 @@ export function App() {
       const retrySource = item.data.role === "assistant" && parseMessageContent(item.data.content).blocks.some((block) => block.type === "error")
         ? timeline.slice(0, index).findLast((entry) => entry.type === "message" && entry.data.role === "user")?.data.content
         : "";
-      return <Message message={item.data} onRetry={retrySource && !controlTurn ? () => sendMessage(retrySource) : undefined} key={item.data.id} />;
+      return <Message message={item.data} t={t} onRetry={retrySource && !controlTurn ? () => sendMessage(retrySource) : undefined} key={item.data.id} />;
     }
-    if (item.type === "run") return <RunCard run={item.data} onCancel={cancelRun} onInspect={inspect} key={item.data.id} />;
+    if (item.type === "run") return <RunCard run={item.data} onCancel={cancelRun} onInspect={inspect} key={item.data.id} t={t} />;
     const payload = a2uiPayload(item.data);
     if (item.data.type === "a2ui/show_experiment_results") {
       const ids = new Set((payload.runs || []).map((run) => run.id));
       const runs = ids.size ? experiment.runs.filter((run) => ids.has(run.id)) : experiment.runs;
       return <A2UIRow key={`a2ui-${item.data.id}`}><ExperimentChart runs={runs} onInspect={(run) => inspect({ kind: "run", data: run })} /></A2UIRow>;
+    }
+    if (item.data.type === "a2ui/prepare_release") {
+      return <ReleaseComparisonCard
+        key={`a2ui-${item.data.id}`}
+        payload={payload}
+        deployments={bootstrap.deployments || []}
+        agents={bootstrap.agents}
+        runs={experiment.runs}
+        t={t}
+        onOpenDeployment={() => navigate("deployments")}
+        onReleased={refreshBootstrap}
+      />;
     }
     const dataset = bootstrap.datasets.flatMap((entry) => entry.versions || [entry]).find((entry) => entry.id === payload.datasetVersionId) || experiment.dataset;
     const agent = bootstrap.agents.flatMap((entry) => entry.versions || [entry]).find((entry) => entry.id === payload.agentVersionId) || experiment.agent;
@@ -1184,64 +1340,74 @@ export function App() {
 	const cardAgents = dataset?.id === experiment.datasetVersionId
 	  ? selectedAgents.length ? selectedAgents : [preparedAgent]
 	  : [{ ...preparedAgent, runtime: { available: false, reason: "实验配置已变化，请重新点击“运行配置”生成确认卡片" } }];
-	return dataset && agent ? <ReadyCard key={`a2ui-${item.data.id}`} experiment={{ ...experiment, dataset, agent }} agents={cardAgents} trialCount={trialCount} onTrialCount={setTrialCount} onPickDataset={() => inspect({ kind: "dataset", data: dataset })} onPickAgent={(target) => inspect({ kind: "agent", data: target })} onSwitchDataset={() => setPicker("dataset")} onSelectAgents={() => setPicker("agent-compare")} onStart={startRun} busy={busy} /> : null;
+	return dataset && agent ? <ReadyCard key={`a2ui-${item.data.id}`} experiment={{ ...experiment, dataset, agent }} agents={cardAgents} trialCount={trialCount} onTrialCount={setTrialCount} onPickDataset={() => inspect({ kind: "dataset", data: dataset })} onPickAgent={(target) => inspect({ kind: "agent", data: target })} onSwitchDataset={() => setPicker("dataset")} onSelectAgents={() => setPicker("agent-compare")} onStart={startRun} busy={busy} t={t} /> : null;
   }
 
   if (loading) return <div className="app-state"><CircleNotch size={24} className="spin" /><span>正在打开实验…</span></div>;
   if (!experiment || !bootstrap) return <div className="app-state error"><WarningCircle size={24} /><strong>Rank 没有启动</strong><span>{error}</span><button type="button" onClick={() => window.location.reload()}>重试</button></div>;
   const configuredRoles = new Set((bootstrap.systemModels || []).filter((item) => item.connection?.status === "verified").map((item) => item.role));
-  if (!configuredRoles.has("control") || !configuredRoles.has("judge")) return <SystemModelSetup catalog={bootstrap.modelCatalog || []} connections={bootstrap.modelConnections || []} onComplete={async () => { await refreshBootstrap(); await openExperiment(experiment.id); }} />;
+  const demoMode = !configuredRoles.has("control") || !configuredRoles.has("judge");
+  const agentRoute = route === "agent";
 
   return (
     <div className={`app-shell ${panelOpen ? "panel-open" : ""} ${panelOpen && panelExpanded ? "panel-expanded" : ""}`}>
-      <header className="topbar">
-        <div className="top-nav">
-          <a className="brand" href="#top" aria-label="Rank 首页">Rank</a>
-          <div className="top-actions">
-            <button type="button" onClick={createExperiment}><Plus size={18} />新实验</button>
-            <button type="button" onClick={() => setHistoryOpen(true)}><ClockCounterClockwise size={19} />实验记录</button>
-          </div>
-        </div>
-        <button type="button" className={`panel-toggle ${panelOpen ? "active" : ""}`} onClick={() => setPanelOpen((open) => !open)} aria-label={panelOpen ? "关闭实验工作区" : "展开实验工作区"} aria-expanded={panelOpen} aria-controls="experiment-panel"><SidebarSimple size={21} weight={panelOpen ? "fill" : "regular"} /></button>
-      </header>
+      <WorkspaceShell
+        route={route}
+        onNavigate={navigate}
+        locale={locale}
+        onLocaleChange={() => setLocale((value) => value === "zh" ? "en" : "zh")}
+        experiments={bootstrap.experiments}
+        activeExperimentId={experiment.id}
+        onOpenConversation={openExperiment}
+        onNewConversation={createExperiment}
+        onOpenHistory={() => setHistoryOpen(true)}
+        t={t}
+      >
+        {(agentRoute || assistantOpen) && <div className={agentRoute ? "agent-route" : "assistant-route"} role={agentRoute ? undefined : compactAssistant ? "dialog" : "complementary"} aria-modal={!agentRoute && compactAssistant ? true : undefined} aria-label={agentRoute ? undefined : t("assistant")}>
+          {!agentRoute && <header className="assistant-drawer-heading"><div><strong>{t("assistant")}</strong><small>{t("currentPage", { page: t(route) })}</small></div><button type="button" onClick={() => navigate("agent")} title={t("fullConversation")} aria-label={t("fullConversation")}><ArrowsOutSimple size={18}/></button><button type="button" onClick={() => setAssistantOpen(false)} aria-label={t("closeAssistant")}><X size={20}/></button></header>}
+          <main className="workspace agent-workspace" id="top">
+            <section className="experiment-heading">
+              <h1>{conversationTitle(experiment, t)}</h1>
+              {demoMode ? <button type="button" className="demo-mode-action" onClick={() => navigate("settings")}>{t("demoMode")}<ArrowRight size={12} /></button> : <small>{experiment.runs.length ? t("runCount", { count: experiment.runs.length }) : t("noRuns")}</small>}
+            </section>
 
-      <main className="workspace" id="top">
-        <section className="experiment-heading">
-          <span className="eyebrow">EXPERIMENT</span>
-          <h1>{experiment.title}</h1>
-          <small>{experiment.runs.length ? `${experiment.runs.length} 次运行` : "尚未运行"}</small>
-        </section>
+            <ScrollRegion key={experiment.id} as="section" className="conversation" followTail aria-label={t("experimentConversation")}>
+              {timeline.map(renderTimelineItem)}
+              {controlTurn && <TurnActivity turn={controlTurn} t={t} />}
+            </ScrollRegion>
 
-        <section className="conversation" aria-label="实验对话">
-          {timeline.map(renderTimelineItem)}
-
-          {controlTurn && <TurnActivity turn={controlTurn} />}
-          <div ref={conversationEndRef} />
-        </section>
-
-        <section className="composer" aria-label="实验输入">
-          {mentionPicker && <div className="mention-menu" role="listbox" aria-label="选择测试集或 Agent">
-            {mentionOptions.map(({ kind, item }, index) => <button type="button" role="option" aria-selected={index === mentionIndex} key={`${kind}-${item.id}`} onMouseEnter={() => setMentionIndex(index)} onClick={() => addMention(kind, item)}>{kind === "dataset" ? <Database size={17} /> : <Robot size={17} />}<span><strong>{kind === "dataset" ? item.name : item.handle}</strong><small>{kind === "dataset" ? `v${item.version} · ${item.caseCount} 个用例` : `v${item.version} · ${item.runnerType}`}</small></span></button>)}
-            {!mentionOptions.length && <div className="mention-empty">没有匹配的测试集或 Agent</div>}
-          </div>}
-          {error && <div className="composer-error"><WarningCircle size={16} />{error}<button type="button" onClick={() => setError("")} aria-label="关闭错误"><X size={14} /></button></div>}
-          {mentions.length > 0 && <div className="mention-chips">{mentions.map((item) => <span key={item.kind}><i>{item.kind === "dataset" ? "测试集" : "Agent"}</i>{item.label}<button type="button" onClick={() => setMentions((items) => items.filter((entry) => entry.kind !== item.kind))} aria-label={`移除 ${item.label}`}><X size={11} /></button></span>)}</div>}
-          <div className="composer-main">
-            <label className="sr-only" htmlFor="task-input">输入消息</label>
-            <textarea id="task-input" rows="2" value={composer} onChange={(event) => updateComposer(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder="描述目标、输入 @ 选择测试集或 Agent…" />
-            <button className="send-button" type="button" onClick={sendMessage} disabled={!composer.trim() || busy || Boolean(controlTurn)} aria-label="发送消息">
-              {controlTurn ? <CircleNotch size={19} className="spin" /> : <PaperPlaneRight size={19} weight="fill" />}
-            </button>
-          </div>
-          <div className="quick-actions">
-            <button type="button" onClick={() => sendMessage("准备运行")} disabled={busy || Boolean(controlTurn)}><Play size={18} />运行配置</button>
-            <button type="button" onClick={() => sendMessage("查看当前实验的整体实验表现")} disabled={busy || Boolean(controlTurn)}><ChartLineUp size={18} />实验表现</button>
-            <button type="button" onClick={() => fileInputRef.current?.click()}><FileArrowUp size={18} />导入用例</button>
-          </div>
-          <input ref={fileInputRef} className="sr-only" type="file" accept=".json,.jsonl,.csv,.txt" onChange={(event) => handleFile(event)} />
-          <input ref={versionFileInputRef} className="sr-only" type="file" accept=".json,.jsonl,.csv,.txt" onChange={(event) => handleFile(event, datasetVersionTarget)} />
-        </section>
-      </main>
+            <section className="composer" aria-label={t("experimentInput")}>
+              {mentionPicker && <div className="mention-menu" role="listbox" aria-label={t("selectAsset")}>
+                {mentionOptions.map(({ kind, item }, index) => <button type="button" role="option" aria-selected={index === mentionIndex} key={`${kind}-${item.id}`} onMouseEnter={() => setMentionIndex(index)} onClick={() => addMention(kind, item)}>{kind === "dataset" ? <Database size={17} /> : <Robot size={17} />}<span><strong>{kind === "dataset" ? item.name : item.handle}</strong><small>{kind === "dataset" ? `v${item.version} · ${item.caseCount} ${t("cases")}` : `v${item.version} · ${item.runnerType}`}</small></span></button>)}
+                {!mentionOptions.length && <div className="mention-empty">{t("noAssetMatches")}</div>}
+              </div>}
+              {error && <div className="composer-error"><WarningCircle size={16} />{error}<button type="button" onClick={() => setError("")} aria-label={t("closeError")}><X size={14} /></button></div>}
+              {mentions.length > 0 && <div className="mention-chips">{mentions.map((item) => <span key={item.kind}><i>{item.kind === "dataset" ? t("dataset") : "Agent"}</i>{item.label}<button type="button" onClick={() => setMentions((items) => items.filter((entry) => entry.kind !== item.kind))} aria-label={`${t("remove")} ${item.label}`}><X size={11} /></button></span>)}</div>}
+              <div className="composer-main">
+                <label className="sr-only" htmlFor="task-input">{t("messageInput")}</label>
+                <textarea id="task-input" rows="2" value={composer} onChange={(event) => updateComposer(event.target.value)} onKeyDown={handleComposerKeyDown} placeholder={t("composerPlaceholder")} />
+                <button className="send-button" type="button" onClick={sendMessage} disabled={!composer.trim() || busy || Boolean(controlTurn)} aria-label={t("sendMessage")}>
+                  {controlTurn ? <CircleNotch size={19} className="spin" /> : <PaperPlaneRight size={19} weight="fill" />}
+                </button>
+              </div>
+              <div className="quick-actions">
+                <button type="button" onClick={() => sendMessage(locale === "en" ? "Prepare an evaluation run" : "准备运行")} disabled={busy || Boolean(controlTurn)}><Play size={18} />{t("runConfiguration")}</button>
+                <button type="button" onClick={() => sendMessage(locale === "en" ? "Show the overall experiment performance" : "查看当前实验的整体实验表现")} disabled={busy || Boolean(controlTurn)}><ChartLineUp size={18} />{t("experimentPerformance")}</button>
+                <button type="button" onClick={() => sendMessage(locale === "en" ? "Release the current Agent to production" : "将当前 Agent 发布到 production")} disabled={busy || Boolean(controlTurn)}><GitBranch size={18} />{t("release")}</button>
+                <button type="button" onClick={() => fileInputRef.current?.click()}><FileArrowUp size={18} />{t("importCases")}</button>
+              </div>
+              <input ref={fileInputRef} hidden type="file" accept=".json,.jsonl,.csv,.txt" onChange={(event) => handleFile(event)} />
+              <input ref={versionFileInputRef} hidden type="file" accept=".json,.jsonl,.csv,.txt" onChange={(event) => handleFile(event, datasetVersionTarget)} />
+            </section>
+          </main>
+        </div>}
+        {route === "deployments" && <DeploymentCenter tenantId={bootstrap.tenantId} deployments={bootstrap.deployments || []} agents={bootstrap.agents} locale={locale} t={t} onRefresh={refreshBootstrap} />}
+        {route === "agents" && <AgentCenter agents={bootstrap.agents} deployments={bootstrap.deployments || []} experiments={bootstrap.experiments} t={t} onCreate={() => { setAgentVersionTarget(null); setAgentDraft(null); setAgentFormOpen(true); }} onVersion={(agent) => { setAgentVersionTarget(agent); setAgentDraft(null); setAgentFormOpen(true); }} onUse={(agent) => { navigate("agent"); void updateSelection({ agentVersionId: agent.id }); }} onEvaluation={async (run) => { await openExperiment(run.experimentId); navigate("agent"); inspect({ kind: "run", data: run }); }} />}
+        {route === "responses" && <ResponseCenter tenantId={bootstrap.tenantId} deployments={bootstrap.deployments || []} agents={bootstrap.agents} locale={locale} t={t} />}
+        {route === "credentials" && <CredentialCenter tenantId={bootstrap.tenantId} deployments={bootstrap.deployments || []} locale={locale} t={t} />}
+        {route === "settings" && <SettingsCenter connections={bootstrap.modelConnections || []} catalog={bootstrap.modelCatalog || []} systemModels={bootstrap.systemModels || []} onSave={saveModelConnection} onBind={bindSystemModel} onDelete={deleteModelConnection} onUseConnection={agentDraft ? useModelConnection : undefined} locale={locale} onLocale={setLocale} t={t} companionSettings={<CompanionSettings companion={companion} t={t}/>} />}
+        {!agentRoute && !assistantOpen && <CompanionLauncher companion={companion} working={Boolean(controlTurn) || activeRuns.length > 0} onOpen={() => setAssistantOpen(true)} t={t} />}
+      </WorkspaceShell>
 
       {picker && <Picker
 		type={picker}
@@ -1258,6 +1424,7 @@ export function App() {
         onCreateAgentVersion={(family) => { setPicker(null); setAgentVersionTarget(family); setAgentDraft(null); setAgentFormOpen(true); }}
       />}
       {agentFormOpen && <AgentForm
+        t={t}
         family={agentVersionTarget}
         baseVersion={agentVersionTarget}
         initialForm={agentDraft}
@@ -1272,8 +1439,8 @@ export function App() {
         busy={busy}
       />}
       {caseEditor && <CaseEditor dataset={caseEditor.dataset} item={caseEditor.item} onClose={() => setCaseEditor(null)} onSave={saveDatasetCase} busy={busy} saveError={error} />}
-      {historyOpen && <HistoryPanel experiments={bootstrap.experiments} currentId={experiment.id} onClose={() => setHistoryOpen(false)} onOpen={async (id) => { await openExperiment(id); setHistoryOpen(false); }} onNew={createExperiment} />}
-      {panelOpen && <ExperimentPanel
+      {historyOpen && <HistoryPanel experiments={bootstrap.experiments} currentId={experiment.id} onClose={() => setHistoryOpen(false)} onOpen={async (id) => { await openExperiment(id); setHistoryOpen(false); }} onNew={createExperiment} t={t} />}
+      {(agentRoute || assistantOpen) && panelOpen && <ExperimentPanel
         experiment={experiment}
         agentRuntime={agentRuntime}
         modelConnections={bootstrap.modelConnections || []}

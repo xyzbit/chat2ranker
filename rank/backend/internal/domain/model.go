@@ -404,8 +404,10 @@ type RunTrial struct {
 }
 
 type Bootstrap struct {
+	TenantID         string                         `json:"tenantId"`
 	Datasets         []DatasetAsset                 `json:"datasets"`
 	Agents           []AgentAsset                   `json:"agents"`
+	Deployments      []Deployment                   `json:"deployments"`
 	Experiments      []ExperimentSummary            `json:"experiments"`
 	ModelConnections []contract.ModelConnection     `json:"modelConnections"`
 	ModelCatalog     []contract.ModelProvider       `json:"modelCatalog"`

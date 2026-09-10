@@ -149,6 +149,16 @@ func effectivePrompt(spec contract.Spec) string {
 		if len(spec.Skills) > 0 {
 			sections = append(sections, "Configured skill references: "+strings.Join(spec.Skills, ", "))
 		}
+		if spec.StructuredOutput != nil {
+			sections = append(sections, "Return only one JSON value matching this JSON Schema. Do not wrap it in Markdown or add prose.\n"+string(spec.StructuredOutput.Schema))
+		}
+		if len(spec.InputAttachments) > 0 {
+			lines := []string{"The user supplied immutable input files. Inspect each relevant path before answering:"}
+			for index, attachment := range spec.InputAttachments {
+				lines = append(lines, fmt.Sprintf("- %s (%s) at %s [%s]", attachment.Type, attachment.MediaType, contract.InputAttachmentRelativePath(index, attachment), attachment.ID))
+			}
+			sections = append(sections, strings.Join(lines, "\n"))
+		}
 		sections = append(sections, "Task:\n"+spec.Prompt)
 		return strings.Join(sections, "\n\n")
 	}

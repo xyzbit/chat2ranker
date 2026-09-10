@@ -78,6 +78,8 @@ class RankDemoAdapter extends LlmAdapter {
         chunks = toolChunks(callId, "rank_set_system_model", embedded);
       } else if (/创建|新建|create/i.test(text) && /agent/i.test(text) && embedded?.name) {
         chunks = toolChunks(callId, "rank_create_agent", embedded);
+	  } else if (/发布|上线|publish|release/i.test(text)) {
+		chunks = toolChunks(callId, "rank_prepare_release", embedded || {});
 	  } else if (/准备运行|准备评测|确认运行|开始运行|我要运行|run/i.test(text) && embedded?.agentVersionIds) {
 		chunks = toolChunks(callId, "rank_prepare_run", embedded);
       } else if (dataset && /测试集|dataset/i.test(text)) {
@@ -168,6 +170,7 @@ export default class RankControl extends Service {
 		  modelConnections: (bootstrap.modelConnections || []).map((connection) => ({ id: connection.id, name: connection.name, provider: connection.provider || "custom", protocol: connection.protocol, baseUrl: connection.baseUrl, defaultModel: connection.defaultModel || "", models: connection.models || [], prices: connection.prices || {}, status: connection.status })),
 		  modelCatalog: bootstrap.modelCatalog || [],
 		  systemModels: bootstrap.systemModels || [],
+		  deployments: (bootstrap.deployments || []).map((deployment) => ({ id: deployment.id, name: deployment.name, agentFamilyId: deployment.agentFamilyId, aliases: deployment.aliases.map((alias) => ({ name: alias.name, agentVersionId: alias.currentRelease?.agentVersionId || "" })) })),
         };
       },
     });
@@ -373,6 +376,21 @@ export default class RankControl extends Service {
 		},
         output: objectOutput,
         execute: (args, exec) => command("prepare_run", args, exec),
+      });
+    agentCtx.tools.register({
+        name: "rank_prepare_release",
+		description: "Prepare a release-confirmation card that compares the version currently routed by a Deployment alias with a candidate immutable Agent version. This never changes routing by itself.",
+		parameters: {
+		  type: "object",
+		  properties: {
+			deploymentId: { type: "string", description: "Deployment id from rank_list_assets. Omit when the selected Agent family has one Deployment." },
+			alias: { type: "string", enum: ["staging", "production"] },
+			agentVersionId: { type: "string", description: "Candidate immutable Agent version. Defaults to the experiment selection." },
+		  },
+		  additionalProperties: false,
+		},
+        output: objectOutput,
+        execute: (args, exec) => command("prepare_release", args, exec),
       });
     return { commit() {} };
   }

@@ -23,3 +23,62 @@ test("executeCommand generates an idempotency key without an optional method cal
   assert.ok(body.idempotencyKey);
   assert.equal(request.options.headers["Idempotency-Key"], body.idempotencyKey);
 });
+
+test("deployment API encodes selectors and sends release evidence", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (path, options = {}) => {
+    requests.push({ path, options });
+    return new Response(JSON.stringify({ id: "release-1" }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  await rankApi.listDeployments("tenant/local");
+  await rankApi.promoteDeployment("deployment one", "staging", {
+    agentVersionId: "agent-v2",
+    expectedReleaseRevisionId: "release-0",
+    evidenceRunId: "run-1",
+    policyResult: "passed",
+    actor: "operator",
+  });
+
+  assert.equal(requests[0].path, "/api/deployments?tenantId=tenant%2Flocal");
+  assert.equal(requests[1].path, "/api/deployments/deployment%20one/aliases/staging/releases");
+  assert.deepEqual(JSON.parse(requests[1].options.body), {
+    agentVersionId: "agent-v2",
+    expectedReleaseRevisionId: "release-0",
+    evidenceRunId: "run-1",
+    policyResult: "passed",
+    actor: "operator",
+  });
+});
+
+test("Webhook API scopes endpoint creation to Deployments", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (path, options = {}) => {
+    requests.push({ path, options });
+    return new Response(JSON.stringify({ id: "wh-1", enabled: true }), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  await rankApi.listWebhookEndpoints("tenant/local");
+  await rankApi.createWebhookEndpoint({
+    tenantId: "tenant/local",
+    name: "CRM",
+    url: "https://example.com/rank",
+    events: ["response.completed"],
+    deploymentIds: ["deploy-1"],
+  });
+  await rankApi.setWebhookEndpointEnabled("wh/1", false);
+
+  assert.equal(requests[0].path, "/api/webhook-endpoints?tenantId=tenant%2Flocal");
+  assert.deepEqual(JSON.parse(requests[1].options.body).deploymentIds, ["deploy-1"]);
+  assert.equal(requests[2].path, "/api/webhook-endpoints/wh%2F1/disable");
+});

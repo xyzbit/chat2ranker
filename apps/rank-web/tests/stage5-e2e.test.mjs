@@ -303,3 +303,237 @@ test("Rank runs candidate and Judge through executiond with isolated workers and
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });
+
+test("Serving resolves a Deployment, executes its pinned Agent version, and emits Responses events", { timeout: 45_000 }, async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "chat2ranker-serving-"));
+  const binaryRoot = path.join(temporaryRoot, "bin");
+  await mkdir(binaryRoot);
+  const rankdBinary = path.join(binaryRoot, "rankd");
+  const executiondBinary = path.join(binaryRoot, "executiond");
+  const workerBinary = path.join(binaryRoot, "execution-worker");
+  await Promise.all([
+    build(rankdBinary, "./cmd/rankd"),
+    build(executiondBinary, "./cmd/executiond", executionBackendRoot),
+    build(workerBinary, "./cmd/execution-worker", executionBackendRoot),
+  ]);
+  const [port, executionPort] = await Promise.all([freePort(), freePort()]);
+  const baseURL = `http://127.0.0.1:${port}`;
+  const executionURL = `http://127.0.0.1:${executionPort}`;
+  const environment = { ...process.env, EXECUTION_REPO_ROOT: repositoryRoot };
+  delete environment.DEEPSEEK_API_KEY;
+  const executiond = launch(executiondBinary, [
+    "-addr", `127.0.0.1:${executionPort}`,
+    "-db", path.join(temporaryRoot, "execution.db"),
+    "-worker", workerBinary,
+    "-repo-root", repositoryRoot,
+    "-artifacts", path.join(temporaryRoot, "artifacts"),
+    "-sandboxes", path.join(temporaryRoot, "sandboxes"),
+    "-credentials", path.join(temporaryRoot, "credentials"),
+  ], { cwd: repositoryRoot, env: environment });
+  const rankd = launch(rankdBinary, [
+    "-addr", `127.0.0.1:${port}`,
+    "-db", path.join(temporaryRoot, "rank.db"),
+    "-execution-url", executionURL,
+    "-webhook-poll-interval", "1h",
+  ], { cwd: repositoryRoot, env: environment });
+  try {
+    await waitFor(executionURL, "/v1/health", executiond);
+    await waitFor(baseURL, "/api/health", rankd);
+    const deployment = await request(baseURL, "/api/deployments", {
+      method: "POST",
+      body: JSON.stringify({
+        tenantId: "tenant-serving-e2e",
+        agentFamilyId: "agent-research-demo",
+        name: "research-public",
+        policy: { requestsPerMinute: 60, maxConcurrentResponses: 4, executionTimeoutMs: 30_000, allowInstructions: false, allowCallerTools: true },
+      }),
+    });
+    const release = await request(baseURL, `/api/deployments/${deployment.id}/aliases/production/releases`, {
+      method: "POST",
+      body: JSON.stringify({
+        agentVersionId: "agent-research-demo-v1",
+        policyResult: "manual_override",
+        actor: "serving-e2e",
+        reason: "initial production release",
+      }),
+    });
+    const credential = await request(baseURL, "/api/serving-credentials", {
+      method: "POST",
+      body: JSON.stringify({
+        tenantId: "tenant-serving-e2e",
+        name: "serving-e2e",
+        deploymentIds: [deployment.id],
+        scopes: ["responses:create", "responses:read", "responses:cancel", "responses:approve"],
+      }),
+    });
+    const webhookEndpoint = await request(baseURL, "/api/webhook-endpoints", {
+      method: "POST",
+      body: JSON.stringify({
+        tenantId: "tenant-serving-e2e",
+        name: "serving-e2e",
+        url: "https://events.example.com/rank",
+        events: ["response.completed"],
+        deploymentIds: [deployment.id],
+      }),
+    });
+    const authorization = { authorization: `Bearer ${credential.apiKey}` };
+    const first = await request(baseURL, "/v1/responses", {
+      method: "POST",
+      headers: { ...authorization, "idempotency-key": "serving-e2e-sync" },
+      body: JSON.stringify({ model: "research-public@production", input: "summarize the release", metadata: { suite: "serving-e2e" } }),
+    });
+    const webhookEndpoints = await request(baseURL, "/api/webhook-endpoints?tenantId=tenant-serving-e2e");
+    const webhookDeliveries = await request(baseURL, `/api/webhook-endpoints/${webhookEndpoint.id}/deliveries`);
+    const replay = await request(baseURL, "/v1/responses", {
+      method: "POST",
+      headers: { ...authorization, "idempotency-key": "serving-e2e-sync" },
+      body: JSON.stringify({ model: "research-public@production", input: "summarize the release", metadata: { suite: "serving-e2e" } }),
+    });
+    assert.equal(replay.id, first.id);
+    const continued = await request(baseURL, "/v1/responses", {
+      method: "POST",
+      headers: { ...authorization, "idempotency-key": "serving-e2e-continuation" },
+      body: JSON.stringify({
+        model: "research-public@production",
+        input: "continue from the prior answer",
+        previous_response_id: first.id,
+      }),
+    });
+    const structured = await request(baseURL, "/v1/responses", {
+      method: "POST",
+      headers: { ...authorization, "idempotency-key": "serving-e2e-structured" },
+      body: JSON.stringify({
+        model: "research-public@production",
+        input: "return status",
+        text: { format: {
+          type: "json_schema",
+          name: "status_result",
+          schema: { type: "object", properties: { status: { type: "string", const: "ok" } }, required: ["status"], additionalProperties: false },
+          strict: true,
+        } },
+      }),
+    });
+    const richInput = await request(baseURL, "/v1/responses", {
+      method: "POST",
+      headers: { ...authorization, "idempotency-key": "serving-e2e-rich-input" },
+      body: JSON.stringify({
+        model: "research-public@production",
+        input: [{ role: "user", content: [
+          { type: "input_text", text: "inspect the image and file" },
+          { type: "input_image", image_url: `data:image/png;base64,${Buffer.from("image fixture").toString("base64")}`, detail: "auto" },
+          { type: "input_file", filename: "brief.txt", file_data: Buffer.from("file fixture").toString("base64") },
+        ] }],
+      }),
+    });
+    const toolCall = await request(baseURL, "/v1/responses", {
+      method: "POST",
+      headers: { ...authorization, "idempotency-key": "serving-e2e-tool-call" },
+      body: JSON.stringify({
+        model: "research-public@production",
+        input: "look up the order",
+        tools: [{
+          type: "function", name: "lookup_order", description: "Look up an order", strict: true, require_approval: true,
+          parameters: { type: "object", properties: {}, additionalProperties: false },
+        }],
+      }),
+    });
+    const approvedToolCall = await request(baseURL, `/v1/responses/${toolCall.id}/approval`, {
+      method: "POST",
+      headers: authorization,
+      body: JSON.stringify({ approved: true, reason: "fixture approval" }),
+    });
+    const toolResult = await request(baseURL, "/v1/responses", {
+      method: "POST",
+      headers: { ...authorization, "idempotency-key": "serving-e2e-tool-result" },
+      body: JSON.stringify({
+        model: "research-public@production",
+        previous_response_id: toolCall.id,
+        input: [{ type: "function_call_output", call_id: toolCall.output[0].call_id, output: "order shipped" }],
+      }),
+    });
+    const stream = await fetch(baseURL + "/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...authorization, "idempotency-key": "serving-e2e-stream" },
+      body: JSON.stringify({ model: "research-public@v1", input: "stream the exact version", stream: true }),
+    });
+    assert.equal(stream.status, 200);
+    const streamEvents = (await stream.text()).split(/\r?\n/).filter((line) => line.startsWith("data: ")).map((line) => JSON.parse(line.slice(6)));
+    const retrieved = await request(baseURL, `/v1/responses/${first.id}`, { headers: authorization });
+    const history = await request(baseURL, `/api/deployments/${deployment.id}/aliases/production/releases`);
+    const operatorPage = await request(baseURL, `/api/responses?tenantId=tenant-serving-e2e&deploymentId=${deployment.id}&limit=2`);
+    const operatorOlder = await request(baseURL, `/api/responses?tenantId=tenant-serving-e2e&deploymentId=${deployment.id}&limit=2&before=${operatorPage.nextCursor}`);
+    const operatorDetail = await request(baseURL, `/api/responses/${first.id}?tenantId=tenant-serving-e2e`);
+    const operatorKeys = await request(baseURL, "/api/serving-credentials?tenantId=tenant-serving-e2e");
+    await request(baseURL, `/api/serving-credentials/${credential.id}/revoke?tenantId=tenant-serving-e2e`, {method:"POST",body:"{}"});
+    const denied = await fetch(baseURL+"/v1/responses", {method:"POST",headers:{"content-type":"application/json",...authorization},body:JSON.stringify({model:"research-public@production",input:"revoked"})});
+    const snapshot = {
+      operator: {
+        releaseHistory: history.items.map((v)=>({revision:v.revision,agentVersionId:v.agentVersionId,actor:v.actor,reason:v.reason})),
+        pageSize: operatorPage.items.length,
+        pagesDisjoint: operatorOlder.items.every((v)=>!operatorPage.items.some((item)=>item.id===v.id)),
+        listExcludesTranscript: !JSON.stringify(operatorPage).includes("summarize the release"),
+        detailInput: operatorDetail.input,
+        detailVersionPinned: operatorDetail.response.agentVersionId===first.deployment.agent_version_id,
+        detailHasEvents: operatorDetail.events.length>0,
+        listHidesCredential: !JSON.stringify(operatorKeys).includes(credential.apiKey),
+        revokedRequestStatus: denied.status,
+      },
+      response: {
+        object: first.object,
+        status: first.status,
+        model: first.model,
+        outputTypes: first.output.map((item) => item.type),
+        text: first.output[0]?.content[0]?.text,
+        resolutionKind: first.deployment.resolution_kind,
+        releasePinned: first.deployment.release_revision_id === release.id,
+        agentVersionId: first.deployment.agent_version_id,
+        conversationAssigned: first.conversation.id.startsWith("conv_"),
+        previousResponseId: first.previous_response_id,
+        usage: first.usage,
+        costKnown: first.cost.known,
+      },
+      continuation: {
+        sameConversation: continued.conversation.id === first.conversation.id,
+        previousLinked: continued.previous_response_id === first.id,
+        versionPinned: continued.deployment.agent_version_id === first.deployment.agent_version_id,
+        resolutionKind: continued.deployment.resolution_kind,
+        historyIncluded: continued.output[0]?.content[0]?.text.includes("summarize the release") && continued.output[0]?.content[0]?.text.includes(first.output[0]?.content[0]?.text),
+      },
+      structured: {
+        format: structured.text.format.type,
+        name: structured.text.format.name,
+        strict: structured.text.format.strict,
+        output: structured.output[0]?.content[0]?.text,
+      },
+      richInput: {
+        status: richInput.status,
+        versionPinned: richInput.deployment.agent_version_id === first.deployment.agent_version_id,
+        textReachedWorker: richInput.output[0]?.content[0]?.text.includes("inspect the image and file"),
+      },
+      callerFunction: {
+        requested: toolCall.status === "requires_action" && toolCall.output[0]?.type === "function_call",
+        approvalRequired: toolCall.output[0]?.approval_required,
+        approved: approvedToolCall.status === "completed" && approvedToolCall.output[0]?.approval_status === "approved",
+        resultContinued: toolResult.status === "completed" && toolResult.output[0]?.content[0]?.text.includes("function_call_output"),
+        sameConversation: toolResult.conversation.id === toolCall.conversation.id,
+      },
+      webhook: {
+        secretReturnedOnce: webhookEndpoint.signingSecret.startsWith("whsec_"),
+        listHidesSecret: !Object.hasOwn(webhookEndpoints[0], "signingSecret") && !Object.hasOwn(webhookEndpoints[0], "secretRef"),
+        deploymentScoped: webhookEndpoints[0].deploymentIds.includes(deployment.id),
+        outboxDurable: webhookDeliveries.length === 1 && webhookDeliveries[0].eventType === "response.completed" && webhookDeliveries[0].status === "pending",
+        deliveryHidesPayload: !Object.hasOwn(webhookDeliveries[0], "payload"),
+      },
+      retrievalStable: retrieved.id === first.id && retrieved.output[0]?.content[0]?.text === first.output[0]?.content[0]?.text,
+      streamTypes: streamEvents.map((event) => event.type),
+      streamSequences: streamEvents.map((event) => event.sequence_number),
+      exactVersionHasReleaseRevision: Object.hasOwn(streamEvents[0].response.deployment, "release_revision_id"),
+    };
+    const expectedSnapshot = JSON.parse(await readFile(path.join(appRoot, "tests/snapshots/serving-response.json"), "utf8"));
+    assert.deepEqual(snapshot, expectedSnapshot);
+  } finally {
+    await stop(rankd).catch(() => {});
+    await stop(executiond).catch(() => {});
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});

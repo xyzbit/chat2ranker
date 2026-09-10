@@ -79,6 +79,32 @@ func TestControlCommandsAreSessionBoundStructuredAndIdempotent(t *testing.T) {
 	if err != nil || view.ControlEvents[1].Type != "a2ui/show_experiment_results" {
 		t.Fatalf("experiment result card event missing: %#v, %v", view.ControlEvents, err)
 	}
+	if _, err := service.ApplyControlCommand(ctx, app.ControlCommandInput{
+		ExperimentID: experiment.ID, ControlSessionID: experiment.ControlSessionID,
+		IdempotencyKey: "select-agent-for-release", Type: app.ControlSelectAgent,
+		Payload: json.RawMessage(`{"agentVersionId":"agent-research-demo-v1"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	preparedRelease, err := service.ApplyControlCommand(ctx, app.ControlCommandInput{
+		ExperimentID: experiment.ID, ControlSessionID: experiment.ControlSessionID,
+		IdempotencyKey: "prepare-release-1", Type: app.ControlPrepareRelease,
+		Payload: json.RawMessage(`{"alias":"production"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var releaseResult struct {
+		DeploymentID            domain.DeploymentID `json:"deploymentId"`
+		Alias                   string              `json:"alias"`
+		CandidateAgentVersionID string              `json:"candidateAgentVersionId"`
+	}
+	if err := json.Unmarshal(preparedRelease.Result, &releaseResult); err != nil {
+		t.Fatal(err)
+	}
+	if releaseResult.DeploymentID == "" || releaseResult.Alias != "production" || releaseResult.CandidateAgentVersionID != "agent-research-demo-v1" {
+		t.Fatalf("unexpected release confirmation: %#v", releaseResult)
+	}
 	_, err = service.ApplyControlCommand(ctx, app.ControlCommandInput{
 		ExperimentID: experiment.ID, ControlSessionID: "another-session",
 		IdempotencyKey: "tool-call-2", Type: app.ControlPrepareRun, Payload: json.RawMessage(`{}`),

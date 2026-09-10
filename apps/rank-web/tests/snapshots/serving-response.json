@@ -1,0 +1,95 @@
+{
+  "operator": {
+    "releaseHistory": [{"revision": 1, "agentVersionId": "agent-research-demo-v1", "actor": "serving-e2e", "reason": "initial production release"}],
+    "pageSize": 2,
+    "pagesDisjoint": true,
+    "listExcludesTranscript": true,
+    "detailInput": "summarize the release",
+    "detailVersionPinned": true,
+    "detailHasEvents": true,
+    "listHidesCredential": true,
+    "revokedRequestStatus": 401
+  },
+  "response": {
+    "object": "response",
+    "status": "completed",
+    "model": "research-public@production",
+    "outputTypes": [
+      "message"
+    ],
+    "text": "已完成任务：summarize the release。结果包含：任务成功完成。",
+    "resolutionKind": "alias",
+    "releasePinned": true,
+    "agentVersionId": "agent-research-demo-v1",
+    "conversationAssigned": true,
+    "previousResponseId": null,
+    "usage": {
+      "input_tokens": 70,
+      "input_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens": 30,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 100
+    },
+    "costKnown": true
+  },
+  "continuation": {
+    "sameConversation": true,
+    "previousLinked": true,
+    "versionPinned": true,
+    "resolutionKind": "conversation",
+    "historyIncluded": true
+  },
+  "structured": {
+    "format": "json_schema",
+    "name": "status_result",
+    "strict": true,
+    "output": "{\"status\":\"ok\"}"
+  },
+  "richInput": {
+    "status": "completed",
+    "versionPinned": true,
+    "textReachedWorker": true
+  },
+  "callerFunction": {
+    "requested": true,
+    "approvalRequired": true,
+    "approved": true,
+    "resultContinued": true,
+    "sameConversation": true
+  },
+  "webhook": {
+    "secretReturnedOnce": true,
+    "listHidesSecret": true,
+    "deploymentScoped": true,
+    "outboxDurable": true,
+    "deliveryHidesPayload": true
+  },
+  "retrievalStable": true,
+  "streamTypes": [
+    "response.created",
+    "response.in_progress",
+    "response.output_item.added",
+    "response.content_part.added",
+    "response.output_text.delta",
+    "response.output_text.done",
+    "response.content_part.done",
+    "response.output_item.done",
+    "response.completed"
+  ],
+  "streamSequences": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "exactVersionHasReleaseRevision": false
+}

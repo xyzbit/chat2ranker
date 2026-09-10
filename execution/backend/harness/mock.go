@@ -2,8 +2,10 @@ package harness
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"strings"
 	"time"
 
 	"github.com/xyzbit/chat2ranker/execution/backend/contract"
@@ -60,6 +62,12 @@ func (mockAdapter) Run(ctx context.Context, invocation Invocation) (contract.Res
 	if stringValue(invocation.Spec.Expected["demoOutcome"]) == "fail" {
 		output = fmt.Sprintf("已完成任务：%s，但部分证据无法验证。", invocation.Spec.Prompt)
 	}
+	if invocation.Spec.StructuredOutput != nil {
+		output = `{"status":"ok"}`
+	} else if name, ok := mockCallerFunction(invocation.Spec.Prompt); ok {
+		encoded, _ := json.Marshal(map[string]any{"type": "function_call", "name": name, "arguments": map[string]any{}})
+		output = string(encoded)
+	}
 	hash := fnv.New32a()
 	caseID := invocation.Metadata["caseId"]
 	if caseID == "" {
@@ -73,6 +81,25 @@ func (mockAdapter) Run(ctx context.Context, invocation Invocation) (contract.Res
 		}
 	}
 	return contract.Result{Output: output, Cost: cost, CostKnown: true, CostSource: contract.CostSourceProvider, Usage: contract.Usage{InputTokens: 70, OutputTokens: 30}}, nil
+}
+
+func mockCallerFunction(prompt string) (string, bool) {
+	const marker = "Available caller functions (JSON):\n"
+	if strings.Contains(prompt, "function_call_output") {
+		return "", false
+	}
+	_, tail, ok := strings.Cut(prompt, marker)
+	if !ok {
+		return "", false
+	}
+	definitions, _, _ := strings.Cut(tail, "\n\n")
+	var tools []struct {
+		Name string `json:"name"`
+	}
+	if json.Unmarshal([]byte(definitions), &tools) != nil || len(tools) == 0 || tools[0].Name == "" {
+		return "", false
+	}
+	return tools[0].Name, true
 }
 
 func stringValue(value any) string {

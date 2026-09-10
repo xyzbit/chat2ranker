@@ -12,48 +12,84 @@ func (s *Service) EnsureSeed(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if len(families) > 0 {
-		return nil
-	}
-	now := s.now().UTC()
-	return s.repo.WithinTx(ctx, func(repo domain.Repository) error {
-		webFamily := domain.DatasetFamily{ID: "dataset-web-research", Name: "Web 研究基准集", Description: "覆盖检索、总结、引用和结构化输出。", LatestVersionID: "dataset-web-research-v3", CreatedAt: now}
-		webVersion := domain.DatasetVersion{ID: webFamily.LatestVersionID, FamilyID: webFamily.ID, Name: webFamily.Name, Version: 3, Source: "浏览器采集 + Web 搜索", Description: webFamily.Description, Schema: defaultJSON(nil), Rubric: defaultJSON(nil), Cases: seedWebCases(), CreatedAt: now, CaseCount: 12}
-		webVersion.Evaluator = evaluatorForDataset(webVersion)
-		if err := repo.CreateDatasetFamily(ctx, webFamily, webVersion); err != nil {
-			return err
-		}
-		browserFamily := domain.DatasetFamily{ID: "dataset-browser-actions", Name: "浏览器操作冒烟集", Description: "登录、导航、筛选、表单和文件下载等基础操作。", LatestVersionID: "dataset-browser-actions-v1", CreatedAt: now}
-		browserCases := make([]domain.Case, 8)
-		titles := []string{"打开页面", "站内搜索", "筛选结果", "填写表单", "翻页", "下载文件", "异常恢复", "提取结果"}
-		for index := range browserCases {
-			expected := map[string]any{"summary": "操作完成且返回结构化结果", "demoOutcome": "pass"}
-			if index == 6 {
-				expected["demoOutcome"] = "fail"
-				expected["failureReason"] = "异常恢复后状态不一致"
-			}
-			browserCases[index] = domain.Case{ID: fmt.Sprintf("browser-%02d", index+1), Title: titles[index], Input: fmt.Sprintf("完成浏览器操作场景 %d，保留关键步骤结果。", index+1), Expected: expected}
-		}
-		browserVersion := domain.DatasetVersion{ID: browserFamily.LatestVersionID, FamilyID: browserFamily.ID, Name: browserFamily.Name, Version: 1, Source: "手工维护", Description: browserFamily.Description, Schema: defaultJSON(nil), Rubric: defaultJSON(nil), Cases: browserCases, CreatedAt: now, CaseCount: 8}
-		browserVersion.Evaluator = evaluatorForDataset(browserVersion)
-		if err := repo.CreateDatasetFamily(ctx, browserFamily, browserVersion); err != nil {
-			return err
-		}
-		agents := []struct {
-			family  domain.AgentFamily
-			version domain.AgentVersion
-		}{
-			{domain.AgentFamily{ID: "agent-research-demo", Name: "Research Demo", Handle: "@demo/research", Description: "无需密钥即可验证数据集、运行、评分和日志链路。", LatestVersionID: "agent-research-demo-v1", CreatedAt: now}, domain.AgentVersion{ID: "agent-research-demo-v1", FamilyID: "agent-research-demo", Name: "Research Demo", Handle: "@demo/research", Version: 1, RunnerType: "mock", Description: "无需密钥即可验证数据集、运行、评分和日志链路。", Model: "deterministic-demo", SystemPrompt: "检索公开资料，区分事实与判断，并保留引用。", Tools: []string{"browser", "web_search"}, Skills: []string{"web-research"}, CreatedAt: now}},
-			{domain.AgentFamily{ID: "agent-dsh-research", Name: "DSH Research", Handle: "@dsh/research", Description: "使用 DeepSeek Harness headless profile；模型可由版本配置覆盖。", LatestVersionID: "agent-dsh-research-v1", CreatedAt: now}, domain.AgentVersion{ID: "agent-dsh-research-v1", FamilyID: "agent-dsh-research", Name: "DSH Research", Handle: "@dsh/research", Version: 1, RunnerType: "dsh", Description: "使用 DeepSeek Harness headless profile；模型可由版本配置覆盖。", Model: "由 DSH profile 决定", Preset: "headless", SystemPrompt: "检索公开资料，输出结构化结论并保留可回溯引用。", Tools: []string{"browser", "web_search", "files"}, Skills: []string{"web-research"}, CreatedAt: now}},
-			{domain.AgentFamily{ID: "agent-pi-research", Name: "Pi Web Research", Handle: "@pi/research", Description: "使用 Pi 原生 agent loop；也可切换为外部 Runner Adapter。", LatestVersionID: "agent-pi-research-v1", CreatedAt: now}, domain.AgentVersion{ID: "agent-pi-research-v1", FamilyID: "agent-pi-research", Name: "Pi Web Research", Handle: "@pi/research", Version: 1, RunnerType: "pi", Description: "使用 Pi 原生 agent loop；也可切换为外部 Runner Adapter。", Model: "由 Pi 配置决定", Preset: "research", SystemPrompt: "检索公开资料，输出结构化结论并保留可回溯引用。", Tools: []string{"browser", "web_search", "files"}, Skills: []string{"web-research"}, CreatedAt: now}},
-		}
-		for _, entry := range agents {
-			if err := repo.CreateAgentFamily(ctx, entry.family, entry.version); err != nil {
+	if len(families) == 0 {
+		now := s.now().UTC()
+		if err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+			webFamily := domain.DatasetFamily{ID: "dataset-web-research", Name: "Web 研究基准集", Description: "覆盖检索、总结、引用和结构化输出。", LatestVersionID: "dataset-web-research-v3", CreatedAt: now}
+			webVersion := domain.DatasetVersion{ID: webFamily.LatestVersionID, FamilyID: webFamily.ID, Name: webFamily.Name, Version: 3, Source: "浏览器采集 + Web 搜索", Description: webFamily.Description, Schema: defaultJSON(nil), Rubric: defaultJSON(nil), Cases: seedWebCases(), CreatedAt: now, CaseCount: 12}
+			webVersion.Evaluator = evaluatorForDataset(webVersion)
+			if err := repo.CreateDatasetFamily(ctx, webFamily, webVersion); err != nil {
 				return err
 			}
+			browserFamily := domain.DatasetFamily{ID: "dataset-browser-actions", Name: "浏览器操作冒烟集", Description: "登录、导航、筛选、表单和文件下载等基础操作。", LatestVersionID: "dataset-browser-actions-v1", CreatedAt: now}
+			browserCases := make([]domain.Case, 8)
+			titles := []string{"打开页面", "站内搜索", "筛选结果", "填写表单", "翻页", "下载文件", "异常恢复", "提取结果"}
+			for index := range browserCases {
+				expected := map[string]any{"summary": "操作完成且返回结构化结果", "demoOutcome": "pass"}
+				if index == 6 {
+					expected["demoOutcome"] = "fail"
+					expected["failureReason"] = "异常恢复后状态不一致"
+				}
+				browserCases[index] = domain.Case{ID: fmt.Sprintf("browser-%02d", index+1), Title: titles[index], Input: fmt.Sprintf("完成浏览器操作场景 %d，保留关键步骤结果。", index+1), Expected: expected}
+			}
+			browserVersion := domain.DatasetVersion{ID: browserFamily.LatestVersionID, FamilyID: browserFamily.ID, Name: browserFamily.Name, Version: 1, Source: "手工维护", Description: browserFamily.Description, Schema: defaultJSON(nil), Rubric: defaultJSON(nil), Cases: browserCases, CreatedAt: now, CaseCount: 8}
+			browserVersion.Evaluator = evaluatorForDataset(browserVersion)
+			if err := repo.CreateDatasetFamily(ctx, browserFamily, browserVersion); err != nil {
+				return err
+			}
+			agents := []struct {
+				family  domain.AgentFamily
+				version domain.AgentVersion
+			}{
+				{domain.AgentFamily{ID: "agent-research-demo", Name: "Research Demo", Handle: "@demo/research", Description: "无需密钥即可验证数据集、运行、评分和日志链路。", LatestVersionID: "agent-research-demo-v1", CreatedAt: now}, domain.AgentVersion{ID: "agent-research-demo-v1", FamilyID: "agent-research-demo", Name: "Research Demo", Handle: "@demo/research", Version: 1, RunnerType: "mock", Description: "无需密钥即可验证数据集、运行、评分和日志链路。", Model: "deterministic-demo", SystemPrompt: "检索公开资料，区分事实与判断，并保留引用。", Tools: []string{"browser", "web_search"}, Skills: []string{"web-research"}, CreatedAt: now}},
+				{domain.AgentFamily{ID: "agent-dsh-research", Name: "DSH Research", Handle: "@dsh/research", Description: "使用 DeepSeek Harness headless profile；模型可由版本配置覆盖。", LatestVersionID: "agent-dsh-research-v1", CreatedAt: now}, domain.AgentVersion{ID: "agent-dsh-research-v1", FamilyID: "agent-dsh-research", Name: "DSH Research", Handle: "@dsh/research", Version: 1, RunnerType: "dsh", Description: "使用 DeepSeek Harness headless profile；模型可由版本配置覆盖。", Model: "由 DSH profile 决定", Preset: "headless", SystemPrompt: "检索公开资料，输出结构化结论并保留可回溯引用。", Tools: []string{"browser", "web_search", "files"}, Skills: []string{"web-research"}, CreatedAt: now}},
+				{domain.AgentFamily{ID: "agent-pi-research", Name: "Pi Web Research", Handle: "@pi/research", Description: "使用 Pi 原生 agent loop；也可切换为外部 Runner Adapter。", LatestVersionID: "agent-pi-research-v1", CreatedAt: now}, domain.AgentVersion{ID: "agent-pi-research-v1", FamilyID: "agent-pi-research", Name: "Pi Web Research", Handle: "@pi/research", Version: 1, RunnerType: "pi", Description: "使用 Pi 原生 agent loop；也可切换为外部 Runner Adapter。", Model: "由 Pi 配置决定", Preset: "research", SystemPrompt: "检索公开资料，输出结构化结论并保留可回溯引用。", Tools: []string{"browser", "web_search", "files"}, Skills: []string{"web-research"}, CreatedAt: now}},
+			}
+			for _, entry := range agents {
+				if err := repo.CreateAgentFamily(ctx, entry.family, entry.version); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
 		}
+	}
+	return s.ensureDefaultDeployment(ctx)
+}
+
+func (s *Service) ensureDefaultDeployment(ctx context.Context) error {
+	deployments, err := s.repo.ListDeployments(ctx, s.tenantID)
+	if err != nil || len(deployments) > 0 {
+		return err
+	}
+	families, err := s.repo.ListAgentFamilies(ctx)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, family := range families {
+		if family.ID == "agent-research-demo" {
+			found = true
+			break
+		}
+	}
+	if !found {
 		return nil
+	}
+	deployment, err := s.CreateDeployment(ctx, CreateDeploymentInput{
+		TenantID: s.tenantID, AgentFamilyID: "agent-research-demo", Name: "research-public",
+		Policy: domain.DeploymentPolicy{RequestsPerMinute: 60, MaxConcurrentResponses: 4, ExecutionTimeoutMs: 60_000},
 	})
+	if err != nil {
+		return err
+	}
+	_, err = s.PromoteDeploymentAlias(ctx, PromoteDeploymentInput{
+		DeploymentID: deployment.ID, Alias: DeploymentAliasProduction,
+		AgentVersionID: "agent-research-demo-v1", PolicyResult: domain.ReleasePolicyManualOverride,
+		Actor: "rank-local-seed", Reason: "initial local release",
+	})
+	return err
 }
 
 func seedWebCases() []domain.Case {

@@ -4,7 +4,9 @@
 
 English | [中文](README.zh.md)
 
-Chat2Ranker turns a goal into a versioned dataset, comparable Agent runs, and evidence you can inspect. No evaluation script is required up front.
+Chat2Ranker is an Agent lifecycle platform for preparing, versioning, evaluating, releasing, and serving Agents. The local product turns a goal into a versioned dataset, comparable Agent runs, inspectable evidence, controlled release aliases, and authenticated text-serving endpoints.
+
+The product keeps evaluation and production on one version lineage: an exact Agent version is tested, promoted to an environment alias such as `production`, resolved once when a request is accepted, and retained in the invocation record. See the [Agent Serving API](rank/docs/serving-api.md) for the implemented subset and the [Agent lifecycle and serving proposal](.agents/notes/proposed/feature/2026-09-08-agent-lifecycle-serving.md) for later phases.
 
 ## What can you compare?
 
@@ -33,12 +35,14 @@ On first open, choose a provider and model, then enter an API key. Describe the 
 
 See the [one-minute quick start](rank/docs/quickstart.md) for first-run setup, background operation, and isolated data directories.
 
-## From conversation to comparable results
+## From conversation to production evidence
 
 - **Prepare:** create or select versioned datasets and agent configurations through conversation.
 - **Run:** isolate every trial and compare multiple agent versions in one run group.
 - **Evaluate:** prefer deterministic checks and invoke rubric-based LLM judging only when semantic evaluation is needed.
 - **Inspect:** aggregate pass rate, stable cases, cost, duration, failures, and raw execution artifacts.
+- **Release:** promote an evaluated immutable version to `staging` or `production`, with compare-and-swap alias history and recorded evidence or override reasons.
+- **Serve:** invoke exact versions or aliases through an authenticated Responses-compatible API for text, image, file, function, and approval interaction, with signed Webhook notifications and recorded output, usage, cost, and release lineage.
 
 ## Harnesses and architecture
 

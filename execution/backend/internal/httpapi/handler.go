@@ -225,7 +225,7 @@ func (h *Handler) artifact(response http.ResponseWriter, request *http.Request) 
 }
 
 func decode(request *http.Request, target any) error {
-	err := json.NewDecoder(io.LimitReader(request.Body, 8<<20)).Decode(target)
+	err := json.NewDecoder(io.LimitReader(request.Body, 32<<20)).Decode(target)
 	if err != nil && err != io.EOF {
 		return &app.Error{Status: 400, Code: "invalid_json", Message: "invalid JSON request"}
 	}

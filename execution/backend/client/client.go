@@ -205,7 +205,7 @@ func (client *Client) call(ctx context.Context, method, path string, body, targe
 		return err
 	}
 	defer response.Body.Close()
-	payload, err := io.ReadAll(io.LimitReader(response.Body, 8<<20))
+	payload, err := io.ReadAll(io.LimitReader(response.Body, 32<<20))
 	if err != nil {
 		return err
 	}

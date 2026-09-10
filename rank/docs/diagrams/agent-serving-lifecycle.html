@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent release and serving flow</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --paper: #f5f5f5; --ink: #2d3142; --muted: #4f5d75; --soft: #7a8399; --accent: #eb6c36; --link: #2e5aa8; }
+    body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 48px 32px; background: var(--paper); color: var(--ink); font-family: 'Geist', system-ui, sans-serif; }
+    .frame { width: 100%; max-width: 1280px; }
+    .eyebrow { margin-bottom: 8px; color: var(--muted); font-family: 'Geist Mono', ui-monospace, monospace; font-size: 8px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; }
+    h1 { margin-bottom: 24px; color: var(--ink); font-family: 'Instrument Serif', serif; font-size: 28px; font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; }
+    svg { width: 100%; min-width: 960px; display: block; }
+  </style>
+</head>
+<body>
+  <main class="frame">
+    <p class="eyebrow">Architecture · Secure paved road</p>
+    <h1>Agent release and serving flow</h1>
+    <svg viewBox="0 0 1280 800" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="agent-serving-lifecycle-title agent-serving-lifecycle-desc">
+      <title id="agent-serving-lifecycle-title">Agent release and serving flow</title>
+      <desc id="agent-serving-lifecycle-desc">Architecture diagram showing evaluated Agent versions entering an append-only release registry, authenticated public requests resolving through a serving gateway, exact specifications running in isolated workers, and terminal responses entering a durable outbox before signed Webhook delivery.</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+      </defs>
+      <rect width="1280" height="800" fill="#f5f5f5"/>
+
+      <rect x="40" y="72" width="1200" height="136" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+      <rect x="56" y="76" width="64" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="88" y="84" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">PUBLIC</text>
+
+      <rect x="40" y="240" width="1200" height="136" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+      <rect x="56" y="244" width="112" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="112" y="252" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">CONTROL PLANE</text>
+
+      <rect x="40" y="408" width="1200" height="240" rx="8" fill="rgba(235,108,54,0.03)" stroke="rgba(235,108,54,0.48)" stroke-width="0.8" stroke-dasharray="4,4"/>
+      <rect x="56" y="412" width="120" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="116" y="420" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">PRIVATE SERVING</text>
+
+      <line x1="224" y1="144" x2="336" y2="144" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <line x1="244" y1="304" x2="336" y2="304" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <line x1="436" y1="272" x2="436" y2="176" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 536,144 H 592 Q 600,144 600,152 V 500 Q 600,508 592,508 H 560" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <path d="M 536,160 H 640 Q 648,160 648,168 V 500 Q 648,508 656,508 H 704" fill="none" stroke="#eb6c36" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+      <line x1="904" y1="508" x2="1016" y2="508" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <line x1="1016" y1="540" x2="904" y2="540" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <line x1="704" y1="540" x2="560" y2="540" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+      <path d="M 208,176 V 200 Q 208,208 216,208 H 264 Q 272,208 272,216 V 296 a 8,8 0 0,0 0,16 V 388 Q 272,396 280,396 H 296" fill="none" stroke="#eb6c36" stroke-width="1" stroke-dasharray="4,3"/>
+      <path d="M 448,540 V 608 Q 448,616 456,616 H 704" fill="none" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <path d="M 904,616 H 960 Q 968,616 968,608 V 152 Q 968,144 976,144 H 1016" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <circle cx="308" cy="396" r="8" fill="#f5f5f5" stroke="#eb6c36" stroke-width="1.2"/>
+      <line x1="304" y1="392" x2="312" y2="400" stroke="#eb6c36" stroke-width="1.2"/>
+      <line x1="312" y1="392" x2="304" y2="400" stroke="#eb6c36" stroke-width="1.2"/>
+
+      <rect x="252" y="124" width="72" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="288" y="132" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">RESPONSES</text>
+      <rect x="252" y="284" width="72" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="288" y="292" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">EVIDENCE</text>
+      <rect x="444" y="212" width="64" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="476" y="220" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">RESOLVE</text>
+      <rect x="612" y="332" width="72" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="648" y="340" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">EXACT SPEC</text>
+      <rect x="920" y="488" width="80" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="960" y="496" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">START</text>
+      <rect x="920" y="544" width="80" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="960" y="552" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">EVENTS</text>
+      <rect x="168" y="376" width="120" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="228" y="384" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">DIRECT EXECUTION</text>
+      <rect x="552" y="596" width="136" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="620" y="604" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">TRANSACTIONAL OUTBOX</text>
+      <rect x="968" y="124" width="40" height="12" rx="2" fill="#f5f5f5"/>
+      <text x="988" y="132" fill="#2e5aa8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">HMAC</text>
+
+      <rect x="64" y="112" width="160" height="64" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="80" y="128" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">EXTERNAL</text>
+      <text x="144" y="148" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" font-weight="600" text-anchor="middle">Application client</text>
+      <text x="144" y="164" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">API key · tenant scope</text>
+
+      <rect x="336" y="112" width="200" height="64" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+      <text x="352" y="128" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">PUBLIC EDGE</text>
+      <text x="436" y="148" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" font-weight="600" text-anchor="middle">Serving Gateway</text>
+      <text x="436" y="164" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">auth · limits · idempotency</text>
+
+      <rect x="1016" y="112" width="200" height="64" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+      <text x="1032" y="128" fill="#7a8399" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">EXTERNAL</text>
+      <text x="1116" y="148" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" font-weight="600" text-anchor="middle">Webhook listener</text>
+      <text x="1116" y="164" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">verify · deduplicate</text>
+
+      <rect x="64" y="272" width="180" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="80" y="288" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">QUALITY</text>
+      <text x="154" y="308" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" font-weight="600" text-anchor="middle">Rank &amp; Eval</text>
+      <text x="154" y="324" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">exact version evidence</text>
+
+      <rect x="336" y="272" width="200" height="64" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+      <text x="352" y="288" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">PRIVILEGED</text>
+      <text x="436" y="308" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" font-weight="600" text-anchor="middle">Release Registry</text>
+      <text x="436" y="324" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">policy · alias revision</text>
+
+      <rect x="336" y="476" width="224" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+      <text x="352" y="492" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">DURABLE</text>
+      <text x="448" y="512" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" font-weight="600" text-anchor="middle">Invocation &amp; Audit Store</text>
+      <text x="448" y="528" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">response · lineage · usage</text>
+
+      <rect x="704" y="476" width="200" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="720" y="492" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">PRIVATE API</text>
+      <text x="804" y="512" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" font-weight="600" text-anchor="middle">Execution Service</text>
+      <text x="804" y="528" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">attempt · cancel · recovery</text>
+
+      <rect x="1016" y="476" width="200" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="1032" y="492" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ISOLATED</text>
+      <text x="1116" y="512" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" font-weight="600" text-anchor="middle">Harness Worker</text>
+      <text x="1116" y="528" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">workspace · scoped secrets</text>
+
+      <rect x="704" y="584" width="200" height="48" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+      <text x="720" y="600" fill="#eb6c36" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">RECOVERABLE</text>
+      <text x="804" y="620" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" font-weight="600" text-anchor="middle">Webhook Dispatcher</text>
+
+      <line x1="40" y1="692" x2="1240" y2="692" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+      <text x="40" y="712" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+      <rect x="40" y="728" width="16" height="12" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1"/>
+      <text x="64" y="738" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Focal policy or ingress</text>
+      <rect x="240" y="728" width="16" height="12" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+      <text x="264" y="738" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Backend</text>
+      <rect x="352" y="728" width="16" height="12" rx="2" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+      <text x="376" y="738" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Durable store</text>
+      <line x1="504" y1="734" x2="536" y2="734" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+      <text x="548" y="738" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Public protocol</text>
+      <line x1="680" y1="734" x2="712" y2="734" stroke="#eb6c36" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <text x="724" y="738" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Governed path</text>
+      <line x1="856" y1="734" x2="888" y2="734" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="900" y="738" fill="#4f5d75" font-size="8" font-family="'Geist', sans-serif">Blocked or return path</text>
+    </svg>
+  </main>
+</body>
+</html>

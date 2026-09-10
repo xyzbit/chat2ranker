@@ -35,6 +35,7 @@ func New(service *app.Service, options ...Options) http.Handler {
 	handler := &Handler{service: service, controlToken: configured.ControlToken, controlURL: strings.TrimRight(configured.ControlURL, "/")}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", handler.health)
+	mux.HandleFunc("GET /api/deployments/{id}/aliases/{alias}/releases", handler.listReleaseHistory)
 	mux.HandleFunc("GET /api/bootstrap", handler.bootstrap)
 	mux.HandleFunc("GET /api/model-connections", handler.listModelConnections)
 	mux.HandleFunc("POST /api/model-connections", handler.createModelConnection)
@@ -51,7 +52,23 @@ func New(service *app.Service, options ...Options) http.Handler {
 	mux.HandleFunc("POST /api/datasets", handler.createDataset)
 	mux.HandleFunc("POST /api/dataset-families/{id}/versions", handler.createDatasetVersion)
 	mux.HandleFunc("POST /api/agents", handler.createAgent)
+	mux.HandleFunc("GET /api/agent-versions/{id}/evaluations", handler.listAgentEvaluations)
 	mux.HandleFunc("POST /api/agent-families/{id}/versions", handler.createAgentVersion)
+	mux.HandleFunc("GET /api/deployments", handler.listDeployments)
+	mux.HandleFunc("POST /api/deployments", handler.createDeployment)
+	mux.HandleFunc("GET /api/deployments/{id}", handler.getDeployment)
+	mux.HandleFunc("POST /api/deployments/{id}/aliases/{alias}/releases", handler.promoteDeploymentAlias)
+	mux.HandleFunc("POST /api/serving-credentials", handler.createServingCredential)
+	mux.HandleFunc("GET /api/serving-credentials", handler.listServingCredentials)
+	mux.HandleFunc("POST /api/serving-credentials/{id}/revoke", handler.revokeServingCredential)
+	mux.HandleFunc("GET /api/responses", handler.listOperatorResponses)
+	mux.HandleFunc("GET /api/responses/{id}", handler.getOperatorResponse)
+	mux.HandleFunc("POST /api/webhook-endpoints/{id}/deliveries/{delivery}/retry", handler.replayWebhookDelivery)
+	mux.HandleFunc("GET /api/webhook-endpoints", handler.listWebhookEndpoints)
+	mux.HandleFunc("POST /api/webhook-endpoints", handler.createWebhookEndpoint)
+	mux.HandleFunc("GET /api/webhook-endpoints/{id}/deliveries", handler.listWebhookDeliveries)
+	mux.HandleFunc("POST /api/webhook-endpoints/{id}/enable", handler.enableWebhookEndpoint)
+	mux.HandleFunc("POST /api/webhook-endpoints/{id}/disable", handler.disableWebhookEndpoint)
 	mux.HandleFunc("GET /api/runs/{id}", handler.getRun)
 	mux.HandleFunc("GET /api/runs/{id}/events", handler.runEvents)
 	mux.HandleFunc("GET /api/runs/{id}/artifacts", handler.getArtifact)
@@ -59,6 +76,10 @@ func New(service *app.Service, options ...Options) http.Handler {
 	mux.HandleFunc("POST /api/internal/control/sessions/bind", handler.bindControlSession)
 	mux.HandleFunc("POST /api/internal/control/commands", handler.executeControlCommand)
 	mux.HandleFunc("POST /api/internal/control/transcript", handler.appendControlTranscript)
+	mux.HandleFunc("POST /v1/responses", handler.createServingResponse)
+	mux.HandleFunc("GET /v1/responses/{id}", handler.getServingResponse)
+	mux.HandleFunc("POST /v1/responses/{id}/cancel", handler.cancelServingResponse)
+	mux.HandleFunc("POST /v1/responses/{id}/approval", handler.decideServingApproval)
 	return recoverMiddleware(cors(mux))
 }
 
@@ -88,7 +109,7 @@ func (h *Handler) saveSystemModel(response http.ResponseWriter, request *http.Re
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Access-Control-Allow-Origin", "*")
-		response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key, X-Rank-Action-Token, X-Rank-Control-Token")
+		response.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, Last-Event-ID, X-Rank-Action-Token, X-Rank-Control-Token")
 		response.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
 		if request.Method == http.MethodOptions {
 			response.WriteHeader(http.StatusNoContent)

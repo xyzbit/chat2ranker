@@ -29,8 +29,18 @@ func Execute(parent context.Context, request workerprotocol.Request, emit func(w
 		response.Error = err.Error()
 		return response
 	}
+	if err := materializeInputAttachments(request); err != nil {
+		response.Error = err.Error()
+		return response
+	}
 	safeRequest := request
 	safeRequest.Credential = ""
+	if len(safeRequest.Spec.InputAttachments) > 0 {
+		safeRequest.Spec.InputAttachments = append([]contract.InputAttachment(nil), safeRequest.Spec.InputAttachments...)
+		for index := range safeRequest.Spec.InputAttachments {
+			safeRequest.Spec.InputAttachments[index].Data = nil
+		}
+	}
 	if safeRequest.ModelConnection != nil {
 		copy := *safeRequest.ModelConnection
 		copy.CredentialRef, copy.APIKey = "", ""
@@ -57,6 +67,9 @@ func Execute(parent context.Context, request workerprotocol.Request, emit func(w
 	result, err := registry.Run(ctx, harness.Invocation{ExecutionID: request.ExecutionID, Spec: request.Spec, Workspace: request.WorkspaceDir, ArtifactDir: request.ArtifactDir, HarnessHome: request.HarnessHome, Metadata: request.Metadata, ModelConnection: request.ModelConnection, Credential: request.Credential, Emit: progress})
 	pricing.Apply(&result, request.Spec, request.ModelConnection)
 	result.DurationMs = time.Since(started).Milliseconds()
+	if err == nil && request.Spec.StructuredOutput != nil {
+		result.Structured, err = contract.DecodeStructuredOutput(request.Spec.StructuredOutput, result.Output)
+	}
 	if err != nil {
 		response.Error = err.Error()
 	} else {
@@ -78,9 +91,31 @@ func validate(request workerprotocol.Request) error {
 	if request.Spec.Kind != contract.KindAgent && request.Spec.Kind != contract.KindJudge {
 		return fmt.Errorf("unsupported execution kind %q", request.Spec.Kind)
 	}
+	if err := contract.ValidateStructuredOutput(request.Spec.StructuredOutput); err != nil {
+		return err
+	}
+	if err := contract.ValidateInputAttachments(request.Spec.InputAttachments); err != nil {
+		return err
+	}
 	for name, value := range map[string]string{"workspaceDir": request.WorkspaceDir, "artifactDir": request.ArtifactDir, "harnessHome": request.HarnessHome} {
 		if !filepath.IsAbs(value) {
 			return fmt.Errorf("%s must be absolute", name)
+		}
+	}
+	return nil
+}
+
+func materializeInputAttachments(request workerprotocol.Request) error {
+	for index, attachment := range request.Spec.InputAttachments {
+		relative := contract.InputAttachmentRelativePath(index, attachment)
+		for _, root := range []string{request.WorkspaceDir, request.ArtifactDir} {
+			path := filepath.Join(root, filepath.FromSlash(relative))
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				return fmt.Errorf("create input attachment directory: %w", err)
+			}
+			if err := writeBytes(path, attachment.Data); err != nil {
+				return fmt.Errorf("write input attachment: %w", err)
+			}
 		}
 	}
 	return nil
@@ -185,7 +220,7 @@ func writeBytes(path string, value []byte) error {
 
 func ParseRequest(reader io.Reader) (workerprotocol.Request, error) {
 	var request workerprotocol.Request
-	err := json.NewDecoder(io.LimitReader(reader, 8<<20)).Decode(&request)
+	err := json.NewDecoder(io.LimitReader(reader, 32<<20)).Decode(&request)
 	return request, err
 }
 

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const ProtocolVersion = 1
+const ProtocolVersion = 2
 
 const (
 	KindAgent = "agent"
@@ -35,6 +35,27 @@ type Spec struct {
 	CandidateOutput   string            `json:"candidateOutput,omitempty"`
 	TimeoutMs         int64             `json:"timeoutMs,omitempty"`
 	Metadata          map[string]string `json:"metadata,omitempty"`
+	StructuredOutput  *StructuredOutput `json:"structuredOutput,omitempty"`
+	InputAttachments  []InputAttachment `json:"inputAttachments,omitempty"`
+}
+
+// StructuredOutput requires one JSON value matching Schema. Execution
+// workers validate the final Harness output before reporting success.
+type StructuredOutput struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Schema      json.RawMessage `json:"schema"`
+}
+
+// InputAttachment is one immutable user-supplied image or file. Data is
+// content-addressed and materialized into the private worker workspace.
+type InputAttachment struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Name      string `json:"name"`
+	MediaType string `json:"mediaType"`
+	Detail    string `json:"detail,omitempty"`
+	Data      []byte `json:"data"`
 }
 
 type SubmitRequest struct {
@@ -72,6 +93,7 @@ type Result struct {
 	Usage            Usage            `json:"usage,omitempty"`
 	Artifacts        []ArtifactRef    `json:"artifacts,omitempty"`
 	Native           json.RawMessage  `json:"native,omitempty"`
+	Structured       json.RawMessage  `json:"structured,omitempty"`
 }
 
 // Execution is the durable control-plane record for one harness invocation.

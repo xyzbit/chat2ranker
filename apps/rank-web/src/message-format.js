@@ -39,6 +39,40 @@ function parseJSON(line) {
   throw new SyntaxError("invalid JSON");
 }
 
+function splitJSONValues(source) {
+  const values = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (start < 0) {
+      if (/\s/.test(character)) continue;
+      if (character !== "{" && character !== "[") return null;
+      start = index;
+      depth = 1;
+      continue;
+    }
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') inString = true;
+    else if (character === "{" || character === "[") depth += 1;
+    else if (character === "}" || character === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        values.push(source.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+  return { values, incomplete: start >= 0 };
+}
+
 function normalizeBlock(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   if (TEXT_TYPES.has(value.type) && typeof value.text === "string") {
@@ -57,15 +91,28 @@ function normalizeBlock(value) {
   return null;
 }
 
-function legacyTextBlocks(text) {
+function rankLineBlocks(line, streaming) {
+  const split = splitJSONValues(line);
+  if (!split || (split.incomplete && !streaming)) return null;
+  try {
+    const blocks = split.values.map((value) => normalizeBlock(parseJSON(value)));
+    if (blocks.some((block) => !block)) return null;
+    return blocks.length || (streaming && /^\{\s*"type"\s*:/.test(line)) ? blocks : null;
+  } catch { return null; /* Non-protocol JSON remains ordinary message content. */ }
+}
+
+function legacyTextBlocks(text, streaming) {
   const lines = text.split("\n");
   const blocks = [];
+  let structured = false;
   let paragraph = [];
   const flush = () => { if (paragraph.length) blocks.push({ type: "paragraph", text: paragraph.join("\n").trim() }); paragraph = []; };
   const cells = (line) => line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
   for (let index = 0; index < lines.length;) {
     const line = lines[index].trim();
     if (!line) { flush(); index += 1; continue; }
+    const rankBlocks = rankLineBlocks(line, streaming);
+    if (rankBlocks) { flush(); blocks.push(...rankBlocks); structured = true; index += 1; continue; }
     if (index + 1 < lines.length && line.includes("|") && cells(lines[index + 1]).length > 1 && cells(lines[index + 1]).every((cell) => /^:?-{3,}:?$/.test(cell))) {
       flush();
       const headers = cells(line);
@@ -94,30 +141,49 @@ function legacyTextBlocks(text) {
     index += 1;
   }
   flush();
-  return blocks;
+  return { blocks, structured };
 }
 
-function legacyBlocks(text) {
-  return text.split(/(```[\s\S]*?```)/g).flatMap((section) => {
+function legacyBlocks(text, streaming) {
+  const blocks = [];
+  let structured = false;
+  for (const section of text.split(/(```[\s\S]*?```)/g)) {
     const match = section.match(/^```([^\n]*)\n?([\s\S]*?)```$/);
-    return match ? [{ type: "code", language: match[1].trim(), code: match[2].replace(/\n$/, "") }] : legacyTextBlocks(section);
-  });
+    if (match) blocks.push({ type: "code", language: match[1].trim(), code: match[2].replace(/\n$/, "") });
+    else {
+      const parsed = legacyTextBlocks(section, streaming);
+      blocks.push(...parsed.blocks);
+      structured ||= parsed.structured;
+    }
+  }
+  return { format: structured ? "mixed" : "legacy-markdown", blocks };
 }
 
 export function parseMessageContent(content, { streaming = false } = {}) {
   const source = String(content || "").trim();
   if (!source) return { format: "empty", blocks: [] };
   const candidate = source.replace(/^```(?:jsonl)?\s*\n/i, "").replace(/\n```$/, "");
-  const lines = candidate.split("\n").map((line) => line.trim()).filter(Boolean);
+  const splitValues = splitJSONValues(candidate);
+  const useSplitValues = splitValues && (!splitValues.incomplete || streaming) && splitValues.values.length;
+  const lines = useSplitValues
+    ? splitValues.values
+    : candidate.split("\n").map((line) => line.trim()).filter(Boolean);
   const blocks = [];
+  let rankMessage = false;
   for (let index = 0; index < lines.length; index += 1) {
     try {
-      const block = normalizeBlock(parseJSON(lines[index]));
+      const value = parseJSON(lines[index]);
+      rankMessage ||= ["summary", "paragraph", "note", "list", "facts", "code", "error"].includes(value?.type);
+      const block = normalizeBlock(value);
       if (!block) throw new Error("unsupported block");
       blocks.push(block);
     } catch {
       if (streaming && index === lines.length - 1 && candidate.trimStart().startsWith("{")) return { format: "rank-jsonl", blocks };
-      return { format: "legacy-markdown", blocks: legacyBlocks(source) };
+      if (rankMessage) {
+        blocks.push({ type: "error", formatError: true, text: "部分回复格式异常，请重试。", detail: "" });
+        continue;
+      }
+      return legacyBlocks(source, streaming);
     }
   }
   return { format: "rank-jsonl", blocks };

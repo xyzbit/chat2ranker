@@ -1,5 +1,7 @@
 # Rank Web
 
+`ManagementUI.jsx` owns shared page headings, errors, status pills, empty states, pagination, and inline confirmations. Pages import these directly rather than through another page module. Cursor availability, requests, and confirmation actions remain caller-owned.
+
 English | [中文](README.zh.md)
 
 This directory contains the Control DSH product assembly and conversation-first UI for chat2ranker.
@@ -12,6 +14,20 @@ The assembly mounts the Rank Control Host plugin, a persistent experiment Sessio
 
 The message parser repairs common model-generated quote, escape, and trailing-comma mistakes before using the readable legacy-text fallback.
 
+Assistant avatars use a solid blue circle with white eyes. Idle eyes glance left and right; a mouse within 140 CSS pixels takes over the gaze. Leaving that area, scrolling, or losing window focus restores idle motion. Reduced-motion preferences disable both idle animation and mouse tracking; touch input does not move the eyes.
+
+The default floating companion shares this face and gaze behavior. Its launcher opens the existing assistant drawer; enablement, custom sprite imports, and the working-status dot remain owned by the companion settings.
+
+Conversation and recent-session regions hide their scrollbars and fade only edges with additional content. Keyboard scrolling remains available; conversation updates follow the tail only when the reader is already near it. Forms use solid backgrounds, while fixed mobile navigation uses subtle translucency. Native modal dialogs contain focus and restore it on dismissal; searchable model menus use the browser top layer and support arrow keys, Enter, and Escape. See the [UI interaction decision](../../.agents/notes/implemented/feature/2026-09-10-rank-ui-interaction.md).
+
+With the local acceptance conversation available, `playwright-cli run-code --filename apps/rank-web/tests/ui-layout.browser.js` verifies the assembled pages, desktop/mobile layout, language switching, modal focus, conversation scrolling, and model selection without submitting forms or model requests. Screenshots are written to `output/playwright/`.
+
+With a configured local Rank conversation open in Playwright CLI, `playwright-cli run-code --filename apps/rank-web/tests/assistant-avatar.browser.js` checks gaze interaction and saves desktop/mobile screenshots under `output/playwright/` without sending model requests.
+
 Model selection merges the built-in catalog with models discovered through the saved connection, labels their source, supports search, and progressively discloses manual model IDs. Saved credentials can resynchronize the model list; a failed synchronization keeps the last successful list so a temporary Provider outage does not erase configuration.
 
 Run the complete local assembly from the repository root with `pnpm rank:dev`. See [`rank/docs/local-acceptance.md`](../../rank/docs/local-acceptance.md) for keyless and real-provider acceptance flows.
+
+All single-choice fields use `SelectField`, backed by Radix Select. Pages supply `value`, `onValueChange`, and labeled options; the shared component owns empty and disabled choices, required-field validation, keyboard navigation, focus restoration, and modal-aware menu placement. Editable model suggestions and searchable model discovery keep their specialized inputs. `theme.css` owns visual tokens, `controls.css` owns shared control appearance and focus, and `ui-config.js` owns menu positioning. Language choices live in `i18n.js`; provider and protocol choices live in `model-connections.js`. Form drafts remain local and model catalogs come from the service. See the [shared controls decision](../../.agents/notes/implemented/feature/2026-09-10-rank-shared-controls.md).
+
+Shell language controls share one translation-icon component with a localized tooltip and accessible name. `playwright-cli run-code --filename apps/rank-web/tests/ui-controls.browser.js` checks the assembled settings and filters, desktop/mobile layout, modal ownership, nested Escape behavior, disabled placeholders, and selectable empty filters without saving forms. `playwright-cli run-code --filename apps/rank-web/tests/deployment-switcher.browser.js` covers deployment navigation and language toggling.
