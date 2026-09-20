@@ -4,7 +4,7 @@ Status: accepted
 
 ## Context
 
-chat2ranker uses DSH for the product conversation while evaluating agents implemented with DSH and other harnesses. Running a tested DSH Agent inside the Control DSH process would give one harness different isolation, lifecycle, and state-sharing behavior from Pi, Claude Code, Codex, Hermes, and external runners.
+agentkiln uses DSH for the product conversation while evaluating agents implemented with DSH and other harnesses. Running a tested DSH Agent inside the Control DSH process would give one harness different isolation, lifecycle, and state-sharing behavior from Pi, Claude Code, Codex, Hermes, and external runners.
 
 ## Decision
 

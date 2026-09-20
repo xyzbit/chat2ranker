@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 // ListReleaseHistory uses the alias/revision index and does not load execution artifacts.

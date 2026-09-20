@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
 )
 
 // ExecutorEvent is a non-terminal progress event emitted while a harness

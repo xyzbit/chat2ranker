@@ -140,8 +140,8 @@
     "demo:acp": "node --import tsx packages/examples/acp-demo/src/bin.ts --config examples/acp-agent/cordis.yml",
     "rank:dev": "node scripts/rank-dev.mjs",
     "rank:build": "node scripts/rank-build.mjs",
-    "rank:package": "node scripts/release-chat2ranker.mjs",
-    "rank:test": "go -C execution/backend test ./... && go -C rank/backend test ./... && pnpm --filter @xyzbit/chat2ranker-web test",
+    "rank:package": "node scripts/release-agentkiln.mjs",
+    "rank:test": "go -C execution/backend test ./... && go -C rank/backend test ./... && pnpm --filter @xyzbit/agentkiln-web test",
     "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
     "dev:web": "tsx scripts/dev-web.ts --poll",
     "postinstall": "node scripts/install-lefthook.mjs"

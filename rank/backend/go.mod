@@ -1,14 +1,14 @@
-module github.com/xyzbit/chat2ranker/rank/backend
+module github.com/xyzbit/agentkiln/rank/backend
 
 go 1.24.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/xyzbit/chat2ranker/execution/backend v0.0.0
+	github.com/xyzbit/agentkiln/execution/backend v0.0.0
 	modernc.org/sqlite v1.45.0
 )
 
-replace github.com/xyzbit/chat2ranker/execution/backend => ../../execution/backend
+replace github.com/xyzbit/agentkiln/execution/backend => ../../execution/backend
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 type ArtifactContent struct {

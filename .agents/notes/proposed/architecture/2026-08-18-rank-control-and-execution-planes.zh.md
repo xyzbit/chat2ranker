@@ -6,7 +6,7 @@ Status: proposed
 
 ## 问题
 
-chat2ranker 使用 DSH 承载产品对话，同时需要评测由 DSH、Pi、Claude Code、Codex、Hermes 及未来 Harness 实现的 Agent。如果在 Control DSH 进程内创建被测 DSH Agent，它会共享其他 Harness 无法访问的 Cordis 服务、Session 持久化、工作区状态、凭据和插件全局状态。这样的结果比较了不同的执行模型，也允许被测代码影响产品控制 Session。
+agentkiln 使用 DSH 承载产品对话，同时需要评测由 DSH、Pi、Claude Code、Codex、Hermes 及未来 Harness 实现的 Agent。如果在 Control DSH 进程内创建被测 DSH Agent，它会共享其他 Harness 无法访问的 Cordis 服务、Session 持久化、工作区状态、凭据和插件全局状态。这样的结果比较了不同的执行模型，也允许被测代码影响产品控制 Session。
 
 DSH Session 日志保存 Agent 执行历史，但不负责数据集版本、Agent 版本、实验事务、跨 Harness 调度、Judge 结果以及聚合后的成本与通过率记录。
 

@@ -1,4 +1,4 @@
-module github.com/xyzbit/chat2ranker/execution/backend
+module github.com/xyzbit/agentkiln/execution/backend
 
 go 1.24.0
 

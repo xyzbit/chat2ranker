@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
-  title: Chat2Ranker Agent Serving API
+  title: AgentKiln Agent Serving API
   version: 0.6.0
   description: >-
     OpenAI Responses-compatible API for invoking a governed
-    Chat2Ranker Deployment. The model field selects deployment@version-or-alias,
+    AgentKiln Deployment. The model field selects deployment@version-or-alias,
     and previous_response_id continues a durable version-pinned Conversation.
 servers:
   - url: http://127.0.0.1:8787

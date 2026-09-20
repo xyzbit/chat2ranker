@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/domain"
 	_ "modernc.org/sqlite"
 )
 

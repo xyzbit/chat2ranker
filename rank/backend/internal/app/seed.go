@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 func (s *Service) EnsureSeed(ctx context.Context) error {

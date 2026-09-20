@@ -6,7 +6,7 @@ English | [中文](2026-08-18-rank-control-and-execution-planes.zh.md)
 
 ## Problem
 
-chat2ranker uses DSH to host the product conversation and also needs to evaluate agents implemented with DSH, Pi, Claude Code, Codex, Hermes, and future harnesses. Creating a tested DSH Agent inside the Control DSH process would share Cordis services, Session persistence, workspace state, credentials, and plugin globals that other harnesses cannot access. The result would compare different execution models and allow tested code to affect the product control Session.
+agentkiln uses DSH to host the product conversation and also needs to evaluate agents implemented with DSH, Pi, Claude Code, Codex, Hermes, and future harnesses. Creating a tested DSH Agent inside the Control DSH process would share Cordis services, Session persistence, workspace state, credentials, and plugin globals that other harnesses cannot access. The result would compare different execution models and allow tested code to affect the product control Session.
 
 DSH Session logs preserve agent execution history, but they do not own dataset versions, agent versions, experiment transactions, cross-harness scheduling, Judge results, or aggregate cost and pass-rate records.
 

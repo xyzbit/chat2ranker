@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
 )
 
 const Version = 1
 
-const EventPrefix = "@@chat2ranker-event "
+const EventPrefix = "@@agentkiln-event "
 
 type Request struct {
 	ProtocolVersion int                       `json:"protocolVersion"`

@@ -806,7 +806,7 @@ function ReleaseComparisonCard({ payload, deployments, agents, runs, t, onOpenDe
         evidenceRunId: evidence?.id || "",
         policyResult: evidence ? "passed" : "manual_override",
         actor: "local-operator",
-        reason: evidence ? "evaluated release from Rank conversation" : reason.trim(),
+        reason: evidence ? "evaluated release from AgentKiln conversation" : reason.trim(),
       });
       await onReleased();
       setReleased(true);
@@ -1003,7 +1003,7 @@ export function App() {
           if (!existing) setBootstrap(await rankApi.bootstrap());
         }
       } catch (loadError) {
-        if (!cancelled) setError(`无法连接 Rank 本地 API：${loadError.message}`);
+        if (!cancelled) setError(`无法连接 AgentKiln 本地 API：${loadError.message}`);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1344,7 +1344,7 @@ export function App() {
   }
 
   if (loading) return <div className="app-state"><CircleNotch size={24} className="spin" /><span>正在打开实验…</span></div>;
-  if (!experiment || !bootstrap) return <div className="app-state error"><WarningCircle size={24} /><strong>Rank 没有启动</strong><span>{error}</span><button type="button" onClick={() => window.location.reload()}>重试</button></div>;
+  if (!experiment || !bootstrap) return <div className="app-state error"><WarningCircle size={24} /><strong>AgentKiln 没有启动</strong><span>{error}</span><button type="button" onClick={() => window.location.reload()}>重试</button></div>;
   const configuredRoles = new Set((bootstrap.systemModels || []).filter((item) => item.connection?.status === "verified").map((item) => item.role));
   const demoMode = !configuredRoles.has("control") || !configuredRoles.has("judge");
   const agentRoute = route === "agent";

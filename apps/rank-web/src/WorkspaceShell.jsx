@@ -73,7 +73,7 @@ export function WorkspaceShell({
     <div className="product-shell">
       <aside className="product-sidebar" aria-label={t("primaryNavigation")}>
         <header className="sidebar-header">
-          <button className="product-brand" type="button" onClick={() => onNavigate("agent")} aria-label="Rank">Rank</button>
+          <button className="product-brand" type="button" onClick={() => onNavigate("agent")} aria-label="AgentKiln">AgentKiln</button>
           <button
             className={searchOpen ? "sidebar-search-toggle active" : "sidebar-search-toggle"}
             type="button"
@@ -144,7 +144,7 @@ export function WorkspaceShell({
       </aside>
 
       <header className="product-topbar">
-        <button className="product-brand" type="button" onClick={() => onNavigate("agent")} aria-label="Rank">Rank</button>
+        <button className="product-brand" type="button" onClick={() => onNavigate("agent")} aria-label="AgentKiln">AgentKiln</button>
         <div className="product-topbar-actions">
           <button className="mobile-history-action" type="button" onClick={onOpenHistory} aria-label={t("recentConversations")} title={t("recentConversations")}><ClockCounterClockwise size={20} /></button>
           <LanguageControl onChange={onLocaleChange} t={t} />

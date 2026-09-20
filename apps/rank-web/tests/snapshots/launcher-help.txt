@@ -1,0 +1,9 @@
+AgentKiln 1.2.3
+
+用法：
+  agentkiln start [--detach] [--home ~/.agentkiln]
+  agentkiln stop
+  agentkiln status
+  agentkiln open
+
+首次启动会自动下载当前平台运行包并打开浏览器。

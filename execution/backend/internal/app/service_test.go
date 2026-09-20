@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/execution/backend/harness"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/app"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/executor"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/harness"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/app"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/executor"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/sqlite"
 )
 
 func TestExecutionServicePersistsAndRunsAnIsolatedInvocation(t *testing.T) {

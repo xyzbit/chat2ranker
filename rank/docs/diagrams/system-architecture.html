@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>chat2ranker · System architecture</title>
+  <title>agentkiln · System architecture</title>
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Inter:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -79,7 +79,7 @@
 
     <div class="diagram-shell">
       <svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rank-architecture-title rank-architecture-desc">
-        <title id="rank-architecture-title">chat2ranker system architecture</title>
+        <title id="rank-architecture-title">agentkiln system architecture</title>
         <desc id="rank-architecture-desc">Three runtime zones show the browser and Control DSH, the Go Rank business control plane with repository-backed state, and the generic Execution Service with isolated candidate and Judge workers.</desc>
         <defs>
           <pattern id="rank-arch-dots" width="24" height="24" patternUnits="userSpaceOnUse">
@@ -212,7 +212,7 @@
     </div>
 
     <footer>
-      <span>chat2ranker · architecture v0.2</span>
+      <span>agentkiln · architecture v0.2</span>
       <span>Control DSH and tested DSH never share runtime state</span>
     </footer>
   </main>

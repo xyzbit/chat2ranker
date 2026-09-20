@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
 )
 
 func TestApplyCostPriority(t *testing.T) {

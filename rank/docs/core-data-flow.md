@@ -2,7 +2,7 @@
 
 This reference defines the data exchanged while preparing and running an experiment.
 
-![chat2ranker core experiment data flow](diagrams/rendered/core-data-flow.png)
+![agentkiln core experiment data flow](diagrams/rendered/core-data-flow.png)
 
 ## Prepare an experiment
 

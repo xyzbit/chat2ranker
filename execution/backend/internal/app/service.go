@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/domain"
 )
 
 const artifactReadLimit = 1 << 20

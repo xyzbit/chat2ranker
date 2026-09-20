@@ -40,7 +40,7 @@ class RankDemoAdapter extends LlmAdapter {
   #counter = 0;
 
   async resolveModel(provider, model) {
-    return { provider, id: model, name: "Rank deterministic acceptance model", context: { contextWindow: 32_000 } };
+    return { provider, id: model, name: "AgentKiln deterministic acceptance model", context: { contextWindow: 32_000 } };
   }
 
   async *stream(options) {
@@ -89,7 +89,7 @@ class RankDemoAdapter extends LlmAdapter {
       } else if (/(?:多个|多种|同时|并行).{0,8}agent|agent.{0,8}(?:多个|同时|并行)/i.test(text)) {
 		chunks = textChunks(rankMessage(
 		  { type: "summary", text: "支持多 Agent 对比" },
-		  { type: "paragraph", text: "在运行确认卡中添加 2–4 个 Agent 版本即可；Rank 会创建一个对比组，并为每个 Agent 创建独立 Run。" },
+		  { type: "paragraph", text: "在运行确认卡中添加 2–4 个 Agent 版本即可；AgentKiln 会创建一个对比组，并为每个 Agent 创建独立 Run。" },
 		));
 	  } else if (/实验(?:表现|数据|结果)|运行(?:表现|数据|结果)|对比.*(?:agent|运行)/i.test(text)) {
         chunks = toolChunks(callId, "rank_show_experiment_results", {});
@@ -119,7 +119,7 @@ const objectOutput = {
 async function requestJSON(url, options = {}) {
   const response = await fetch(url, options);
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error?.message || `Rank API ${response.status}`);
+  if (!response.ok) throw new Error(payload.error?.message || `AgentKiln API ${response.status}`);
   return payload;
 }
 
@@ -155,7 +155,7 @@ export default class RankControl extends Service {
     };
     agentCtx.tools.register({
       name: "rank_list_assets",
-      description: "List reusable Rank dataset and Agent versions before choosing or creating an asset.",
+      description: "List reusable AgentKiln dataset and Agent versions before choosing or creating an asset.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       output: objectOutput,
       execute: async (_args, exec) => {
@@ -178,7 +178,7 @@ export default class RankControl extends Service {
       type: "object",
       properties: {
         name: { type: "string" },
-        provider: { type: "string", description: "Provider id from the Rank model catalog, for example deepseek or custom." },
+        provider: { type: "string", description: "Provider id from the AgentKiln model catalog, for example deepseek or custom." },
         protocol: { type: "string", enum: ["openai-chat-completions", "openai-responses"] },
         baseUrl: { type: "string" },
         defaultModel: { type: "string" },
@@ -296,7 +296,7 @@ export default class RankControl extends Service {
     });
     agentCtx.tools.register({
       name: "rank_create_agent",
-      description: "Create and select the first immutable version of a Rank Agent configuration.",
+      description: "Create and select the first immutable version of a AgentKiln Agent configuration.",
       parameters: {
         type: "object",
         properties: {
@@ -334,10 +334,10 @@ export default class RankControl extends Service {
     });
     agentCtx.tools.register({
         name: "rank_select_dataset",
-        description: "Select one existing immutable DatasetVersion for the current Rank experiment.",
+        description: "Select one existing immutable DatasetVersion for the current AgentKiln experiment.",
         parameters: {
           type: "object",
-          properties: { datasetVersionId: { type: "string", description: "Exact DatasetVersion id from Rank." } },
+          properties: { datasetVersionId: { type: "string", description: "Exact DatasetVersion id from AgentKiln." } },
           required: ["datasetVersionId"],
           additionalProperties: false,
         },
@@ -346,10 +346,10 @@ export default class RankControl extends Service {
       });
     agentCtx.tools.register({
         name: "rank_select_agent",
-        description: "Select one existing immutable AgentVersion for the current Rank experiment.",
+        description: "Select one existing immutable AgentVersion for the current AgentKiln experiment.",
         parameters: {
           type: "object",
-          properties: { agentVersionId: { type: "string", description: "Exact AgentVersion id from Rank." } },
+          properties: { agentVersionId: { type: "string", description: "Exact AgentVersion id from AgentKiln." } },
           required: ["agentVersionId"],
           additionalProperties: false,
         },

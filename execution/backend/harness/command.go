@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
 )
 
 const retainedOutputBytes = 4 << 20

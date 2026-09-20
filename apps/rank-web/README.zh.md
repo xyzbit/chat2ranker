@@ -4,7 +4,7 @@
 
 [English](README.md) | 中文
 
-本目录承载 chat2ranker 的 Control DSH 产品组合与会话优先 UI。
+本目录承载 agentkiln 的 Control DSH 产品组合与会话优先 UI。
 
 应用只负责浏览器入口与 DSH 插件组合。实验状态、调度、结果和 Runner 生命周期由 [`rank/backend/`](../../rank/backend/README.md) 下的 Go Rank 服务负责。
 

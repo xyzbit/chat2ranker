@@ -16,10 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/execution/backend/harness"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/domain"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/workerprotocol"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/harness"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/workerprotocol"
 )
 
 type LocalConfig struct {

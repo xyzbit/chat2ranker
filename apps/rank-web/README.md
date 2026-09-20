@@ -4,7 +4,7 @@
 
 English | [中文](README.zh.md)
 
-This directory contains the Control DSH product assembly and conversation-first UI for chat2ranker.
+This directory contains the Control DSH product assembly and conversation-first UI for agentkiln.
 
 The application owns only the browser entry point and DSH plugin composition. Experiment state, scheduling, results, and Runner lifecycle belong to the Go Rank service under [`rank/backend/`](../../rank/backend/README.md).
 

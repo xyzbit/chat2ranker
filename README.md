@@ -1,10 +1,10 @@
-# Chat2Ranker
+# AgentKiln
 
-[![npm](https://img.shields.io/npm/v/@xyzbit/chat2ranker?color=5454e8)](https://www.npmjs.com/package/@xyzbit/chat2ranker) [![Release](https://img.shields.io/github/v/release/xyzbit/chat2ranker)](https://github.com/xyzbit/chat2ranker/releases/latest) [![CI](https://github.com/xyzbit/chat2ranker/actions/workflows/ci.yml/badge.svg)](https://github.com/xyzbit/chat2ranker/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/xyzbit/chat2ranker)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/xyzbit/agentkiln)](https://github.com/xyzbit/agentkiln/releases/latest) [![CI](https://github.com/xyzbit/agentkiln/actions/workflows/ci.yml/badge.svg)](https://github.com/xyzbit/agentkiln/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/xyzbit/agentkiln)](LICENSE)
 
 English | [中文](README.zh.md)
 
-Chat2Ranker is an Agent lifecycle platform for preparing, versioning, evaluating, releasing, and serving Agents. The local product turns a goal into a versioned dataset, comparable Agent runs, inspectable evidence, controlled release aliases, and authenticated text-serving endpoints.
+AgentKiln is an Agent lifecycle platform for preparing, versioning, evaluating, releasing, and serving Agents. The local product turns a goal into a versioned dataset, comparable Agent runs, inspectable evidence, controlled release aliases, and authenticated text-serving endpoints.
 
 The product keeps evaluation and production on one version lineage: an exact Agent version is tested, promoted to an environment alias such as `production`, resolved once when a request is accepted, and retained in the invocation record. See the [Agent Serving API](rank/docs/serving-api.md) for the implemented subset and the [Agent lifecycle and serving proposal](.agents/notes/proposed/feature/2026-09-08-agent-lifecycle-serving.md) for later phases.
 
@@ -17,9 +17,9 @@ The product keeps evaluation and production on one version lineage: an exact Age
 
 ## See one experiment end to end
 
-[![Create, run, and inspect a Chat2Ranker experiment](rank/docs/assets/chat2ranker-demo-poster.jpg)](rank/docs/assets/chat2ranker-demo.mp4)
+[![Create, run, and inspect an AgentKiln experiment](rank/docs/assets/agentkiln-demo-poster.jpg)](rank/docs/assets/agentkiln-demo.mp4)
 
-Describe one goal, let Rank prepare reusable data and Agents, confirm the run, compare quality against cost or duration, and open the side workspace only when you need details. Click the image to play the 1080p video.
+Describe one goal, let AgentKiln prepare reusable data and Agents, confirm the run, compare quality against cost or duration, and open the side workspace only when you need details. Click the image to play the 1080p video.
 
 <a id="run"></a>
 
@@ -27,11 +27,13 @@ Describe one goal, let Rank prepare reusable data and Agents, confirm the run, c
 
 Requires Node.js 22.19 or newer on macOS or Linux, x64 or arm64.
 
+This command requires a published AgentKiln npm package and matching runtime release; use the source instructions below before those artifacts are available.
+
 ```sh
-npx -y @xyzbit/chat2ranker@latest start
+npx -y @xyzbit/agentkiln@latest start
 ```
 
-On first open, choose a provider and model, then enter an API key. Describe the outcome you want, such as “Build a Web research dataset and compare two agents on accuracy and cost.” Rank asks only for missing information and waits for explicit confirmation in the run card.
+On first open, choose a provider and model, then enter an API key. Describe the outcome you want, such as “Build a Web research dataset and compare two agents on accuracy and cost.” AgentKiln asks only for missing information and waits for explicit confirmation in the run card.
 
 See the [one-minute quick start](rank/docs/quickstart.md) for first-run setup, background operation, and isolated data directories.
 
@@ -53,8 +55,8 @@ The Go Rank service owns experiments, frozen versions, scheduling, and aggregati
 ## Run from source
 
 ```sh
-git clone https://github.com/xyzbit/chat2ranker.git
-cd chat2ranker
+git clone https://github.com/xyzbit/agentkiln.git
+cd agentkiln
 pnpm install
 pnpm rank:dev
 ```
@@ -63,6 +65,6 @@ See [local development and acceptance](rank/docs/local-acceptance.md) for source
 
 ## Contributing
 
-Issues and pull requests are welcome. If Chat2Ranker is useful to you, consider starring the repository.
+Issues and pull requests are welcome. If AgentKiln is useful to you, consider starring the repository.
 
 Released under the [MIT License](LICENSE).

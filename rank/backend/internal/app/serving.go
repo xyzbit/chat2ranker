@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 var responseFormatNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)

@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 var deploymentNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)

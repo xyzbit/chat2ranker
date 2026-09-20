@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/workerprotocol"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/workerprotocol"
 )
 
 func workerAttachment(name, mediaType, value string) contract.InputAttachment {

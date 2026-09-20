@@ -18,10 +18,10 @@ if (platform !== hostPlatform() || arch !== hostArch()) throw new Error("DSH 包
 const product = JSON.parse(await readFile(resolve(root, "apps/rank-web/package.json"), "utf8"));
 const version = option("version", product.version);
 const target = `${platform}-${arch}`;
-const output = resolve(root, "dist/chat2ranker");
+const output = resolve(root, "dist/agentkiln");
 const runtime = resolve(output, `runtime-${target}`);
 const npmStage = resolve(output, "npm-package");
-const archiveName = `chat2ranker-${version}-${target}.tar.gz`;
+const archiveName = `agentkiln-${version}-${target}.tar.gz`;
 const archive = resolve(output, archiveName);
 const dshVersion = "0.1.0-rc.8";
 
@@ -61,7 +61,7 @@ if (!args.includes("--skip-build")) {
     run("go", ["build", "-trimpath", "-ldflags", "-s -w", "-o", resolve(runtime, "bin/rankd"), "./cmd/rankd"], { cwd: resolve(root, "rank/backend"), env: { ...process.env, CGO_ENABLED: "0", GOOS: platform, GOARCH: arch === "x64" ? "amd64" : arch } }),
     run("go", ["build", "-trimpath", "-ldflags", "-s -w", "-o", resolve(runtime, "bin/executiond"), "./cmd/executiond"], { cwd: resolve(root, "execution/backend"), env: { ...process.env, CGO_ENABLED: "0", GOOS: platform, GOARCH: arch === "x64" ? "amd64" : arch } }),
     run("go", ["build", "-trimpath", "-ldflags", "-s -w", "-o", resolve(runtime, "bin/execution-worker"), "./cmd/execution-worker"], { cwd: resolve(root, "execution/backend"), env: { ...process.env, CGO_ENABLED: "0", GOOS: platform, GOARCH: arch === "x64" ? "amd64" : arch } }),
-    run("pnpm", ["--filter", "@xyzbit/chat2ranker-web", "build"], { env: { ...process.env, CI: process.env.CI || "true" } }),
+    run("pnpm", ["--filter", "@xyzbit/agentkiln-web", "build"], { env: { ...process.env, CI: process.env.CI || "true" } }),
   ]);
 } else {
   await Promise.all(["rankd", "executiond", "execution-worker"].map((name) => cp(resolve(root, `rank/var/bin/${name}`), resolve(runtime, `bin/${name}`))));
@@ -93,24 +93,24 @@ const hash = createHash("sha256").update(await readFile(archive)).digest("hex");
 await writeFile(`${archive}.sha256`, `${hash}  ${archiveName}\n`);
 
 const packageJSON = {
-  name: "@xyzbit/chat2ranker",
+  name: "@xyzbit/agentkiln",
   version,
   description: "Conversation-first local Agent evaluation platform",
   license: "MIT",
   type: "module",
-  bin: { chat2ranker: "cli.mjs" },
+  bin: { agentkiln: "cli.mjs" },
   files: ["cli.mjs"],
   engines: { node: ">=22.19.0" },
   publishConfig: { access: "public" },
-  repository: { type: "git", url: "git+https://github.com/xyzbit/chat2ranker.git" },
+  repository: { type: "git", url: "git+https://github.com/xyzbit/agentkiln.git" },
 };
 await Promise.all([
-  cp(resolve(root, "scripts/chat2ranker-cli.mjs"), resolve(npmStage, "cli.mjs")),
+  cp(resolve(root, "scripts/agentkiln-cli.mjs"), resolve(npmStage, "cli.mjs")),
   writeFile(resolve(npmStage, "package.json"), `${JSON.stringify(packageJSON, null, 2)}\n`),
-  writeFile(resolve(npmStage, "README.md"), `# Chat2Ranker\n\n\`npx -y @xyzbit/chat2ranker start\` starts the local service and opens the browser. User data is stored in \`~/.chat2ranker\`.\n`),
+  writeFile(resolve(npmStage, "README.md"), `# AgentKiln\n\n\`npx -y @xyzbit/agentkiln start\` starts the local service and opens the browser. User data is stored in \`~/.agentkiln\`.\n`),
 ]);
 await chmod(resolve(npmStage, "cli.mjs"), 0o755);
 await run("npm", ["pack", npmStage, "--pack-destination", output]);
 
-const npmArchive = resolve(output, `xyzbit-chat2ranker-${version}.tgz`);
-process.stdout.write(`\n发布产物已生成：\n  ${archive}\n  ${archive}.sha256\n  ${npmArchive}\n\n本机验收：\n  npx -y --package ${npmArchive} chat2ranker start --runtime-archive ${archive} --home /tmp/chat2ranker-clean\n\n正式发布：\n  gh release create v${version} ${archive} ${archive}.sha256\n  npm publish ${npmArchive} --access public\n`);
+const npmArchive = resolve(output, `xyzbit-agentkiln-${version}.tgz`);
+process.stdout.write(`\n发布产物已生成：\n  ${archive}\n  ${archive}.sha256\n  ${npmArchive}\n\n本机验收：\n  npx -y --package ${npmArchive} agentkiln start --runtime-archive ${archive} --home /tmp/agentkiln-clean\n\n正式发布：\n  gh release create v${version} ${archive} ${archive}.sha256\n  npm publish ${npmArchive} --access public\n`);

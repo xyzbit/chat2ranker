@@ -108,7 +108,7 @@ async function fileCount(directory) {
 }
 
 test("Rank runs candidate and Judge through executiond with isolated workers and readable artifacts", { timeout: 90_000 }, async () => {
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "chat2ranker-stage5-"));
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "agentkiln-stage5-"));
   const binaryRoot = path.join(temporaryRoot, "bin");
   await mkdir(binaryRoot);
   const rankdBinary = path.join(binaryRoot, "rankd");
@@ -305,7 +305,7 @@ test("Rank runs candidate and Judge through executiond with isolated workers and
 });
 
 test("Serving resolves a Deployment, executes its pinned Agent version, and emits Responses events", { timeout: 45_000 }, async () => {
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "chat2ranker-serving-"));
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "agentkiln-serving-"));
   const binaryRoot = path.join(temporaryRoot, "bin");
   await mkdir(binaryRoot);
   const rankdBinary = path.join(binaryRoot, "rankd");

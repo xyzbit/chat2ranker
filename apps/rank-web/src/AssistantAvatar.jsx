@@ -1,4 +1,4 @@
-/** Rank's decorative avatar, with idle glances and nearby mouse tracking. */
+/** AgentKiln's decorative avatar, with idle glances and nearby mouse tracking. */
 import { useEffect, useRef } from "react";
 
 /** Render an unfocusable avatar that becomes still when reduced motion is enabled. */

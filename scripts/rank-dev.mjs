@@ -11,7 +11,7 @@ function option(name) {
   return index >= 0 ? process.argv[index + 1] : "";
 }
 
-const variableRoot = resolve(option("home") || option("data-dir") || process.env.CHAT2RANKER_HOME || resolve(root, "rank/var"));
+const variableRoot = resolve(option("home") || option("data-dir") || process.env.AGENTKILN_HOME || resolve(root, "rank/var"));
 const binaryRoot = resolve(variableRoot, "bin");
 const rankdBinary = resolve(binaryRoot, "rankd");
 const executiondBinary = resolve(binaryRoot, "executiond");
@@ -159,7 +159,7 @@ launch("rankd", rankdBinary, [
 launch("control-dsh", process.execPath, ["apps/rank-web/control-host/src/main.mjs"], { env: { ...sharedEnv, RANK_DSH_HOME: resolve(variableRoot, "dsh-control") } });
 launch("rank-web", process.execPath, [resolve(root, "apps/rank-web/node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "4173", "--strictPort"], { cwd: resolve(root, "apps/rank-web"), env: sharedEnv });
 
-process.stdout.write("\nRank is starting at http://127.0.0.1:4173\n");
+process.stdout.write("\nAgentKiln is starting at http://127.0.0.1:4173\n");
 process.stdout.write(`Models: ${systemModels.control ? `${systemModels.control.connection.provider}/${systemModels.control.model}` : "browser setup required"}\n\n`);
 process.on("SIGINT", () => void stop(130));
 process.on("SIGTERM", () => void stop(0));

@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/app"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/httpapi"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/app"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/httpapi"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlite"
 )
 
 func requestJSON(t *testing.T, client *http.Client, method, url string, body any, headers map[string]string) (int, []byte) {

@@ -7,12 +7,12 @@ import { AssistantAvatar } from "./AssistantAvatar.jsx";
 /** One persisted browser preference controls both the launcher and settings. */
 export function useCompanion() {
   const [enabled,setEnabled]=useState(()=>localStorage.getItem("rank.companion.enabled")!=="false");
-  const [pet,setPet]=useState({name:"Rank Signal",kind:"rank-signal"});
+  const [pet,setPet]=useState({name:"AgentKiln Signal",kind:"rank-signal"});
   const [error,setError]=useState("");
   useEffect(()=>{let stale=false;let url;petStorage("get").then((value)=>{if(value&&!stale){url=URL.createObjectURL(value.blob);setPet({...value,url});}}).catch(()=>{ setError("petStorageUnavailable"); });return()=>{stale=true;if(url)URL.revokeObjectURL(url);};},[]);
   useEffect(()=>{localStorage.setItem("rank.companion.enabled",String(enabled));},[enabled]);
   async function importFiles(files){setError("");try{const value=await readPetFiles([...files]);await petStorage("put",value);setPet((old)=>{if(old.url?.startsWith("blob:"))URL.revokeObjectURL(old.url);return {...value,url:URL.createObjectURL(value.blob)};});}catch{setError("petInvalid");}}
-  async function reset(){setError("");try{await petStorage("delete");setPet((old)=>{if(old.url?.startsWith("blob:"))URL.revokeObjectURL(old.url);return {name:"Rank Signal",kind:"rank-signal"};});}catch{setError("petInvalid");}}
+  async function reset(){setError("");try{await petStorage("delete");setPet((old)=>{if(old.url?.startsWith("blob:"))URL.revokeObjectURL(old.url);return {name:"AgentKiln Signal",kind:"rank-signal"};});}catch{setError("petInvalid");}}
   return {enabled,setEnabled,pet,error,importFiles,reset};
 }
 

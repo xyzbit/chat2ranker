@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	executionclient "github.com/xyzbit/chat2ranker/execution/backend/client"
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
+	executionclient "github.com/xyzbit/agentkiln/execution/backend/client"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 type ExecutionRunnerConfig struct {

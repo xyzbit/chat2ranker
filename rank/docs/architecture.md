@@ -1,8 +1,8 @@
 # System architecture
 
-chat2ranker separates conversational control, experiment orchestration, and tested harness execution into different runtime roles.
+agentkiln separates conversational control, experiment orchestration, and tested harness execution into different runtime roles.
 
-![chat2ranker system architecture](diagrams/rendered/system-architecture.png)
+![agentkiln system architecture](diagrams/rendered/system-architecture.png)
 
 ## Runtime roles
 

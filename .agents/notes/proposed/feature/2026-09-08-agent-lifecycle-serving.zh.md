@@ -6,7 +6,7 @@ Status: proposed
 
 ## Problem
 
-Chat2Ranker 可以定义不可变的 Agent 版本、在隔离 Worker 中运行这些版本、评测重复 Trial、保留原生运行产物，并归集 token 用量和成本。产品 API 目前止于实验和评测 Run，因此通过评测的 Agent 无法在没有另一套部署系统的情况下成为供外部应用稳定调用的端点。
+AgentKiln 可以定义不可变的 Agent 版本、在隔离 Worker 中运行这些版本、评测重复 Trial、保留原生运行产物，并归集 token 用量和成本。产品 API 目前止于实验和评测 Run，因此通过评测的 Agent 无法在没有另一套部署系统的情况下成为供外部应用稳定调用的端点。
 
 如果直接暴露内部 Execution Service，调用方将能够控制 harness、模型连接、系统提示词、工具、Skill、工作区相关元数据和产物路径。它的单次 `prompt` 到 `output` 请求也没有定义租户授权、发布别名、会话连续性、公开流事件、请求留存或成熟客户端协议的兼容性。
 
@@ -14,7 +14,7 @@ Chat2Ranker 可以定义不可变的 Agent 版本、在隔离 Worker 中运行�
 
 ## Proposal
 
-将 Chat2Ranker 定位为覆盖准备、评测、发布、服务和观测五项相连能力的 Agent 全生命周期平台。现有实验产品继续承担创作和评测应用；新的对外服务领域负责 Deployment、发布别名、公开 Response、Conversation、租户策略和生产审计记录。
+将 AgentKiln 定位为覆盖准备、评测、发布、服务和观测五项相连能力的 Agent 全生命周期平台。现有实验产品继续承担创作和评测应用；新的对外服务领域负责 Deployment、发布别名、公开 Response、Conversation、租户策略和生产审计记录。
 
 公开数据平面将以 [OpenAI Responses](https://platform.openai.com/docs/api-reference/responses/create) 兼容子集作为主要应用协议。核心 Task、产物和推送通知语义实现后，可以增加 [A2A](https://github.com/a2aproject/A2A/blob/main/docs/specification.md) 适配器，把相同 Deployment 投影为可发现的远程 Agent。[MCP](https://modelcontextprotocol.io/specification/2025-06-18/server/index) 继续用于向 Agent 暴露工具和资源，而不是作为调用托管 Agent 的主要协议。
 
@@ -180,7 +180,7 @@ Conversation 拥有有序输入和输出项历史，并固定到一个精确 Age
 
 ## Acceptance criteria
 
-- 根产品文档把 Chat2Ranker 定位为 Agent 全生命周期平台，同时区分已经交付的评测行为和规划中的对外服务平面。
+- 根产品文档把 AgentKiln 定位为 Agent 全生命周期平台，同时区分已经交付的评测行为和规划中的对外服务平面。
 - 控制平面模型支持不可变 Agent 版本、明确发布状态、仅追加发布修订、评测证据和可审计的人工覆盖。
 - 公开请求不能选择内部凭证、harness 配置、系统提示词、内置工具、Skill、工作区、Executor 或原始产物路径。
 - 精确版本、`latest`、`production`、重试、回滚和续接测试证明每个已受理 Response 始终固定到一个 AgentVersion；通过别名解析时还固定到一个发布修订。

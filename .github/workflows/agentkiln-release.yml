@@ -1,4 +1,4 @@
-name: Release (Chat2Ranker)
+name: Release (AgentKiln)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ on:
         type: boolean
 
 concurrency:
-  group: chat2ranker-release
+  group: agentkiln-release
   cancel-in-progress: false
 
 jobs:
@@ -60,11 +60,11 @@ jobs:
           pnpm rank:package -- --version "$VERSION"
       - uses: actions/upload-artifact@v7
         with:
-          name: chat2ranker-${{ matrix.target }}
+          name: agentkiln-${{ matrix.target }}
           if-no-files-found: error
           path: |
-            dist/chat2ranker/chat2ranker-${{ inputs.version }}-${{ matrix.target }}.tar.gz
-            dist/chat2ranker/chat2ranker-${{ inputs.version }}-${{ matrix.target }}.tar.gz.sha256
+            dist/agentkiln/agentkiln-${{ inputs.version }}-${{ matrix.target }}.tar.gz
+            dist/agentkiln/agentkiln-${{ inputs.version }}-${{ matrix.target }}.tar.gz.sha256
 
   release:
     name: GitHub Release
@@ -76,7 +76,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: chat2ranker-*
+          pattern: agentkiln-*
           path: dist
           merge-multiple: true
       - name: Create release
@@ -87,5 +87,5 @@ jobs:
           gh release create "v$VERSION" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Chat2Ranker v$VERSION" \
-            --notes "Conversation-first local Agent evaluation platform. Start with: npx -y @xyzbit/chat2ranker start"
+            --title "AgentKiln v$VERSION" \
+            --notes "Build, evaluate, and serve agents. Start with: npx -y @xyzbit/agentkiln start"

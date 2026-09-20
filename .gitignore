@@ -26,7 +26,7 @@ tmp/
 .idea
 mise.toml
 dist-exe/
-/dist/chat2ranker/
+/dist/agentkiln/
 /output/
 python/sdk-runtime/src/deepseek_harness_runtime/runtime/dsh-jsonrpc-agent-*
 python/sdk-runtime/src/deepseek_harness_runtime/runtime/node/

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
 )
 
 // ProgressEvent is emitted while an adapter is still running.

@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/app"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/app"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 func (h *Handler) listReleaseHistory(w http.ResponseWriter, r *http.Request) {

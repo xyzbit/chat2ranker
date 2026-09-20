@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlite"
 )
 
 func openStore(t *testing.T) (*sqlite.Store, string) {

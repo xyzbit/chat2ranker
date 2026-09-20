@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-产品 README 在说明 Chat2Ranker 帮助用户做出哪些选择之前就进入评测流程。静态截图还要求读者自行还原对话、运行确认、结果对比和侧边工作区之间的关系。
+产品 README 在说明 AgentKiln 帮助用户做出哪些选择之前就进入评测流程。静态截图还要求读者自行还原对话、运行确认、结果对比和侧边工作区之间的关系。
 
 ## Decision
 

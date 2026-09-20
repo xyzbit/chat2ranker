@@ -6,7 +6,7 @@ English | [中文](2026-09-08-agent-lifecycle-serving.zh.md)
 
 ## Problem
 
-Chat2Ranker can define immutable Agent versions, run them in isolated workers, evaluate repeated trials, retain native artifacts, and attribute usage and cost. Its product API stops at experiments and evaluation runs, so an evaluated Agent cannot become a stable endpoint for an external application without a separate deployment system.
+AgentKiln can define immutable Agent versions, run them in isolated workers, evaluate repeated trials, retain native artifacts, and attribute usage and cost. Its product API stops at experiments and evaluation runs, so an evaluated Agent cannot become a stable endpoint for an external application without a separate deployment system.
 
 Exposing the internal Execution Service would grant callers control over harness, model connection, system prompt, tools, Skills, workspace-related metadata, and artifact paths. Its single `prompt` to `output` request also does not define tenant authorization, release aliases, conversation continuity, public stream events, request retention, or compatibility with an established client protocol.
 
@@ -14,7 +14,7 @@ The product therefore needs a serving control plane and public data plane that r
 
 ## Proposal
 
-Position Chat2Ranker as an Agent lifecycle platform with five connected capabilities: prepare, evaluate, release, serve, and observe. The current experiment product remains the authoring and evaluation application. A new serving domain owns deployments, release aliases, public Responses, conversations, tenant policy, and production audit records.
+Position AgentKiln as an Agent lifecycle platform with five connected capabilities: prepare, evaluate, release, serve, and observe. The current experiment product remains the authoring and evaluation application. A new serving domain owns deployments, release aliases, public Responses, conversations, tenant policy, and production audit records.
 
 The public data plane will expose an [OpenAI Responses](https://platform.openai.com/docs/api-reference/responses/create)-compatible subset as its primary application protocol. An optional [A2A](https://github.com/a2aproject/A2A/blob/main/docs/specification.md) adapter may project the same deployments as discoverable remote Agents after the core task, artifact, and push-notification semantics are implemented. [MCP](https://modelcontextprotocol.io/specification/2025-06-18/server/index) remains a protocol for exposing tools and resources to an Agent, not the primary protocol for invoking a hosted Agent.
 
@@ -180,7 +180,7 @@ Each phase updates the public OpenAPI document, package and product READMEs, arc
 
 ## Acceptance criteria
 
-- Root product documentation presents Chat2Ranker as an Agent lifecycle platform while distinguishing shipped evaluation behavior from the proposed serving plane.
+- Root product documentation presents AgentKiln as an Agent lifecycle platform while distinguishing shipped evaluation behavior from the proposed serving plane.
 - The control-plane model supports immutable Agent versions, explicit publication state, append-only release revisions, evaluation evidence, and auditable overrides.
 - Public requests cannot select internal credentials, harness configuration, system prompts, built-in tools, Skills, workspaces, Executors, or raw artifact paths.
 - Exact-version, `latest`, `production`, retry, rollback, and continuation tests prove that every accepted Response remains pinned to one AgentVersion and, when resolved through an alias, one release revision.

@@ -1,18 +1,20 @@
-# 一分钟上手 Chat2Ranker
+# 一分钟上手 AgentKiln
 
 [English](quickstart.md) | 中文
 
-本教程面向第一次使用 Chat2Ranker 的本地用户。完成后，你会拥有一个持久化实验，并能从对话中准备测试集、选择 Agent、运行评测和查看结果。
+本教程面向第一次使用 AgentKiln 的本地用户。完成后，你会拥有一个持久化实验，并能从对话中准备测试集、选择 Agent、运行评测和查看结果。
 
 ## 1. 启动
 
-准备 Node.js 22.19 或更高版本。Chat2Ranker 支持 macOS 和 Linux 的 x64、arm64 环境。
+准备 Node.js 22.19 或更高版本。AgentKiln 支持 macOS 和 Linux 的 x64、arm64 环境。
+
+此命令需要已发布的 AgentKiln npm 包和同版本运行包；发布前请按[源码启动说明](../../README.md#run-from-source)运行。
 
 ```sh
-npx -y @xyzbit/chat2ranker@latest start
+npx -y @xyzbit/agentkiln@latest start
 ```
 
-首次运行会下载并校验当前平台的预编译 runtime，然后打开浏览器。数据库、模型凭据、日志和运行产物保存在 `~/.chat2ranker`，不会写入 npm 缓存。
+首次运行会下载并校验当前平台的预编译 runtime，然后打开浏览器。数据库、模型凭据、日志和运行产物保存在 `~/.agentkiln`，不会写入 npm 缓存。
 
 ## 2. 连接模型
 
@@ -30,7 +32,7 @@ npx -y @xyzbit/chat2ranker@latest start
 
 > 帮我整理 10 个 Web 研究用例，对比现有的两个 Agent，查看通过率、成本和失败原因。
 
-Rank 会根据缺少的信息继续询问，也可以让你从已有测试集和 Agent 中选择。一个会话就是一个实验，测试集与 Agent 配置会保存为可复用的版本。
+AgentKiln 会根据缺少的信息继续询问，也可以让你从已有测试集和 Agent 中选择。一个会话就是一个实验，测试集与 Agent 配置会保存为可复用的版本。
 
 平台只会在你要求运行时展示运行确认卡。检查测试集、Agent 和重复次数后，点击卡片中的“开始运行”或“开始对比”；普通发送按钮不会启动评测。
 
@@ -43,10 +45,10 @@ Rank 会根据缺少的信息继续询问，也可以让你从已有测试集和
 ## 后台运行与停止
 
 ```sh
-npx -y @xyzbit/chat2ranker@latest start --detach
-npx -y @xyzbit/chat2ranker@latest status
-npx -y @xyzbit/chat2ranker@latest open
-npx -y @xyzbit/chat2ranker@latest stop
+npx -y @xyzbit/agentkiln@latest start --detach
+npx -y @xyzbit/agentkiln@latest status
+npx -y @xyzbit/agentkiln@latest open
+npx -y @xyzbit/agentkiln@latest stop
 ```
 
 前台运行时按一次 `Ctrl-C` 即可停止完整服务组。再次启动会恢复已有连接、实验、Control Session 和运行产物。
@@ -56,7 +58,11 @@ npx -y @xyzbit/chat2ranker@latest stop
 测试首次初始化或临时实验时，不需要删除已有数据：
 
 ```sh
-npx -y @xyzbit/chat2ranker@latest start --home /tmp/chat2ranker-clean
+npx -y @xyzbit/agentkiln@latest start --home /tmp/agentkiln-clean
 ```
 
 源码开发、服务端口和完整验收流程见[本地开发与验收](local-acceptance.md)。
+
+## 原有本地数据
+
+默认数据目录为 `~/.agentkiln`，环境变量使用 `AGENTKILN_*` 前缀。使用原有 `~/.chat2ranker` 数据前，先通过旧启动器停止原实例，再为新启动器指定 `--home ~/.chat2ranker`。两个启动器不能同时访问同一份数据；改名不会自动移动或删除原数据。

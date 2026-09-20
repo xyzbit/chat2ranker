@@ -180,7 +180,7 @@ export function ModelConnectionCenter({ connections, catalog, systemModels = [],
       <header><div><small>LLM CONNECTIONS</small><h3>模型连接</h3><p>Agent 只需选择已验证的连接和模型。</p></div><button type="button" onClick={() => setDraft(draftFor(null, catalog))}><Plus size={15} />添加</button></header>
       <div className="system-model-slots">{[["control", "对话模型"], ["judge", "评审模型"]].map(([role, label]) => {
         const binding = systemModels.find((item) => item.role === role);
-        return <label key={role}><span><strong>{label}</strong><small>{role === "control" ? "Rank 对话" : "LLM Judge"}</small></span><SelectField value={binding?.connectionId || ""} onValueChange={nextValue => onBind(role, nextValue)} aria-label={label} options={[{ value: "", label: "未配置", disabled: true }, ...connections.filter(item => item.status === "verified").map(item => ({ value: item.id, label: <>{item.name} · {item.defaultModel}</> }))]} /></label>;
+        return <label key={role}><span><strong>{label}</strong><small>{role === "control" ? "AgentKiln 对话" : "LLM Judge"}</small></span><SelectField value={binding?.connectionId || ""} onValueChange={nextValue => onBind(role, nextValue)} aria-label={label} options={[{ value: "", label: "未配置", disabled: true }, ...connections.filter(item => item.status === "verified").map(item => ({ value: item.id, label: <>{item.name} · {item.defaultModel}</> }))]} /></label>;
       })}</div>
       <div className="connection-list">
         {connections.map((connection) => <button type="button" key={connection.id} onClick={() => setDraft(draftFor(connection, catalog))}>

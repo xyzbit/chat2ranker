@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
 )
 
 type nativeCLIAdapter struct{ id, label, binary string }

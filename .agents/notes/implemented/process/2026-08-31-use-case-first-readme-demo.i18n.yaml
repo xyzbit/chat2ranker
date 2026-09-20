@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-08-31-use-case-first-readme-demo.md
-2026-08-31-use-case-first-readme-demo.md: 64d5585b9020cdcaf103afd85478ff96653c961b
-2026-08-31-use-case-first-readme-demo.zh.md: 73e98ba0f0a106e2f33c85e41706710ccb110031
+2026-08-31-use-case-first-readme-demo.md: 49647a43d8afdec88c8810f82297072b042710fe
+2026-08-31-use-case-first-readme-demo.zh.md: 501ca63ff5d428128b2827a5c1e01508d4504dea

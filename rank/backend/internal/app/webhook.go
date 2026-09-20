@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 var supportedWebhookEvents = []string{

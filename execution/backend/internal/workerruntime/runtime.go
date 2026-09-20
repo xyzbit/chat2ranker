@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/execution/backend/harness"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/pricing"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/workerprotocol"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/harness"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/pricing"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/workerprotocol"
 )
 
 func Execute(parent context.Context, request workerprotocol.Request, emit func(workerprotocol.Event) error) workerprotocol.Response {

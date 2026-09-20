@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/app"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/app"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 type deploymentRequest struct {

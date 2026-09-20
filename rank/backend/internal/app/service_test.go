@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/app"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/app"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlite"
 )
 
 func TestControlCommandsAreSessionBoundStructuredAndIdempotent(t *testing.T) {

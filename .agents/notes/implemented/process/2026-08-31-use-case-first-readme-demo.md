@@ -6,7 +6,7 @@ English | [中文](2026-08-31-use-case-first-readme-demo.zh.md)
 
 ## Problem
 
-The product README explains the evaluation workflow before naming the decisions Chat2Ranker helps users make. Static screenshots also require readers to reconstruct how conversation, run confirmation, comparison, and the side workspace connect.
+The product README explains the evaluation workflow before naming the decisions AgentKiln helps users make. Static screenshots also require readers to reconstruct how conversation, run confirmation, comparison, and the side workspace connect.
 
 ## Decision
 

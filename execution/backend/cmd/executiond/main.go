@@ -12,20 +12,20 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/execution/backend/harness"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/app"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/executor"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/httpapi"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/secret"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/harness"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/app"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/executor"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/httpapi"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/secret"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/sqlite"
 )
 
 func main() {
 	address := flag.String("addr", "127.0.0.1:8790", "HTTP listen address")
 	databasePath := flag.String("db", "../../rank/var/execution.db", "SQLite database path")
 	workerBinary := flag.String("worker", os.Getenv("EXECUTION_WORKER_BIN"), "execution-worker executable path")
-	repositoryRoot := flag.String("repo-root", os.Getenv("EXECUTION_REPO_ROOT"), "chat2ranker repository root")
+	repositoryRoot := flag.String("repo-root", os.Getenv("EXECUTION_REPO_ROOT"), "agentkiln repository root")
 	artifactRoot := flag.String("artifacts", "../../rank/var/artifacts", "artifact store root")
 	sandboxRoot := flag.String("sandboxes", "../../rank/var/sandboxes", "local process sandbox root")
 	credentialRoot := flag.String("credentials", "../../rank/var/credentials", "local encrypted-store replacement directory for model credentials")

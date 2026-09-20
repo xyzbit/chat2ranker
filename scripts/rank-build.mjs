@@ -21,4 +21,4 @@ await Promise.all([
   run("go", ["build", "-o", resolve(binaryRoot, "execution-worker"), "./cmd/execution-worker"], resolve(root, "execution/backend")),
   run("go", ["build", "-o", resolve(binaryRoot, "rankd"), "./cmd/rankd"], resolve(root, "rank/backend")),
 ]);
-await run("pnpm", ["--filter", "@xyzbit/chat2ranker-web", "build"]);
+await run("pnpm", ["--filter", "@xyzbit/agentkiln-web", "build"]);

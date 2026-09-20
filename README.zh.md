@@ -1,10 +1,10 @@
-# Chat2Ranker
+# AgentKiln
 
-[![npm](https://img.shields.io/npm/v/@xyzbit/chat2ranker?color=5454e8)](https://www.npmjs.com/package/@xyzbit/chat2ranker) [![Release](https://img.shields.io/github/v/release/xyzbit/chat2ranker)](https://github.com/xyzbit/chat2ranker/releases/latest) [![CI](https://github.com/xyzbit/chat2ranker/actions/workflows/ci.yml/badge.svg)](https://github.com/xyzbit/chat2ranker/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/xyzbit/chat2ranker)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/xyzbit/agentkiln)](https://github.com/xyzbit/agentkiln/releases/latest) [![CI](https://github.com/xyzbit/agentkiln/actions/workflows/ci.yml/badge.svg)](https://github.com/xyzbit/agentkiln/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/xyzbit/agentkiln)](LICENSE)
 
 [English](README.md) | 中文
 
-Chat2Ranker 是一个覆盖 Agent 准备、版本管理、评测、发布和对外服务的全生命周期平台。本地产品会把一个目标变成版本化测试集、可比较的 Agent 运行、可追溯证据、受控发布 Alias 和经过认证的文本服务端点。
+AgentKiln 是一个覆盖 Agent 准备、版本管理、评测、发布和对外服务的全生命周期平台。本地产品会把一个目标变成版本化测试集、可比较的 Agent 运行、可追溯证据、受控发布 Alias 和经过认证的文本服务端点。
 
 产品让评测与生产沿用同一条版本链：平台评测一个精确的 Agent 版本，将其晋级到 `production` 等环境别名，在受理请求时只解析一次，并把解析结果保留在调用记录中。已实现子集见 [Agent 对外服务 API](rank/docs/serving-api.md)，后续阶段见 [Agent 生命周期与对外服务提案](.agents/notes/proposed/feature/2026-09-08-agent-lifecycle-serving.md)。
 
@@ -17,9 +17,9 @@ Chat2Ranker 是一个覆盖 Agent 准备、版本管理、评测、发布和对�
 
 ## 看一次完整实验
 
-[![创建、运行并查看 Chat2Ranker 实验](rank/docs/assets/chat2ranker-demo-poster.jpg)](rank/docs/assets/chat2ranker-demo.mp4)
+[![创建、运行并查看 AgentKiln 实验](rank/docs/assets/agentkiln-demo-poster.jpg)](rank/docs/assets/agentkiln-demo.mp4)
 
-描述一个目标，让 Rank 准备可复用的数据与 Agents，确认运行，用成本或时延对照质量；需要细节时再展开侧边工作区。点击图片可查看 1080p 视频。
+描述一个目标，让 AgentKiln 准备可复用的数据与 Agents，确认运行，用成本或时延对照质量；需要细节时再展开侧边工作区。点击图片可查看 1080p 视频。
 
 <a id="run"></a>
 
@@ -27,11 +27,13 @@ Chat2Ranker 是一个覆盖 Agent 准备、版本管理、评测、发布和对�
 
 需要 Node.js 22.19 或更高版本，支持 macOS 和 Linux 的 x64、arm64 环境。
 
+以下命令需要已发布的 AgentKiln npm 包和同版本运行包；发布前请使用下方源码启动方式。
+
 ```sh
-npx -y @xyzbit/chat2ranker@latest start
+npx -y @xyzbit/agentkiln@latest start
 ```
 
-首次打开时选择 Provider 和模型，再填写 API Key。随后直接描述目标，例如“整理一组 Web 研究用例，对比两个 Agent 的准确率和成本”。Rank 只会询问缺少的信息，并在运行确认卡中等待你明确开始。
+首次打开时选择 Provider 和模型，再填写 API Key。随后直接描述目标，例如“整理一组 Web 研究用例，对比两个 Agent 的准确率和成本”。AgentKiln 只会询问缺少的信息，并在运行确认卡中等待你明确开始。
 
 完整的首次使用、后台运行和独立数据目录说明见[一分钟上手](rank/docs/quickstart.md)。
 
@@ -53,8 +55,8 @@ Go Rank 服务负责实验、版本冻结、调度和结果聚合；Execution Se
 ## 从源码运行
 
 ```sh
-git clone https://github.com/xyzbit/chat2ranker.git
-cd chat2ranker
+git clone https://github.com/xyzbit/agentkiln.git
+cd agentkiln
 pnpm install
 pnpm rank:dev
 ```
@@ -63,6 +65,6 @@ pnpm rank:dev
 
 ## 参与项目
 
-欢迎提交 Issue 和 Pull Request。如果 Chat2Ranker 对你有帮助，也欢迎给仓库一个 Star。
+欢迎提交 Issue 和 Pull Request。如果 AgentKiln 对你有帮助，也欢迎给仓库一个 Star。
 
 本项目采用 [MIT License](LICENSE)。

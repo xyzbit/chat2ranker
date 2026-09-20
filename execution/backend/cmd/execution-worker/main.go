@@ -8,9 +8,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/workerprotocol"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/workerruntime"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/workerprotocol"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/workerruntime"
 )
 
 func main() {

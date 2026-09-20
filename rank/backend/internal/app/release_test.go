@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/app"
-	"github.com/xyzbit/chat2ranker/rank/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/app"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 func TestDeploymentReleaseRegistryPinsAliasHistoryAndExactVersions(t *testing.T) {

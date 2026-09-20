@@ -10,13 +10,15 @@ The source launcher compiled Go services and started Vite from the repository, s
 
 ## Decision
 
-`@xyzbit/chat2ranker` is a thin Node.js launcher. It downloads one versioned, SHA256-verified runtime archive for the host platform into `~/.chat2ranker/runtime/`, supervises Execution Service, Rank, Control DSH, and the static Web UI, and keeps all durable state under `~/.chat2ranker`. `--home` isolates another profile. Foreground start remains the default; detached start, status, open, and stop use one private PID file.
+`@xyzbit/agentkiln` is a thin Node.js launcher. It downloads one versioned, SHA256-verified runtime archive for the host platform into `~/.agentkiln/runtime/`, supervises Execution Service, Rank, Control DSH, and the static Web UI, and keeps all durable state under `~/.agentkiln`. `--home` isolates another profile. Foreground start remains the default; detached start, status, open, and stop use one private PID file.
 
 The runtime archive contains three statically compiled Go binaries, the production Web bundle, Rank skills, and the DSH runtime. Keeping DSH out of the thin npm launcher avoids making every user resolve its large dependency graph during `npx`. Execution workers receive the packaged DSH CLI path through `RANK_DSH_BIN`; source runs retain the repository-path fallback.
 
 The packaged DSH runtime is fixed to the complete `0.1.0-rc.8` package family. The release manifest overrides transitive DSH workspace packages to that release and rejects a runtime containing another DSH version, so a later npm pre-release cannot silently create a mixed plugin graph.
 
-`pnpm rank:package` builds the current platform runtime, checksum, and npm tarball under `dist/chat2ranker/`. It prints local acceptance and external publishing commands but never publishes by itself.
+`pnpm rank:package` builds the current platform runtime, checksum, and npm tarball under `dist/agentkiln/`. It prints local acceptance and external publishing commands but never publishes by itself.
+
+The public product identity is AgentKiln (`agentkiln` in package, repository, launcher, and archive names; `AGENTKILN_*` in launcher environment variables). The name covers preparation, evaluation, release, and serving. Internal Rank service names, API headers, and resource identifiers remain stable. The default home is `~/.agentkiln`; existing profiles require an explicit `--home` after stopping the old launcher, as described in the [quick start](../../../../rank/docs/quickstart.md#existing-local-data). GitHub source publication does not publish npm packages or runtime archives.
 
 ## Alternatives considered
 

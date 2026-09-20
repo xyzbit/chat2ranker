@@ -29,5 +29,5 @@ test("management and companion copy has both locales with matching interpolation
   const en = createTranslator("en");
   assert.equal(en("agentVersionTitle", { handle: "@team/helper" }), "New version of @team/helper");
   assert.equal(en("verifySave"), "Save and verify");
-  assert.equal(en("documentTitle"), "Rank — Agent platform");
+  assert.equal(en("documentTitle"), "AgentKiln — Agent platform");
 });

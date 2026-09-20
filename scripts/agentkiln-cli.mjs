@@ -29,14 +29,14 @@ async function packageMetadata() {
   try {
     return JSON.parse(await readFile(resolve(packageRoot, "package.json"), "utf8"));
   } catch {
-    return { name: "@xyzbit/chat2ranker", version: "0.0.0-dev" };
+    return { name: "@xyzbit/agentkiln", version: "0.0.0-dev" };
   }
 }
 
 const metadata = await packageMetadata();
-const home = resolve(option("home") || option("data-dir") || process.env.CHAT2RANKER_HOME || join(homedir(), ".chat2ranker"));
-const pidPath = resolve(home, "chat2ranker.pid");
-const webPort = Number(option("port", process.env.CHAT2RANKER_PORT || "4173"));
+const home = resolve(option("home") || option("data-dir") || process.env.AGENTKILN_HOME || join(homedir(), ".agentkiln"));
+const pidPath = resolve(home, "agentkiln.pid");
+const webPort = Number(option("port", process.env.AGENTKILN_PORT || "4173"));
 const url = `http://127.0.0.1:${webPort}`;
 
 function run(commandName, args, options = {}) {
@@ -102,19 +102,19 @@ async function validateRuntime(root, target) {
 
 async function ensureRuntime() {
   const target = runtimeTarget();
-  const explicit = option("runtime-dir") || process.env.CHAT2RANKER_RUNTIME_DIR;
+  const explicit = option("runtime-dir") || process.env.AGENTKILN_RUNTIME_DIR;
   if (explicit) return validateRuntime(resolve(explicit), target);
   const destination = resolve(home, "runtime", metadata.version, target.id);
   if (await exists(resolve(destination, "manifest.json"))) return validateRuntime(destination, target);
   const base = resolve(home, "runtime", metadata.version);
   await mkdir(base, { recursive: true });
   const temp = await mkdtemp(resolve(base, ".install-"));
-  const archiveOption = option("runtime-archive") || process.env.CHAT2RANKER_RUNTIME_ARCHIVE;
-  const archiveURL = option("runtime-url") || process.env.CHAT2RANKER_RUNTIME_URL || `https://github.com/xyzbit/chat2ranker/releases/download/v${metadata.version}/chat2ranker-${metadata.version}-${target.id}.tar.gz`;
+  const archiveOption = option("runtime-archive") || process.env.AGENTKILN_RUNTIME_ARCHIVE;
+  const archiveURL = option("runtime-url") || process.env.AGENTKILN_RUNTIME_URL || `https://github.com/xyzbit/agentkiln/releases/download/v${metadata.version}/agentkiln-${metadata.version}-${target.id}.tar.gz`;
   const archive = archiveOption ? resolve(archiveOption) : resolve(temp, basename(archiveURL));
   try {
     if (!archiveOption) {
-      process.stdout.write(`正在下载 Chat2Ranker ${metadata.version} (${target.id})…\n`);
+      process.stdout.write(`正在下载 AgentKiln ${metadata.version} (${target.id})…\n`);
       await download(archiveURL, archive);
     }
     await verifyChecksum(archive, archiveOption ? `${archive}.sha256` : `${archiveURL}.sha256`);
@@ -253,7 +253,7 @@ function processAlive(pid) {
 
 async function serve() {
   const existing = await readPID();
-  if (existing && existing.pid !== process.pid && processAlive(existing.pid)) throw new Error(`Chat2Ranker 已在运行：${existing.url}`);
+  if (existing && existing.pid !== process.pid && processAlive(existing.pid)) throw new Error(`AgentKiln 已在运行：${existing.url}`);
   await Promise.all(["data", "credentials", "artifacts", "sandboxes", "logs"].map((name) => mkdir(resolve(home, name), { recursive: true, mode: 0o700 })));
   const runtime = await ensureRuntime();
   const binary = (name) => resolve(runtime, "bin", name);
@@ -296,7 +296,7 @@ async function serve() {
   await new Promise((resolveListen, rejectListen) => web.once("error", rejectListen).listen(webPort, "127.0.0.1", resolveListen));
   await Promise.all([waitFor("http://127.0.0.1:8787/api/health", "rankd"), waitFor("http://127.0.0.1:8788/control/v1/health", "Control DSH"), waitFor(url, "Web")]);
   await writeFile(pidPath, `${JSON.stringify({ pid: process.pid, url, version: metadata.version, startedAt: new Date().toISOString() })}\n`, { mode: 0o600 });
-  process.stdout.write(`\nChat2Ranker 已启动：${url}\n模型：${models.control ? `${models.control.connection.provider}/${models.control.model}` : "请在浏览器完成首次配置"}\n数据：${home}\n\n`);
+  process.stdout.write(`\nAgentKiln 已启动：${url}\n模型：${models.control ? `${models.control.connection.provider}/${models.control.model}` : "请在浏览器完成首次配置"}\n数据：${home}\n\n`);
   if (!has("no-open")) await openBrowser();
   process.once("SIGINT", () => void stop(0));
   process.once("SIGTERM", () => void stop(0));
@@ -306,11 +306,11 @@ async function serve() {
 async function detachedStart() {
   const existing = await readPID();
   if (existing && processAlive(existing.pid)) {
-    process.stdout.write(`Chat2Ranker 已在运行：${existing.url}\n`);
+    process.stdout.write(`AgentKiln 已在运行：${existing.url}\n`);
     return;
   }
   await mkdir(resolve(home, "logs"), { recursive: true, mode: 0o700 });
-  const logPath = resolve(home, "logs/chat2ranker.log");
+  const logPath = resolve(home, "logs/agentkiln.log");
   const log = openSync(logPath, "a", 0o600);
   const childArgs = argv.slice(1).filter((value) => value !== "--detach");
   const child = spawn(process.execPath, [cliPath, "_serve", ...childArgs], { detached: true, stdio: ["ignore", log, log], env: process.env });
@@ -327,9 +327,9 @@ async function detachedStart() {
   }
   if (!ready) {
     const output = await readFile(logPath, "utf8").catch(() => "");
-    throw new Error(`Chat2Ranker 后台实例启动失败\n${output.slice(-2000)}`);
+    throw new Error(`AgentKiln 后台实例启动失败\n${output.slice(-2000)}`);
   }
-  process.stdout.write(`Chat2Ranker 已在后台启动：${url}\n日志：${logPath}\n`);
+  process.stdout.write(`AgentKiln 已在后台启动：${url}\n日志：${logPath}\n`);
   if (!has("no-open")) await openBrowser();
 }
 
@@ -337,29 +337,29 @@ async function stopService() {
   const record = await readPID();
   if (!record || !processAlive(record.pid)) {
     await rm(pidPath, { force: true });
-    process.stdout.write("Chat2Ranker 未运行\n");
+    process.stdout.write("AgentKiln 未运行\n");
     return;
   }
   process.kill(record.pid, "SIGTERM");
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline && processAlive(record.pid)) await new Promise((resolveWait) => setTimeout(resolveWait, 100));
   if (processAlive(record.pid)) throw new Error(`停止超时，请检查 PID ${record.pid}`);
-  process.stdout.write("Chat2Ranker 已停止\n");
+  process.stdout.write("AgentKiln 已停止\n");
 }
 
 async function status() {
   const record = await readPID();
   if (!record || !processAlive(record.pid)) {
-    process.stdout.write("Chat2Ranker 未运行\n");
+    process.stdout.write("AgentKiln 未运行\n");
     process.exitCode = 1;
     return;
   }
   const healthy = await fetch(record.url).then((response) => response.ok).catch(() => false);
-  process.stdout.write(`Chat2Ranker ${healthy ? "运行中" : "进程存在但服务未就绪"}\n地址：${record.url}\nPID：${record.pid}\n数据：${home}\n`);
+  process.stdout.write(`AgentKiln ${healthy ? "运行中" : "进程存在但服务未就绪"}\n地址：${record.url}\nPID：${record.pid}\n数据：${home}\n`);
 }
 
 function help() {
-  process.stdout.write(`Chat2Ranker ${metadata.version}\n\n用法：\n  chat2ranker start [--detach] [--home ~/.chat2ranker]\n  chat2ranker stop\n  chat2ranker status\n  chat2ranker open\n\n首次启动会自动下载当前平台运行包并打开浏览器。\n`);
+  process.stdout.write(`AgentKiln ${metadata.version}\n\n用法：\n  agentkiln start [--detach] [--home ~/.agentkiln]\n  agentkiln stop\n  agentkiln status\n  agentkiln open\n\n首次启动会自动下载当前平台运行包并打开浏览器。\n`);
 }
 
 try {

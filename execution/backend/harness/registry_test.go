@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
 )
 
 func TestRegistryRejectsDuplicatesAndReportsUnknownAdapters(t *testing.T) {

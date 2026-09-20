@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/app"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/secret"
-	"github.com/xyzbit/chat2ranker/execution/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/app"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/secret"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/sqlite"
 )
 
 func TestModelConnectionStoresCredentialSeparatelyAndVerifies(t *testing.T) {

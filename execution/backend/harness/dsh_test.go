@@ -3,7 +3,7 @@ package harness
 import (
 	"testing"
 
-	"github.com/xyzbit/chat2ranker/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
 )
 
 func TestDSHInvocationPatchesIncludeProviderWithModel(t *testing.T) {

@@ -1,9 +1,9 @@
 # Repository structure
 
-This reference defines where chat2ranker source belongs. It complements the upstream DSH layout in [`AGENTS.md`](../../AGENTS.md).
+This reference defines where agentkiln source belongs. It complements the upstream DSH layout in [`AGENTS.md`](../../AGENTS.md).
 
 ```text
-chat2ranker/
+agentkiln/
 ├── execution/
 │   └── backend/
 │       ├── cmd/executiond/            generic execution control service

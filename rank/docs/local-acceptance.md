@@ -1,6 +1,6 @@
 # Local development and acceptance
 
-This tutorial starts Chat2Ranker from source and verifies the complete local product. Published-launcher users should follow the [one-minute quick start](quickstart.md) or [Chinese quick start](quickstart.zh.md).
+This tutorial starts AgentKiln from source and verifies the complete local product. Published-launcher users should follow the [one-minute quick start](quickstart.md) or [Chinese quick start](quickstart.zh.md).
 
 ## Prerequisites
 
@@ -11,8 +11,8 @@ This tutorial starts Chat2Ranker from source and verifies the complete local pro
 Install dependencies once:
 
 ```sh
-git clone https://github.com/xyzbit/chat2ranker.git
-cd chat2ranker
+git clone https://github.com/xyzbit/agentkiln.git
+cd agentkiln
 pnpm install
 ```
 
@@ -24,7 +24,7 @@ pnpm install
 pnpm rank:dev
 ```
 
-Open `http://127.0.0.1:4173`. Press `Ctrl-C` once in the same terminal to stop the complete process group. Local databases, Session history, and artifacts remain under the ignored `rank/var/` directory. Source runs also accept `--home /tmp/chat2ranker-clean`.
+Open `http://127.0.0.1:4173`. Press `Ctrl-C` once in the same terminal to stop the complete process group. Local databases, Session history, and artifacts remain under the ignored `rank/var/` directory. Source runs also accept `--home /tmp/agentkiln-clean`.
 
 首次启动不需要先创建配置文件。浏览器只询问 Provider、模型和 API Key；Base URL 与默认价格来自内置官方目录。连接验证通过后，Rank 会创建两个系统绑定：
 
@@ -63,14 +63,14 @@ The parent tracks every child. `Ctrl-C`, termination of the parent, or an unexpe
 
 | Method | Use it for | Current status |
 |---|---|---|
-| `npx @xyzbit/chat2ranker start` | Local users who should not clone or compile the source | Implemented release path |
+| `npx @xyzbit/agentkiln start` | Local users who should not clone or compile the source | Implemented release path |
 | `pnpm rank:dev` | Contributors and source debugging | Implemented development path |
 | Individual service commands | Debugging one service or replacing part of the assembly | Supported by the binaries, but intentionally not the quick path |
 | `pnpm rank:package` | Maintainer release packaging | Produces a runtime archive, SHA256, and npm package |
 | Docker Compose | Reproducible server installation | Deployment option to package next |
 | macOS/Windows desktop bundle | Non-technical local users | Distribution option after the server lifecycle and upgrades are stable |
 
-The npm package is intentionally a zero-dependency thin launcher. Platform binaries, DSH, and static Web assets live in versioned GitHub Release archives, so `npx` does not resolve the full Harness dependency graph on every clean machine. Upgrading the launcher or runtime never rewrites `~/.chat2ranker` data.
+The npm package is intentionally a zero-dependency thin launcher. Platform binaries, DSH, and static Web assets live in versioned GitHub Release archives, so `npx` does not resolve the full Harness dependency graph on every clean machine. Upgrading the launcher or runtime never rewrites `~/.agentkiln` data.
 
 ## Maintainer packaging
 
@@ -80,7 +80,7 @@ Build the current platform release without publishing anything:
 pnpm rank:package
 ```
 
-Outputs are written to `dist/chat2ranker/`. The command prints a local `npx --package <tgz> chat2ranker ... --runtime-archive <tar.gz>` acceptance command plus explicit `gh release create` and `npm publish` commands. Publishing remains a separate, deliberate action.
+Outputs are written to `dist/agentkiln/`. The command prints a local `npx --package <tgz> agentkiln ... --runtime-archive <tar.gz>` acceptance command plus explicit `gh release create` and `npm publish` commands. Publishing remains a separate, deliberate action.
 
 ## Verify service health
 
