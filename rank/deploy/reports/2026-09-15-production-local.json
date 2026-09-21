@@ -1,0 +1,819 @@
+{
+  "quota": {
+    "startedAt": "2026-09-15T02:11:13.691Z",
+    "provider": "fixture",
+    "images": {
+      "images": {
+        "platform": "rank-platform-lab:09a7dc4989fbd5c3",
+        "gateway": "rank-gateway-lab:09a7dc4989fbd5c3"
+      },
+      "stage": "/Users/staff/.local/state/chat2ranker/rank-k8s/platform-runtime-evidence-v1",
+      "arch": "arm64",
+      "digests": {
+        "platform": "sha256:9805e9c7cfa5042a0a876cff772ca46ad52b629f0f8c7266d2c0fc039d74018b",
+        "gateway": "sha256:bc590abf8ad7097ff3fe3787e4cc53d5813be28f70e773ddaae4e38f7ef6c8ba"
+      }
+    },
+    "checks": [
+      "Seven quota-blocked requests remain outside KEDA demand for 25 seconds without Worker growth",
+      "Remote DSH quota callback succeeds; shared second connection is blocked before runtime allocation; request artifacts omit the callback identity; callback ingress denies management routes and service credentials"
+    ],
+    "scalingSamples": [
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      },
+      {
+        "desired": 2,
+        "readyDemand": 0,
+        "quotaBlocked": 7
+      }
+    ],
+    "quota": {
+      "ready": 0,
+      "blocked": 1,
+      "completed": "exec-17fc3ad71cd1bb059062d33cb77e8293",
+      "cancelled": "exec-c38777d597c72fd192e06b4907675087",
+      "attempts": 1
+    },
+    "passed": true,
+    "endedAt": "2026-09-15T02:11:55.290Z"
+  },
+  "deepseek": {
+    "startedAt": "2026-09-15T02:02:29.946Z",
+    "provider": "DeepSeek",
+    "images": {
+      "images": {
+        "platform": "rank-platform-lab:09a7dc4989fbd5c3",
+        "gateway": "rank-gateway-lab:09a7dc4989fbd5c3"
+      },
+      "stage": "/Users/staff/.local/state/chat2ranker/rank-k8s/platform-runtime-evidence-v1",
+      "arch": "arm64",
+      "digests": {
+        "platform": "sha256:9805e9c7cfa5042a0a876cff772ca46ad52b629f0f8c7266d2c0fc039d74018b",
+        "gateway": "sha256:bc590abf8ad7097ff3fe3787e4cc53d5813be28f70e773ddaae4e38f7ef6c8ba"
+      }
+    },
+    "checks": [
+      "Actual last-24-hour HN headlines and two-turn SSE chat complete through public SDK, Rank, River, remote DSH and DeepSeek; frozen quota, positive usage and S3 evidence retained"
+    ],
+    "budgetBefore": 0,
+    "news": {
+      "id": "resp_01a0a2cd-3afc-78e8-9a46-ae1714771ae0",
+      "text": "根据这份 Hacker News 标题快照，整理五条热点：\n\n1. **Steam Frame 起售价 1059 美元** [1]：Valve 的 Steam Frame 硬件公布起售价 1059 美元。\n\n2. **XCancel 服务暂停，等待进一步通知** [2]：XCancel 宣布暂停服务，标题未说明恢复时间；另有标题称暂停与正在进行的法律程序的新进展有关 [9]。\n\n3. **iOS 27、iPadOS 27 与 macOS 27 发布** [3]：苹果宣布其各软件平台的重要更新现已可用。\n\n4. **OpenAI 的机器人早已知晓 RubyGems 缓存漏洞** [4]：一篇博客标题称 OpenAI 的机器人事先知道该 RubyGems 缓存漏洞。\n\n5. **如何撰写有效的软件设计文档** [5]：一篇关于编写有效软件设计文档方法的文章。\n\n（以上为最近 24 小时提交的社区热点，摘要仅依据标题，并非全网热搜或原文发布日期。）",
+      "status": "completed",
+      "deployment": {
+        "id": "deploy_01a0a2cd-3469-77bf-b46d-755e9a9f58ee",
+        "name": "deepseek-1789437749944",
+        "requested_reference": "deepseek-1789437749944",
+        "resolution_kind": "alias",
+        "release_revision_id": "rel_01a0a2cd-3473-7b6d-b8b3-14df8b72c656",
+        "agent_version_id": "agent-af168aba2939298a685a4dd53d128477-v1"
+      },
+      "usage": {
+        "input_tokens": 8374,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 219,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8593
+      },
+      "cost": {
+        "amount": 0,
+        "currency": "USD",
+        "known": false
+      },
+      "elapsedMs": 14622,
+      "collectedAt": "2026-09-15T02:02:32.446Z",
+      "since": "2026-09-14T02:02:32.446Z",
+      "sources": [
+        {
+          "number": 1,
+          "title": "Steam Frame starts at $1059",
+          "points": 509,
+          "comments": 378,
+          "submittedAt": "2026-09-14T17:27:55Z",
+          "discussion": "https://news.ycombinator.com/item?id=49700661",
+          "url": "https://store.steampowered.com/hardware/steamframe"
+        },
+        {
+          "number": 2,
+          "title": "XCancel service is suspended until further notice",
+          "points": 464,
+          "comments": 773,
+          "submittedAt": "2026-09-14T09:51:50Z",
+          "discussion": "https://news.ycombinator.com/item?id=49694296",
+          "url": "https://xcancel.com/#"
+        },
+        {
+          "number": 3,
+          "title": "iOS 27, iPadOS 27, and macOS 27",
+          "points": 382,
+          "comments": 435,
+          "submittedAt": "2026-09-14T17:50:29Z",
+          "discussion": "https://news.ycombinator.com/item?id=49701004",
+          "url": "https://www.apple.com/newsroom/2026/09/major-updates-for-apples-software-platforms-are-now-available/"
+        },
+        {
+          "number": 4,
+          "title": "OpenAI bots knew about the RubyGems caching vulnerability",
+          "points": 379,
+          "comments": 325,
+          "submittedAt": "2026-09-14T12:40:57Z",
+          "discussion": "https://news.ycombinator.com/item?id=49695876",
+          "url": "https://tenderlovemaking.com/2026/09/11/what-a-time-to-be-alive/"
+        },
+        {
+          "number": 5,
+          "title": "How to write an effective software design document",
+          "points": 303,
+          "comments": 130,
+          "submittedAt": "2026-09-14T13:00:46Z",
+          "discussion": "https://news.ycombinator.com/item?id=49696125",
+          "url": "https://refactoringenglish.com/excerpts/write-an-effective-design-doc/"
+        },
+        {
+          "number": 6,
+          "title": "Nike exits the S&P 100 after 18 years and a $200B market-cap wipeout",
+          "points": 295,
+          "comments": 406,
+          "submittedAt": "2026-09-14T02:50:40Z",
+          "discussion": "https://news.ycombinator.com/item?id=49691343",
+          "url": "https://fortune.com/2026/09/08/nike-stock-plummets-sp500-market-cap-index/"
+        },
+        {
+          "number": 7,
+          "title": "Pion, an agent designed to run any company autonomously",
+          "points": 292,
+          "comments": 317,
+          "submittedAt": "2026-09-14T17:16:06Z",
+          "discussion": "https://news.ycombinator.com/item?id=49700477",
+          "url": "https://andonlabs.com/blog/why-we-built-pion"
+        },
+        {
+          "number": 8,
+          "title": "Dario, Please",
+          "points": 285,
+          "comments": 147,
+          "submittedAt": "2026-09-14T14:50:32Z",
+          "discussion": "https://news.ycombinator.com/item?id=49697893",
+          "url": "https://pop.rdi.sh/dario-please/"
+        },
+        {
+          "number": 9,
+          "title": "XCancel suspended \"due to a new development in the ongoing legal proceedings\"",
+          "points": 271,
+          "comments": 1,
+          "submittedAt": "2026-09-14T12:05:52Z",
+          "discussion": "https://news.ycombinator.com/item?id=49695459",
+          "url": "https://xcancel.com/twitter"
+        },
+        {
+          "number": 10,
+          "title": "Distributed Systems Classics (2017)",
+          "points": 235,
+          "comments": 52,
+          "submittedAt": "2026-09-14T16:02:01Z",
+          "discussion": "https://news.ycombinator.com/item?id=49699158",
+          "url": "https://nvartolomei.com/dist-sys-classics/"
+        }
+      ]
+    },
+    "chat": {
+      "first": "resp_01a0a2cd-6da5-7bf9-9a64-b0cafcd87ec4",
+      "second": "resp_01a0a2cd-a37d-766b-9990-5fce7261d5f4",
+      "text": "你叫小林，喜欢科技新闻，每天有10分钟。",
+      "elapsedMs": 27443,
+      "firstDeltaMs": 27442,
+      "usage": {
+        "input_tokens": 182,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 195
+      }
+    },
+    "executions": [
+      {
+        "id": "exec-822b2317dec7b37daf2ab1f9153a73a7",
+        "attempt": 1,
+        "modelQuota": {
+          "group": "deepseek-1789437749944",
+          "maxOutputTokens": 512
+        },
+        "usage": {
+          "inputTokens": 8374,
+          "outputTokens": 219
+        },
+        "artifactCount": 6,
+        "cleanupPending": false
+      },
+      {
+        "id": "exec-7df584a855481dfbb145cf53b5152c77",
+        "attempt": 1,
+        "modelQuota": {
+          "group": "deepseek-1789437749944",
+          "maxOutputTokens": 512
+        },
+        "usage": {
+          "inputTokens": 7420,
+          "outputTokens": 47
+        },
+        "artifactCount": 6,
+        "cleanupPending": false
+      },
+      {
+        "id": "exec-5f51f25167eabade16ce63931c0f83f9",
+        "attempt": 1,
+        "modelQuota": {
+          "group": "deepseek-1789437749944",
+          "maxOutputTokens": 512
+        },
+        "usage": {
+          "inputTokens": 182,
+          "outputTokens": 13,
+          "cacheReadTokens": 7296
+        },
+        "artifactCount": 6,
+        "cleanupPending": false
+      }
+    ],
+    "providerLedger": {
+      "attempts": [
+        {
+          "number": 1,
+          "startedAt": "2026-09-15T02:02:31.458Z",
+          "maxOutputTokens": 1,
+          "status": 200,
+          "durationMs": 794
+        },
+        {
+          "number": 2,
+          "startedAt": "2026-09-15T02:02:37.026Z",
+          "maxOutputTokens": 512,
+          "status": 200,
+          "durationMs": 2295
+        },
+        {
+          "number": 3,
+          "startedAt": "2026-09-15T02:02:51.169Z",
+          "maxOutputTokens": 512,
+          "status": 200,
+          "durationMs": 1438
+        },
+        {
+          "number": 4,
+          "startedAt": "2026-09-15T02:03:05.323Z",
+          "maxOutputTokens": 512,
+          "status": 200,
+          "durationMs": 876
+        }
+      ]
+    },
+    "endpoint": "deepseek-1789437749944",
+    "passed": true,
+    "endedAt": "2026-09-15T02:03:14.932Z"
+  },
+  "recovery": {
+    "startedAt": "2026-09-15T02:04:34.678231+00:00",
+    "images": {
+      "images": {
+        "platform": "rank-platform-lab:09a7dc4989fbd5c3",
+        "gateway": "rank-gateway-lab:09a7dc4989fbd5c3"
+      },
+      "stage": "/Users/staff/.local/state/chat2ranker/rank-k8s/platform-runtime-evidence-v1",
+      "arch": "arm64",
+      "digests": {
+        "platform": "sha256:9805e9c7cfa5042a0a876cff772ca46ad52b629f0f8c7266d2c0fc039d74018b",
+        "gateway": "sha256:bc590abf8ad7097ff3fe3787e4cc53d5813be28f70e773ddaae4e38f7ef6c8ba"
+      }
+    },
+    "scenarios": [
+      {
+        "name": "database",
+        "status": "failed",
+        "attempt": 1,
+        "unknownOutcome": true,
+        "cleanupPending": false,
+        "effects": 1,
+        "runningEvents": 1,
+        "evidenceRetained": false,
+        "boundedDependencyError": true
+      },
+      {
+        "name": "orphan",
+        "status": "failed",
+        "attempt": 1,
+        "unknownOutcome": true,
+        "cleanupPending": false,
+        "effects": 1,
+        "runningEvents": 1,
+        "evidenceRetained": true
+      }
+    ],
+    "ownerLossDuringDatabaseOutage": {
+      "pod": "execution-worker-765f4586bf-jdr2q",
+      "containerId": "4a787f6439486e54ed8e76680bc241a649606f9545a11e25e98503499165cec4",
+      "state": "CONTAINER_EXITED",
+      "exitCode": 137,
+      "finishedAt": "2026-09-15T02:05:05.180446846Z"
+    },
+    "outageRead": "http_500",
+    "outageReadSeconds": 0.004,
+    "ownerLossAfterObjectCommit": {
+      "pod": "execution-worker-765f4586bf-x5dv2",
+      "containerId": "32ea961f0dd52c1924faadf55a204e1034e32feffca81455d5750ca7adef2ccd",
+      "state": "CONTAINER_EXITED",
+      "exitCode": 137,
+      "finishedAt": "2026-09-15T02:06:27.681377259Z"
+    },
+    "orphanObject": {
+      "key": "exec-a0647e84751ee5187c8b8b9688c7c3d6/sha256/251e5b9e88dbf5f6848b25a21dbd31f9bd4b76cb802b49194e760fb003edf514/session.jsonl.zstd",
+      "storageCommitAcknowledged": true,
+      "referenceAbsent": true,
+      "apiDenied": true,
+      "retention": "operator may collect after terminal-state and retention-window checks"
+    },
+    "passed": true,
+    "endedAt": "2026-09-15T02:08:05.046653+00:00"
+  },
+  "automaticDrain": {
+    "startedAt": "2026-09-15T02:08:32.639231+00:00",
+    "images": {
+      "images": {
+        "platform": "rank-platform-lab:09a7dc4989fbd5c3",
+        "gateway": "rank-gateway-lab:09a7dc4989fbd5c3"
+      },
+      "stage": "/Users/staff/.local/state/chat2ranker/rank-k8s/platform-runtime-evidence-v1",
+      "arch": "arm64",
+      "digests": {
+        "platform": "sha256:9805e9c7cfa5042a0a876cff772ca46ad52b629f0f8c7266d2c0fc039d74018b",
+        "gateway": "sha256:bc590abf8ad7097ff3fe3787e4cc53d5813be28f70e773ddaae4e38f7ef6c8ba"
+      }
+    },
+    "workerConfig": {
+      "args": [
+        "-role=worker",
+        "-artifacts=/state/artifacts",
+        "-sandboxes=/state/sandboxes",
+        "-s3-tls=false",
+        "-executor=opensandbox",
+        "-sandbox-pool=rank-dev",
+        "-sandbox-capacity-cpu=2",
+        "-sandbox-capacity-memory=2Gi",
+        "-sandbox-scope=rank-dev",
+        "-sandbox-image=sha256:98ae4daa4d023f80ef7de0ef487209a47743976835ecae34b4284f51d35946a2",
+        "-database-timeout=3s",
+        "-worker-timeout=60s",
+        "-cleanup-grace=2s",
+        "-persistence-timeout=3s",
+        "-rescue-after=75s",
+        "-shutdown-grace=15s",
+        "-online-slots=1",
+        "-evaluation-slots=1",
+        "-max-model-concurrent=4",
+        "-max-tenant-concurrent=4",
+        "-max-queued=50"
+      ],
+      "podGraceSeconds": 25
+    },
+    "scenarios": [
+      {
+        "name": "complete-in-grace",
+        "executions": [
+          "exec-2996c972d9c73b32e49528168eb8ec7d",
+          "exec-62098b8a501136cb4a42808d9957a0b4"
+        ],
+        "workers": [
+          {
+            "name": "execution-worker-765f4586bf-jdr2q",
+            "uid": "33d3419e-5dd7-4628-9366-5dae56ac7c0d",
+            "deletingAt": "2026-09-15T02:09:19Z",
+            "deletionObservedAt": 260463.774520208,
+            "exitCode": 0,
+            "phase": "Succeeded",
+            "exitObservedAt": 260472.79554875
+          }
+        ],
+        "observed": [
+          {
+            "status": "completed",
+            "attempt": 1,
+            "unknownOutcome": false,
+            "cleanupPending": false,
+            "effects": 1,
+            "runningEvents": 1
+          },
+          {
+            "status": "completed",
+            "attempt": 1,
+            "unknownOutcome": false,
+            "cleanupPending": false,
+            "effects": 1,
+            "runningEvents": 1
+          }
+        ],
+        "automaticDecision": {
+          "hpaDesired": 1,
+          "activeOwnerSelected": true,
+          "stabilizationSeconds": 0,
+          "deletionCostSelectedVictim": true
+        },
+        "sentinel": {
+          "status": "completed",
+          "attempt": 1,
+          "unknownOutcome": false,
+          "cleanupPending": false,
+          "effects": 0,
+          "runningEvents": 1
+        },
+        "exitCodes": [
+          0
+        ]
+      },
+      {
+        "name": "interrupt-at-grace",
+        "executions": [
+          "exec-cb1b9d1300b89e9232a201a5802b1860",
+          "exec-bda5004f768c0a8f65c1675061a54991"
+        ],
+        "workers": [
+          {
+            "name": "execution-worker-765f4586bf-x5dv2",
+            "uid": "2f6f2d03-2b5d-466d-bd50-d79985097a19",
+            "deletingAt": "2026-09-15T02:10:04Z",
+            "deletionObservedAt": 260508.925714083,
+            "exitCode": 0,
+            "phase": "Succeeded",
+            "exitObservedAt": 260524.6309795
+          }
+        ],
+        "observed": [
+          {
+            "status": "failed",
+            "attempt": 1,
+            "unknownOutcome": true,
+            "cleanupPending": false,
+            "effects": 1,
+            "runningEvents": 1
+          },
+          {
+            "status": "completed",
+            "attempt": 1,
+            "unknownOutcome": false,
+            "cleanupPending": false,
+            "effects": 1,
+            "runningEvents": 1
+          }
+        ],
+        "automaticDecision": {
+          "hpaDesired": 1,
+          "activeOwnerSelected": true,
+          "stabilizationSeconds": 0,
+          "deletionCostSelectedVictim": true
+        },
+        "sentinel": {
+          "status": "completed",
+          "attempt": 1,
+          "unknownOutcome": false,
+          "cleanupPending": false,
+          "effects": 0,
+          "runningEvents": 1
+        },
+        "exitCodes": [
+          0
+        ]
+      }
+    ],
+    "submittedExecutionIds": [
+      "exec-2996c972d9c73b32e49528168eb8ec7d",
+      "exec-62098b8a501136cb4a42808d9957a0b4",
+      "exec-1f0c02d837d572cd6e50a0fb4e48446c",
+      "exec-cb1b9d1300b89e9232a201a5802b1860",
+      "exec-bda5004f768c0a8f65c1675061a54991",
+      "exec-c518fb738f6cbb7c47584e0ce0e8102c"
+    ],
+    "automatic": true,
+    "passed": true,
+    "cleanupErrors": [],
+    "endedAt": "2026-09-15T02:10:08.051178+00:00"
+  },
+  "freshDatabase": {
+    "startedAt": "2026-09-15T02:08:24.956847+00:00",
+    "database": "rank_fresh_bf80beb9882f",
+    "image": "rank-platform-lab:09a7dc4989fbd5c3",
+    "schemas": "execution,rank",
+    "migrationOwners": "execution_migrator,rank_migrator",
+    "passed": true,
+    "repeatedMigrationPreservesEmptyState": true,
+    "modelQuotaAndRiverTablesPresent": true,
+    "endedAt": "2026-09-15T02:08:32.460220+00:00"
+  },
+  "runtimePermissions": {
+    "startedAt": "2026-09-15T02:02:31.117472+00:00",
+    "checks": [
+      {
+        "schema": "execution",
+        "authenticatedDML": true,
+        "futureTableDefaults": true,
+        "crossSchemaDenied": true,
+        "migrationMetadataReadOnly": true,
+        "ddlAndPrivilegeEscalationDenied": true
+      },
+      {
+        "schema": "rank",
+        "authenticatedDML": true,
+        "futureTableDefaults": true,
+        "crossSchemaDenied": true,
+        "migrationMetadataReadOnly": true,
+        "ddlAndPrivilegeEscalationDenied": true
+      },
+      {
+        "controlHasNoDatabaseOrActionSecret": true,
+        "migrationSecretsDatabaseOnly": true,
+        "applicationPodsHaveNoMigrationSecretOrServiceAccountToken": true
+      }
+    ],
+    "images": {
+      "images": {
+        "platform": "rank-platform-lab:09a7dc4989fbd5c3",
+        "gateway": "rank-gateway-lab:09a7dc4989fbd5c3"
+      },
+      "stage": "/Users/staff/.local/state/chat2ranker/rank-k8s/platform-runtime-evidence-v1",
+      "arch": "arm64",
+      "digests": {
+        "platform": "sha256:9805e9c7cfa5042a0a876cff772ca46ad52b629f0f8c7266d2c0fc039d74018b",
+        "gateway": "sha256:bc590abf8ad7097ff3fe3787e4cc53d5813be28f70e773ddaae4e38f7ef6c8ba"
+      }
+    },
+    "completedAt": "2026-09-15T02:02:35.583995+00:00"
+  },
+  "sourceReports": {
+    "quota": "quota-1789438273685-acceptance.json",
+    "deepseek": "deepseek-1789437749944-acceptance.json",
+    "recovery": "fault-ffdc030e4a6141b9a3685ff115fa1c26-recovery-windows.json",
+    "automaticDrain": "fault-c8b259a8d66449e8bbef06fd32fa76c9-keda-drain.json",
+    "freshDatabase": "rank-fresh-0e0a79898898.json",
+    "runtimePermissions": "database-roles-8031eda0c3104a99912c928e8749c7d0.json",
+    "platform": "platform-verification-1789438642442.json"
+  },
+  "sandboxImage": {
+    "tag": "rank-sandbox-lab:98254d26de429bd1",
+    "image": "sha256:98ae4daa4d023f80ef7de0ef487209a47743976835ecae34b4284f51d35946a2",
+    "platform": "sha256:9805e9c7cfa5042a0a876cff772ca46ad52b629f0f8c7266d2c0fc039d74018b"
+  },
+  "verificationSources": {
+    "rank/deploy/k8s/verify-model-quota.mjs": "8a2516c2e23b6cad4610340b3c6c7f4240e1ba3d6787ffe3b51b36de78f7c249",
+    "rank/deploy/k8s/verify-recovery-windows.py": "c817b76c922321a98cd4d9709f5b298029c9da55e982e5b102c7125543385435",
+    "rank/deploy/k8s/verify-active-drain.py": "3d47d6dc0f30dd08425ba4ec3f54a5c5d6977faa1badaefc825f70e1a58df4dc",
+    "rank/deploy/k8s/verify-fresh-database.py": "95bb3af0d77597de905ebb0628bb90908acec19fc9696f4a6a2d6350143824ad",
+    "rank/deploy/k8s/worker_fault.py": "a3a4c5f01557840f1ab248ac9cc8c1890729c61c7674424bc0ee8c9991c27de1",
+    "rank/deploy/k8s/fixtures/bounded-provider.mjs": "d3e3bda42b6dc5a41ee18e9e9abd553b144331655cf0beb40df7a5b4f54eaf60",
+    "rank/deploy/k8s/fixtures/fault-s3.mjs": "17cffa073fb3322b991533a8e889570795910b4eed1bcbfc2317d3f0037eb0fb"
+  },
+  "scope": {
+    "physicalMultiHost": "operator deferred",
+    "productionTLS": "documented, not externally deployed",
+    "temporaryProviderRequests": 4,
+    "maxOutputTokens": 512,
+    "automaticOrphanDeletion": false
+  },
+  "platform": {
+    "startedAt": "2026-09-15T02:12:42.255Z",
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Independent operator identities, live credential revocation, scoped control service and tenant/endpoint public permissions hold through the gateway",
+      "Known worker failure retains output, usage and S3 result evidence after cleanup; idempotent replay stays on attempt one",
+      "Frozen model budget stops repeated 429 calls after one provider request and survives idempotent replay",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ],
+    "access": {
+      "unauthenticatedManagement": 401,
+      "operatorIdentity": true,
+      "authoritativeReleaseActor": true,
+      "credentialsCannotCrossPlanes": true,
+      "crossTenantGrant": 400,
+      "crossTenantAndEndpointAccess": 404,
+      "missingScope": 403,
+      "revokedServingKey": 401,
+      "replacementRetainsHistory": true,
+      "operatorRotation": true,
+      "serviceScope": {
+        "bootstrap": 200,
+        "credentials": 403,
+        "control": 401
+      }
+    },
+    "failedResult": {
+      "status": "failed",
+      "output": "{\"status\":\"ok\"}",
+      "usage": {
+        "inputTokens": 70,
+        "outputTokens": 30
+      },
+      "costKnown": true,
+      "schemaFailureIdentified": true,
+      "failureArtifactReadable": true,
+      "replayAttempt": 1,
+      "cleanupPending": false
+    },
+    "modelBudget": {
+      "limit": 1,
+      "providerRequests": 1,
+      "status": "failed",
+      "replayAttempt": 1,
+      "cleanupPending": false
+    },
+    "news": {
+      "id": "resp_01a0a2d9-2ecb-706a-a544-d820c99e0e8b",
+      "text": "今日热点（本地测试源）：\n1. 本地集群完成端点调用验证。[1]\n2. 多轮消息保留角色与工具关联。[2]",
+      "status": "completed",
+      "deployment": {
+        "id": "deploy_01a0a2d9-2e8e-7198-9bb4-d00c27c9edc4",
+        "name": "cluster-1789438362507",
+        "requested_reference": "cluster-1789438362507",
+        "resolution_kind": "alias",
+        "release_revision_id": "rel_01a0a2d9-2e98-7f0f-b26f-82aeab29d6f8",
+        "agent_version_id": "agent-e144c0165f81d88e6a020c407dbdb2ef-v1"
+      },
+      "usage": {
+        "input_tokens": 12,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 3,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 15
+      },
+      "cost": {
+        "amount": 0,
+        "currency": "USD",
+        "known": false
+      },
+      "elapsedMs": 12479,
+      "collectedAt": "2026-09-15T02:15:37.397Z",
+      "since": "2026-09-14T02:15:37.397Z",
+      "sources": [
+        {
+          "number": 1,
+          "title": "Rank local acceptance 1",
+          "points": 9,
+          "comments": 1,
+          "submittedAt": "2026-09-15T02:14:37.397Z",
+          "discussion": "https://news.ycombinator.com/item?id=1",
+          "url": "https://example.test/news/1"
+        },
+        {
+          "number": 2,
+          "title": "Rank local acceptance 2",
+          "points": 8,
+          "comments": 1,
+          "submittedAt": "2026-09-15T02:14:37.397Z",
+          "discussion": "https://news.ycombinator.com/item?id=2",
+          "url": "https://example.test/news/2"
+        }
+      ]
+    },
+    "chat": {
+      "first": "resp_01a0a2d9-5f80-7ba5-9aad-01245ea4a519",
+      "second": "resp_01a0a2d9-94ae-7cc5-9020-ee95d3cf92b8",
+      "text": "小林，你喜欢科技新闻，每天有10分钟：先读要闻，再选一条深入阅读。",
+      "agentVersionId": "agent-e144c0165f81d88e6a020c407dbdb2ef-v1",
+      "afterRestart": "resp_01a0a2da-0a7c-75f0-89d3-d97b7149c7a2"
+    },
+    "executionId": "exec-616fc460a8c1e2fea73671da9a70a6b3",
+    "runtime": {
+      "executor": "opensandbox",
+      "image": "sha256:98ae4daa4d023f80ef7de0ef487209a47743976835ecae34b4284f51d35946a2",
+      "egress": {
+        "allow": [
+          {
+            "protocol": "tcp",
+            "cidr": "192.168.49.0/24",
+            "port": 8800
+          },
+          {
+            "protocol": "tcp",
+            "cidr": "192.168.49.2/32",
+            "port": 30091
+          }
+        ]
+      },
+      "cleanupPending": false
+    },
+    "artifact": {
+      "path": "exec-616fc460a8c1e2fea73671da9a70a6b3/sha256/cd1b579b20a8d4c11eabbde9e6140f02e1b54f82d1674251531cbd9f252ae41d/stdout.txt",
+      "sha256": "cd1b579b20a8d4c11eabbde9e6140f02e1b54f82d1674251531cbd9f252ae41d"
+    },
+    "trial": {
+      "conversationId": "conv_01a0a2d9-c3b3-7973-bb6e-718490e4b346",
+      "responseId": "resp_01a0a2d9-c3b3-7ab7-b9e0-8557c71a1a03",
+      "title": "Remember Ada"
+    },
+    "control": {
+      "experimentId": "exp-ccff922d988dc125e81cbac4a8b2b1d6",
+      "turnId": "28705cac-f814-4baa-854a-c0057ce083bd",
+      "originalEventCount": 23,
+      "resumedEventCount": 24
+    },
+    "recoveredQueuedResponse": {
+      "responseId": "resp_01a0a2da-505a-7394-aaa9-9de5bec6cea4",
+      "executionId": "exec-bf59445a68459ef853dfb9b2c8b07ba3",
+      "attempt": 1
+    },
+    "images": {
+      "images": {
+        "platform": "rank-platform-lab:09a7dc4989fbd5c3",
+        "gateway": "rank-gateway-lab:09a7dc4989fbd5c3"
+      },
+      "stage": "/Users/staff/.local/state/chat2ranker/rank-k8s/platform-runtime-evidence-v1",
+      "arch": "arm64",
+      "digests": {
+        "platform": "sha256:9805e9c7cfa5042a0a876cff772ca46ad52b629f0f8c7266d2c0fc039d74018b",
+        "gateway": "sha256:bc590abf8ad7097ff3fe3787e4cc53d5813be28f70e773ddaae4e38f7ef6c8ba"
+      }
+    },
+    "completedAt": "2026-09-15T02:17:22.442Z"
+  },
+  "platformChecks": 10,
+  "validation": {
+    "goPackages": "postgres (real PostgreSQL), modelquota, app, executor, workerruntime, executiond, harness passed",
+    "packagedQuotaSnapshot": "passed",
+    "lint": "passed",
+    "diffCheck": "passed",
+    "pythonSyntax": "passed",
+    "temporaryKeyExclusion": "passed",
+    "docSync": {
+      "initialPassed": 26,
+      "initialFailed": 2,
+      "translationPairingAfterFix": "1011 pairs passed",
+      "remainingFailure": "pre-existing AGENTS.md word budget: 2398 > 1950"
+    },
+    "gatewayHealth": "http://127.0.0.1:18780/health returned ok"
+  }
+}

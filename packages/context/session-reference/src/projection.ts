@@ -49,6 +49,13 @@ function projectSessionConversation(snapshot: SessionSurfaceSnapshot): Projected
         if (text !== '') conversation.push({ role: 'assistant', text, checkpoint: false, originalText: text, omittedBytes: 0 })
         break
       }
+      case 'history/message': {
+        const { message } = event.data
+        if (message.role !== 'assistant' && (message.role !== 'user' || message.source.kind !== 'user')) break
+        const text = textContent(message.content)
+        if (text !== '') conversation.push({ role: message.role, text, checkpoint: false, originalText: text, omittedBytes: 0 })
+        break
+      }
       case 'tool/result':
         break
       /* v8 ignore next 2 -- SurfaceEventType is closed and every variant is handled above. */

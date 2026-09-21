@@ -2,11 +2,12 @@ import { useLayoutEffect, useRef } from "react";
 
 /**
  * Scrollable content with edge fades only where more content exists.
- * @param props Element attributes and optional tail-following for conversation updates.
+ * @param props Element attributes, an optional scrollRef, and optional tail-following for conversation updates.
  * @returns A keyboard-scrollable region with no visible scrollbar.
  */
-export function ScrollRegion({ as: Element = "div", className = "", followTail = false, children, ...props }) {
-  const ref = useRef(null);
+export function ScrollRegion({ as: Element = "div", className = "", followTail = false, scrollRef, children, ...props }) {
+  const localRef = useRef(null);
+  const ref = scrollRef || localRef;
   useLayoutEffect(() => {
     const node = ref.current;
     let atEnd = true;
@@ -43,7 +44,7 @@ export function ScrollRegion({ as: Element = "div", className = "", followTail =
       mutations.disconnect();
       node.removeEventListener("scroll", update);
     };
-  }, [followTail]);
+  }, [followTail, ref]);
 
   return <Element ref={ref} tabIndex={0} className={`scroll-region ${className}`} {...props}>{children}</Element>;
 }

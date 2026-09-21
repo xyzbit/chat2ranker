@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-28-npx-local-distribution.md
-2026-08-28-npx-local-distribution.md: 7af6b355fdd341413e9d70185a7166c23a52b9bb
-2026-08-28-npx-local-distribution.zh.md: 4d4296d22d021aa2ef165b1e5e8c211ab12cf362
+2026-08-28-npx-local-distribution.md: 7c888270bc8ad1e9da0870534ae7864059256e54
+2026-08-28-npx-local-distribution.zh.md: abb9b0e6c9dc13658c8908e807d6f0c71310ac21

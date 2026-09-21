@@ -5,7 +5,8 @@ const url = new URL(baseURL);
 if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) || url.protocol !== "http:") {
   throw new Error("Local provisioning requires an HTTP loopback endpoint.");
 }
-const model = process.env.RANK_MODEL || "acceptance-mtu67jzo@production";
+const model = process.env.RANK_MODEL;
+if (!model) throw new Error("Set RANK_MODEL to your published endpoint name.");
 async function operator(path, body) {
   const response = await fetch(`${url.origin}${path}`, {
     method: body === undefined ? "GET" : "POST",

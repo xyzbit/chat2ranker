@@ -1,0 +1,12 @@
+{
+  "evaluatedReleasePublished": true,
+  "zeroGatewayErrors": true,
+  "slowStreamDrained": true,
+  "longStreamBounded": true,
+  "durableCompletionOnce": true,
+  "storedSSEReplay": true,
+  "frozenAgentVersion": true,
+  "sharedLoginSurvivesRollouts": true,
+  "logoutRevokesSharedSession": true,
+  "dispatcherUnchanged": true
+}

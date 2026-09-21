@@ -5,6 +5,9 @@ async function request(path, options = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 401 && payload.error?.code === "management_unauthorized") {
+      globalThis.dispatchEvent?.(new Event("rank:unauthorized"));
+    }
     const error = new Error(payload.error?.message || `请求失败 (${response.status})`);
     error.code = payload.error?.code;
     error.status = response.status;
@@ -20,9 +23,26 @@ function newIdempotencyKey() {
 }
 
 export const rankApi = {
+  listTrials: (filters = {}) => request(`/api/trials?${new URLSearchParams(filters)}`),
+  getTrial: id => request(`/api/trials/${encodeURIComponent(id)}`),
+  sendTrial: (input, key) => request("/api/trial-responses", { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(input) }),
+  cancelTrial: id => request(`/api/trial-responses/${encodeURIComponent(id)}/cancel`, { method: "POST", body: "{}" }),
+  trialEventsURL: id => `/api/trial-responses/${encodeURIComponent(id)}/events`,
+  getAgentDefaults: id => request(`/api/agent-families/${encodeURIComponent(id)}/evaluation-defaults`),
+  saveAgentDefaults: (id, input) => request(`/api/agent-families/${encodeURIComponent(id)}/evaluation-defaults`, { method: "PUT", body: JSON.stringify(input) }),
+  releaseDraft: (id, input) => request(`/api/deployments/${encodeURIComponent(id)}/release-draft`, { method: "POST", body: JSON.stringify(input) }),
+  startReleaseComparison: (id, input) => request(`/api/deployments/${encodeURIComponent(id)}/release-comparison`, { method: "POST", body: JSON.stringify(input) }),
+  startReleaseTask: (id, input, key) => request(`/api/deployments/${encodeURIComponent(id)}/release-tasks`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(input) }),
+  listReleaseTasks: filters => request(`/api/release-tasks?${new URLSearchParams(filters)}`),
+  getReleaseTask: id => request(`/api/release-tasks/${encodeURIComponent(id)}`),
+  cancelReleaseTask: id => request(`/api/release-tasks/${encodeURIComponent(id)}/cancel`, { method: "POST", body: "{}" }),
+  overrideReleaseTask: (id, reason) => request(`/api/release-tasks/${encodeURIComponent(id)}/override`, { method: "POST", body: JSON.stringify({ reason }) }),
+	 discoverLocalModels: () => request("/api/local-model-connections/discover", { method: "POST", body: "{}", signal: AbortSignal.timeout(5000) }),
+	 importLocalModel: (id, model) => request(`/api/local-model-connections/${encodeURIComponent(id)}/import`, { method: "POST", body: JSON.stringify({ model }) }),
   listAgentEvaluations: (id) => request(`/api/agent-versions/${encodeURIComponent(id)}/evaluations`),
   listResponses: (filters = {}) => request(`/api/responses?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== "" && value != null))}`),
   getResponse: (id, tenantId = "") => request(`/api/responses/${encodeURIComponent(id)}?${new URLSearchParams({ tenantId })}`),
+  captureResponseCase: (id, input) => request(`/api/responses/${encodeURIComponent(id)}/dataset-cases`, { method: "POST", body: JSON.stringify(input) }),
   listCredentials: (tenantId = "") => request(`/api/serving-credentials?${new URLSearchParams({ tenantId })}`),
   createCredential: (input) => request("/api/serving-credentials", { method: "POST", body: JSON.stringify(input) }),
   revokeCredential: (id, tenantId) => request(`/api/serving-credentials/${encodeURIComponent(id)}/revoke?${new URLSearchParams({ tenantId })}`, { method: "POST", body: "{}" }),
@@ -45,10 +65,15 @@ export const rankApi = {
   createAgent: (input) => request("/api/agents", { method: "POST", body: JSON.stringify(input) }),
   createAgentVersion: (familyId, input) => request(`/api/agent-families/${encodeURIComponent(familyId)}/versions`, { method: "POST", body: JSON.stringify(input) }),
   listDeployments: (tenantId = "") => request(`/api/deployments${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ""}`),
+  agentDeployments: (agentVersionId) => request(`/api/deployments?${new URLSearchParams({ agentVersionId })}`),
   getDeployment: (id) => request(`/api/deployments/${encodeURIComponent(id)}`),
   listReleaseHistory: (id, alias, before = "") => request(`/api/deployments/${encodeURIComponent(id)}/aliases/${encodeURIComponent(alias)}/releases${before ? `?before=${encodeURIComponent(before)}` : ""}`),
   createDeployment: (input) => request("/api/deployments", { method: "POST", body: JSON.stringify(input) }),
   promoteDeployment: (id, alias, input) => request(`/api/deployments/${encodeURIComponent(id)}/aliases/${encodeURIComponent(alias)}/releases`, { method: "POST", body: JSON.stringify(input) }),
+  getReleasePolicy: id => request(`/api/deployments/${encodeURIComponent(id)}/release-policy`),
+  saveReleasePolicy: (id, input) => request(`/api/deployments/${encodeURIComponent(id)}/release-policy`, { method: "PUT", body: JSON.stringify(input) }),
+  preflightRelease: (id, alias, input) => request(`/api/deployments/${encodeURIComponent(id)}/aliases/${encodeURIComponent(alias)}/preflight`, { method: "POST", body: JSON.stringify(input) }),
+  listReleaseDecisions: (id, alias, before = "") => request(`/api/deployments/${encodeURIComponent(id)}/aliases/${encodeURIComponent(alias)}/decisions${before ? `?before=${before}` : ""}`),
   listWebhookEndpoints: (tenantId = "") => request(`/api/webhook-endpoints${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ""}`),
   createWebhookEndpoint: (input) => request("/api/webhook-endpoints", { method: "POST", body: JSON.stringify(input) }),
   setWebhookEndpointEnabled: (id, enabled) => request(`/api/webhook-endpoints/${encodeURIComponent(id)}/${enabled ? "enable" : "disable"}`, { method: "POST", body: "{}" }),

@@ -9,6 +9,7 @@ import (
 type ArtifactContent struct {
 	Path      string `json:"path"`
 	Content   string `json:"content"`
+	Encoding  string `json:"encoding"`
 	Truncated bool   `json:"truncated"`
 }
 

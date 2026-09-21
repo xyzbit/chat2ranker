@@ -94,6 +94,14 @@ func (a *nativeCLIAdapter) Run(ctx context.Context, invocation Invocation) (cont
 			configured.Environment = mergeEnvironment(configured.Environment, map[string]string{"OPENAI_BASE_URL": connection.BaseURL, "OPENAI_API_KEY": invocation.Credential})
 		}
 	}
+	if invocation.Emit != nil && (a.id == "codex" || a.id == "claude-code") {
+		configured.Emit = func(event ProgressEvent) error {
+			if event.Type == "harness.stdout" {
+				return nil
+			}
+			return invocation.Emit(event)
+		}
+	}
 	base, err := NewCommand(CommandConfig{ID: a.id, Label: a.label, Argv: argv}).Run(ctx, configured)
 	if err != nil {
 		return base, err
@@ -110,9 +118,13 @@ func (a *nativeCLIAdapter) Run(ctx context.Context, invocation Invocation) (cont
 		return base, err
 	}
 	base.ResolvedModel = firstText(base.ResolvedModel, invocation.Spec.Model)
+	if invocation.Emit != nil && (a.id == "codex" || a.id == "claude-code") {
+		if err := invocation.Emit(ProgressEvent{Type: "harness.output", Message: base.Output, At: time.Now().UTC()}); err != nil {
+			return base, err
+		}
+	}
 	if connection := invocation.ModelConnection; connection != nil {
 		base.ResolvedProvider = connection.Provider
-		base.ResolvedModel = firstText(base.ResolvedModel, connection.DefaultModel)
 	}
 	return base, nil
 }

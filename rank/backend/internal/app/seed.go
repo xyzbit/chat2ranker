@@ -14,7 +14,7 @@ func (s *Service) EnsureSeed(ctx context.Context) error {
 	}
 	if len(families) == 0 {
 		now := s.now().UTC()
-		if err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+		if err := s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 			webFamily := domain.DatasetFamily{ID: "dataset-web-research", Name: "Web 研究基准集", Description: "覆盖检索、总结、引用和结构化输出。", LatestVersionID: "dataset-web-research-v3", CreatedAt: now}
 			webVersion := domain.DatasetVersion{ID: webFamily.LatestVersionID, FamilyID: webFamily.ID, Name: webFamily.Name, Version: 3, Source: "浏览器采集 + Web 搜索", Description: webFamily.Description, Schema: defaultJSON(nil), Rubric: defaultJSON(nil), Cases: seedWebCases(), CreatedAt: now, CaseCount: 12}
 			webVersion.Evaluator = evaluatorForDataset(webVersion)

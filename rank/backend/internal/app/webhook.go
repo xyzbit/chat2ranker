@@ -184,7 +184,7 @@ func (s *Service) CreateWebhookEndpoint(ctx context.Context, input CreateWebhook
 	if err := s.webhookSecrets.Save(ctx, endpoint.SecretRef, []byte(secret)); err != nil {
 		return CreatedWebhookEndpoint{}, fmt.Errorf("save Webhook signing secret: %w", err)
 	}
-	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	err = s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		for _, deploymentID := range endpoint.DeploymentIDs {
 			deployment, getErr := repo.GetDeployment(ctx, deploymentID)
 			if getErr != nil {
@@ -280,11 +280,11 @@ func webhookEventForStatus(status string) string {
 
 func (s *Service) updateResponseWithWebhooks(ctx context.Context, response domain.ServingResponse, expectedStatus string, events []domain.ResponseEvent) error {
 	eventType := webhookEventForStatus(response.Status)
-	return s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	return s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		if err := repo.UpdateResponse(ctx, response, expectedStatus, events); err != nil {
 			return err
 		}
-		if eventType == "" {
+		if eventType == "" || response.CredentialID == "" {
 			return nil
 		}
 		endpoints, err := repo.ListWebhookEndpoints(ctx, response.TenantID)

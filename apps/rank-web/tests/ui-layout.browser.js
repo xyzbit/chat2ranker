@@ -63,16 +63,12 @@ async (page) => {
     return e.scrollHeight - e.clientHeight - e.scrollTop < 2;
   });
   await page.reload();
-  await page.getByRole("button", { name: "Acceptance mtu67jzo", exact: true }).click();
-  await page.getByRole("button", { name: "完整结果", exact: true }).last().click();
-  await page.getByRole("tab", { name: /模型连接/ }).click();
-  await page.keyboard.press("Home");
-  check(await page.getByRole("tab", { name: "配置", exact: true }).getAttribute("aria-selected") === "true", "Home must select first tab");
-  await page.keyboard.press("End");
-  await page.locator(".connection-center").getByRole("button", { name: "添加", exact: true }).click();
-  const trigger = page.getByRole("button", { name: "选择模型", exact: true });
+  await page.goto(`${origin}/#/settings`);
+  await page.getByRole("button", { name: "添加连接", exact: true }).click();
+  const form = page.locator(".management-form");
+  const trigger = form.getByRole("button", { name: "模型", exact: true });
   await trigger.click();
-  const search = page.getByRole("combobox", { name: "搜索模型", exact: true });
+  const search = form.getByRole("combobox", { name: "模型", exact: true });
   await search.fill("deepseek");
   await search.press("ArrowDown");
   const active = await search.getAttribute("aria-activedescendant");
@@ -81,8 +77,8 @@ async (page) => {
   check(await page.locator(":popover-open").count() === 0, "Selecting must close menu");
   await trigger.click();
   await search.press("Escape");
-  check(await page.locator(".experiment-panel").isVisible(), "Menu Escape closed parent panel");
-  check(await trigger.evaluate(e => e === document.activeElement), "Menu must restore trigger focus");
+  check(await form.isVisible(), "Menu Escape closed the connection form");
+  check(await search.evaluate(e => e === document.activeElement), "Menu must retain input focus");
   await page.setViewportSize({ width: 390, height: 844 });
   await trigger.click();
   await page.waitForFunction(() => {
@@ -93,7 +89,7 @@ async (page) => {
   check(bounds.x >= 0 && bounds.x + bounds.width <= 391 && bounds.y >= 0 && bounds.y + bounds.height <= 845, "Model menu clips viewport");
   await page.screenshot({ path: "output/playwright/ui-model-menu-mobile.png" });
   await search.press("Escape");
-  await page.locator(".panel-head-actions").getByRole("button", { name: "关闭实验工作区", exact: true }).click();
+  await form.getByRole("button", { name: "取消", exact: true }).click();
   await page.goto(`${origin}/#/settings`);
   await page.getByRole("combobox", { name: "语言", exact: true }).click();
   await page.getByRole("option", { name: "English", exact: true }).click();

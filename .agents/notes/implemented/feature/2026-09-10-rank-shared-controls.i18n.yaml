@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-10-rank-shared-controls.md
-2026-09-10-rank-shared-controls.md: 028743c3f09d220493c268c768a72095d98842d0
-2026-09-10-rank-shared-controls.zh.md: fba0d84c47a3194d2c2bf3a318f79f36cbb6fb87
+2026-09-10-rank-shared-controls.md: 2f59a89ca49fd205ea46e68ff4a3af1711eb4ccc
+2026-09-10-rank-shared-controls.zh.md: c1d3753c07014b8cfaee04dc85ca0e735ae789a6

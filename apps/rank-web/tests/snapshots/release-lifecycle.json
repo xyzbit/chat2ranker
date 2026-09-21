@@ -1,0 +1,29 @@
+{
+  "unconfigured": "release_policy_rejected",
+  "thresholdRejection": "release_policy_rejected",
+  "policyConflict": "release_policy_changed",
+  "reasonRequired": "release_override_reason_required",
+  "validTrials": 3,
+  "passedTrials": 2,
+  "checks": [
+    { "code": "policy_configured", "passed": true },
+    { "code": "evidence_selected", "passed": true },
+    { "code": "agent_version", "passed": true },
+    { "code": "run_complete", "passed": true },
+    { "code": "valid_trials", "passed": true },
+    { "code": "dataset_version", "passed": true },
+    { "code": "valid_trial_rate", "passed": true },
+    { "code": "pass_rate", "passed": false },
+    { "code": "evidence_age", "passed": true }
+  ],
+  "releaseRevisions": [4, 3, 2, 1],
+  "decisions": [
+    { "result": "manual_override", "policyRevision": 4, "minPassRate": 66, "passed": false, "reason": "emergency recovery without fresh evidence", "published": true },
+    { "result": "passed", "policyRevision": 4, "minPassRate": 66, "passed": true, "reason": "", "published": true },
+    { "result": "passed", "policyRevision": 4, "minPassRate": 66, "passed": true, "reason": "", "published": true },
+    { "result": "passed", "policyRevision": 4, "minPassRate": 66, "passed": true, "reason": "", "published": true },
+    { "result": "rejected", "policyRevision": 1, "minPassRate": 67, "passed": false, "reason": "", "published": false },
+    { "result": "rejected", "policyRevision": 0, "minPassRate": 0, "passed": false, "reason": "", "published": false }
+  ],
+  "continuation": { "beforeRollbackPinned": true, "afterRollbackPinned": true, "sameConversation": true }
+}

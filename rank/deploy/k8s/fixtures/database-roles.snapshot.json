@@ -1,0 +1,23 @@
+[
+  {
+    "schema": "execution",
+    "authenticatedDML": true,
+    "futureTableDefaults": true,
+    "crossSchemaDenied": true,
+    "migrationMetadataReadOnly": true,
+    "ddlAndPrivilegeEscalationDenied": true
+  },
+  {
+    "schema": "rank",
+    "authenticatedDML": true,
+    "futureTableDefaults": true,
+    "crossSchemaDenied": true,
+    "migrationMetadataReadOnly": true,
+    "ddlAndPrivilegeEscalationDenied": true
+  },
+  {
+    "controlHasNoDatabaseOrActionSecret": true,
+    "migrationSecretsDatabaseOnly": true,
+    "applicationPodsHaveNoMigrationSecretOrServiceAccountToken": true
+  }
+]

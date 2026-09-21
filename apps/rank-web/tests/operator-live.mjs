@@ -52,9 +52,14 @@ try {
   assert.ok(evaluations.some((v) => v.id === runId && v.datasetVersion === dataset.version));
   report.evaluation = { passed: run.passed, total: run.total, cost: run.cost, costKnown: run.costKnown };
   passed("real Agent execution, judge evaluation and version-scoped evidence");
-  const deployment = await request("/api/deployments", { tenantId: tenant, agentFamilyId: agent.familyId, name: `acceptance-${stamp}`, policy: { requestsPerMinute: 60, maxConcurrentResponses: 4, executionTimeoutMs: 120000, allowInstructions: false, allowCallerTools: true } }, {}, 201);
+  const deployment = await request("/api/deployments", { tenantId: tenant, agentFamilyId: agent.familyId, name: `acceptance-${stamp}`, policy: { requestsPerMinute: 60, maxConcurrentResponses: 4, executionTimeoutMs: 120000 } }, {}, 201);
   report.deploymentId = deployment.id; report.deploymentName = deployment.name;
-  const release = await request(`/api/deployments/${deployment.id}/aliases/production/releases`, { agentVersionId: agent.id, policyResult: "passed", evidenceRunId: runId, actor: "live-acceptance", reason: "real evaluation verified" }, {}, 201);
+  const policyResponse = await fetch(`${base}/api/deployments/${deployment.id}/release-policy`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: 0, datasetVersionId: dataset.id, minPassRate: 100, minValidTrialRate: 100, maxEvidenceAgeHours: 24 }) });
+  assert.equal(policyResponse.status, 200);
+  const releasePolicy = await policyResponse.json();
+  const preflight = await request(`/api/deployments/${deployment.id}/aliases/production/preflight`, { agentVersionId: agent.id, evidenceRunId: runId });
+  assert.equal(preflight.evaluation.passed, true);
+  const release = await request(`/api/deployments/${deployment.id}/aliases/production/releases`, { agentVersionId: agent.id, expectedPolicyRevision: releasePolicy.revision, policyResult: "passed", evidenceRunId: runId, actor: "live-acceptance", reason: "real evaluation verified" }, {}, 201);
   credential = await request("/api/serving-credentials", { tenantId: tenant, name: `Acceptance ${stamp}`, deploymentIds: [deployment.id], scopes: ["responses:create", "responses:read", "responses:cancel"] }, {}, 201);
   const headers = { authorization: `Bearer ${credential.apiKey}` };
   const firstInput = { model: `${deployment.name}@production`, input: "Remember the codeword ORCHID. Reply only ORCHID." };
@@ -70,7 +75,7 @@ try {
   report.responseId = first.id;
   passed("real production invocation, idempotency and trace details");
   const version2 = await request(`/api/agent-families/${agent.familyId}/versions`, { ...agentInput, description: "second immutable version" }, {}, 201);
-  await request(`/api/deployments/${deployment.id}/aliases/production/releases`, { agentVersionId: version2.id, expectedReleaseRevisionId: release.id, policyResult: "manual_override", actor: "live-acceptance", reason: "verify conversation pinning across release" }, {}, 201);
+  await request(`/api/deployments/${deployment.id}/aliases/production/releases`, { agentVersionId: version2.id, expectedReleaseRevisionId: release.id, expectedPolicyRevision: releasePolicy.revision, policyResult: "manual_override", actor: "live-acceptance", reason: "verify conversation pinning across release" }, {}, 201);
   const continued = await request("/v1/responses", { model: `${deployment.name}@production`, previous_response_id: first.id, input: "What was the codeword? Reply only that word." }, headers);
   const continuedDetail = await request(`/api/responses/${continued.id}?tenantId=${encodeURIComponent(tenant)}`);
   assert.equal(continuedDetail.response.agentVersionId, agent.id);

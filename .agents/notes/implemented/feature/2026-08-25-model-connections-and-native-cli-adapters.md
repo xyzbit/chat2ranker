@@ -22,9 +22,13 @@ The experiment workspace contains a compact model-connection center with officia
 
 ## Consequences
 
+Local configuration discovery is optional and owned by Execution Service. First-use setup scans while manual configuration remains available in a separate tab; settings exposes explicit rediscovery. Candidates contain metadata only. Starting a conversation re-reads the selected source and imports its credential through the existing store, with an optional typed model override. Matching endpoint, protocol, model, and key reuse a connection. Discovery does not contact providers or change system bindings, so unavailable local tools cannot block startup and later local edits cannot alter published Agent behavior. Assembled keyless snapshots cover source failure isolation, explicit import, custom models, deduplication, and unchanged system bindings.
+
 Provider credentials stay out of Rank state, execution history, SSE, and artifacts. A connection can be reused by versioned Agents without duplicating its key, and a Run still freezes the connection ID and model selection. Local file credentials are suitable for single-machine use; a server deployment can replace the credential store with Vault or KMS without changing Rank or Adapter APIs. Known provider costs remain exact, catalog- and connection-derived values are visibly approximate, and missing price configuration remains explicit rather than presenting a misleading amount.
 
 ## Alternatives considered
+
+**Automatically import and bind every discovered configuration.** This removes the user's choice of connection and lets an unrelated tool's configuration determine the platform's conversation model. Explicit selection keeps discovery optional without duplicating credential entry.
 
 - **Trust every CLI cost field.** Rejected because an estimated CLI cost can use the vendor's default price even when the CLI is routed to another provider or model.
 - **Use one immutable global price table.** Rejected because gateways and negotiated prices differ. The built-in catalog is only a local default; a connection may override it.

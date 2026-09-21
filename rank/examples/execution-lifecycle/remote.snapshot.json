@@ -1,0 +1,38 @@
+{
+  "failedResult": {
+    "status": "failed",
+    "output": "{\"status\":\"ok\"}",
+    "usage": {
+      "inputTokens": 70,
+      "outputTokens": 30
+    },
+    "costKnown": true,
+    "schemaFailureIdentified": true,
+    "failureArtifactReadable": true,
+    "replayAttempt": 1,
+    "cleanupPending": false
+  },
+  "runtimeResources": {
+    "cpuMillis": 500,
+    "memoryBytes": 536870912
+  },
+  "executor": "opensandbox",
+  "output": "已完成任务：sandbox demo。结果包含：任务成功完成。",
+  "status": "completed",
+  "attempt": 1,
+  "runtimePersistedBeforeCompletion": true,
+  "runtimeCleanupPending": false,
+  "events": [
+    "execution.queued",
+    "execution.running",
+    "harness.started",
+    "harness.output",
+    "execution.completed"
+  ],
+  "artifactsReadableAfterCleanup": true,
+  "queuedCancellation": {
+    "status": "cancelled",
+    "attempt": 0,
+    "runtimeCreated": false
+  }
+}

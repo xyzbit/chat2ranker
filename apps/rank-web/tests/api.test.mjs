@@ -82,3 +82,16 @@ test("Webhook API scopes endpoint creation to Deployments", async (t) => {
   assert.deepEqual(JSON.parse(requests[1].options.body).deploymentIds, ["deploy-1"]);
   assert.equal(requests[2].path, "/api/webhook-endpoints/wh%2F1/disable");
 });
+
+test("only management authorization failures return the workspace to login", async (t) => {
+  const previousFetch = globalThis.fetch;
+  const previousDispatch = globalThis.dispatchEvent;
+  const events = [];
+  globalThis.dispatchEvent = event => { events.push(event.type); return true; };
+  t.after(() => { globalThis.fetch = previousFetch; globalThis.dispatchEvent = previousDispatch; });
+  for (const code of ["management_unauthorized", "invalid_api_key", "management_auth_unavailable"]) {
+    globalThis.fetch = async () => new Response(JSON.stringify({ error: { code } }), { status: code === "management_auth_unavailable" ? 503 : 401 });
+    await assert.rejects(rankApi.bootstrap(), error => error.code === code);
+  }
+  assert.deepEqual(events, ["rank:unauthorized"]);
+});

@@ -1,0 +1,170 @@
+{
+  "date": "2026-09-15",
+  "passed": true,
+  "environment": "Single laptop, minikube rank-dev, PostgreSQL/River, SeaweedFS S3 and remote OpenSandbox; actual DSH with deterministic local providers",
+  "platform": {
+    "startedAt": "2026-09-14T22:34:12.420Z",
+    "completedAt": "2026-09-14T22:35:34.211Z",
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Known worker failure retains output, usage and S3 result evidence after cleanup; idempotent replay stays on attempt one",
+      "Frozen model budget stops repeated 429 calls after one provider request and survives idempotent replay",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ],
+    "modelBudget": {
+      "limit": 1,
+      "providerRequests": 1,
+      "status": "failed",
+      "replayAttempt": 1,
+      "cleanupPending": false
+    },
+    "runtime": {
+      "executor": "opensandbox",
+      "image": "sha256:82a9a89775f48546384a1590ef901d2bcb9b3dbb49d0d285877872cf66d89db0",
+      "egress": {
+        "allow": [
+          {
+            "protocol": "tcp",
+            "cidr": "192.168.49.0/24",
+            "port": 8800
+          }
+        ]
+      },
+      "cleanupPending": false
+    }
+  },
+  "images": {
+    "platform": "sha256:c1d6d5918451356f56bbefafcd4f849f39a6f8e555eee806a2ca21f58a3528f9",
+    "gateway": "sha256:9328cca895438eadbe166daa875227b911607697ccf1eef187a08a5c87c18f97"
+  },
+  "isolationRegression": {
+    "storage": {
+      "passed": true,
+      "checks": {
+        "additionalVolumeRejected": true,
+        "isolationOverlayRejected": true,
+        "imageVolumeRejected": true,
+        "readonlyRootWithoutVolumes": true,
+        "swapDisabled": true,
+        "containerLogRotationConfigured": true,
+        "nativeProcessLimits": {
+          "uid": 1000,
+          "denied": [
+            "/var/tmp",
+            "/home/node",
+            "/opt/rank",
+            "/etc",
+            "/root"
+          ],
+          "shared": {
+            "error": "ENOSPC",
+            "recovered": true
+          },
+          "temporary": {
+            "error": "ENOSPC",
+            "recovered": true
+          },
+          "sharedMemory": {
+            "error": "ENOSPC",
+            "recovered": true
+          },
+          "inodeLimitEnforced": true,
+          "usableAfterCleanup": true
+        },
+        "sandboxDeleted": true
+      },
+      "sandboxImage": "sha256:82a9a89775f48546384a1590ef901d2bcb9b3dbb49d0d285877872cf66d89db0",
+      "serverImage": "sha256:7ad1c044082d8278a9879b542d913f7a2736e4f903fc83daa7bbc97190b4575b"
+    },
+    "network": {
+      "passed": true,
+      "checks": {
+        "listeningTargetsReachableOutsideSandbox": {
+          "tcp": true,
+          "port": true,
+          "udp": true
+        },
+        "invalidSetupStopsBeforeDaemon": {
+          "missing-network-capability": true,
+          "missing-policy": true
+        },
+        "runtime": {
+          "allowed": true,
+          "otherPort": false,
+          "otherAddress": false,
+          "udp": false,
+          "rootNetworkCapabilitiesDropped": true,
+          "daemonNetworkCapabilitiesDropped": true,
+          "childNetworkCapabilitiesDropped": true,
+          "cannotChangePolicy": true
+        },
+        "ipv4AndIpv6DefaultDenyInstalled": true,
+        "afterLifecycleLoss": {
+          "tcp": true,
+          "port": false,
+          "udp": false
+        },
+        "deniedTrafficAbsentAtTargets": true,
+        "resourcesRemoved": true
+      },
+      "sandboxImage": "sha256:82a9a89775f48546384a1590ef901d2bcb9b3dbb49d0d285877872cf66d89db0",
+      "serverImage": "sha256:7ad1c044082d8278a9879b542d913f7a2736e4f903fc83daa7bbc97190b4575b"
+    },
+    "lifetime": {
+      "sandboxImage": "sha256:82a9a89775f48546384a1590ef901d2bcb9b3dbb49d0d285877872cf66d89db0",
+      "serverImage": "sha256:7ad1c044082d8278a9879b542d913f7a2736e4f903fc83daa7bbc97190b4575b",
+      "facts": {
+        "uid": 1000,
+        "tokenVisible": false,
+        "rootEnvironmentReadable": false,
+        "canSignalRoot": false,
+        "dockerSocketVisible": false
+      },
+      "detachedWorkloadObserved": true,
+      "lifecycleServerKilled": true,
+      "providerTTLSeconds": 90,
+      "protectedLifetimeSeconds": 25,
+      "stoppedAtDeadline": true,
+      "exitCode": 1
+    }
+  },
+  "verification": {
+    "executorGoSuite": true,
+    "remoteDSHIntegration": true,
+    "remoteSQLiteSnapshot": true,
+    "remotePostgresTwoWorkerSnapshot": true,
+    "contractsLint": true,
+    "docSync": {
+      "passed": 27,
+      "failed": 1,
+      "failure": "Pre-existing AGENTS.md word budget: 2398 > 1950"
+    }
+  },
+  "sourceSha256": {
+    "apps/execution-runtime/model-budget.mjs": "32c766edce63484afac419fcdeadfb09ea84827d866800c616fb2440ff20ca94",
+    "execution/backend/contract/model_budget.go": "a80f402ab53ecec5843e29ecfa3fa4a54deb7bd7ca2cd5ba7382e0fbed7df3dc",
+    "execution/backend/internal/app/service.go": "1415c4ba09318f2f8627eaeaf95673ab4569063f73f27288b4cb3e373cc1f17d",
+    "execution/backend/internal/app/model_budget_test.go": "b5fe03db08ddba7f5cf680c500b4f44b0dddf012976444c9a9b79ad2d9809d9c",
+    "execution/backend/harness/dsh.go": "be180aafed4edb52d08e9c9d016e458fa9402933a81622b7fd4cf3c2510aa188",
+    "execution/backend/harness/dsh_budget_test.go": "c8739708e10c8616b609ae5dd978d07c8621b827a73b4edfdd092afd99d0ae22",
+    "execution/backend/internal/postgres/model_budget_test.go": "88587ce4e70efebf5ca41e76ccb82615e556be097729c23ee31ad78a8bf1f1db",
+    "execution/backend/internal/workerprotocol/protocol.go": "8582d83804c1dacfecbc27a183e3520011ab5407c73123c948e9f74a54fbfa70",
+    "execution/backend/internal/executor/opensandbox_command.go": "02e9dc86aaebb405c15929dd3e2ca27e09ecdd278fe30bd81bd38f6e32a2b458",
+    "execution/backend/internal/executor/opensandbox_command_test.go": "fa09e31813ce5ffd2e82637f9c7f6380401f78b991f9a8f713d60aeb74de86fe",
+    "execution/backend/internal/executor/opensandbox_integration_test.go": "3e596ca14922d976f2c09dffb44e4fc0e38035637d8184d6b4d1a91715aafbc3",
+    "rank/deploy/k8s/verify-platform.mjs": "0b81ed94823d4c6689e7ffd0953bb91d4b001fc227093034cf14e02dfbc8d1ed",
+    "rank/deploy/k8s/fixtures/model.mjs": "b7bc1594ea9ce2118cd499f2058529e4136a4880798b72381c2bc6e04484a350",
+    "rank/deploy/k8s/fixtures/model-budget.snapshot.json": "d64a6049871a3dfd771a6626093c2cee0a966e932ac8601202ec6ecf847f4ef6"
+  },
+  "limitations": [
+    "No external model-provider acceptance or shared RPM/TPM enforcement",
+    "No production identity, physical multi-host capacity or high-availability acceptance",
+    "Model request cap is cooperative DSH application control, not a token/cost or hostile-code allowance",
+    "Unconfirmed transport still yields unknown outcome; keepalives alone never establish command completion"
+  ]
+}

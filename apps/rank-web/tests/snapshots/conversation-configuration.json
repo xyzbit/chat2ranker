@@ -1,0 +1,15 @@
+{
+  "dataset": { "version": 3, "cases": 2, "rubric": { "summary": "保留引用" } },
+  "limits": { "requestsPerMinute": 90, "maxConcurrentResponses": 3, "executionTimeoutMs": 45000 },
+  "thresholds": { "revision": 1, "minPassRate": 85, "minValidTrialRate": 100, "maxEvidenceAgeHours": 24 },
+  "actions": [
+    { "type": "a2ui/open_configuration", "section": "model_connections", "endpoint": null },
+    { "type": "a2ui/open_configuration", "section": "local_connections", "endpoint": null },
+    { "type": "a2ui/open_configuration", "section": "system_models", "endpoint": null },
+    { "type": "a2ui/open_configuration", "section": "preferences", "endpoint": null },
+    { "type": "a2ui/open_configuration", "section": "api_keys", "endpoint": null },
+    { "type": "a2ui/open_configuration", "section": "webhooks", "endpoint": "chat-created-deployment" },
+    { "type": "a2ui/open_configuration", "section": "release_policy", "endpoint": "chat-created-deployment" },
+    { "type": "a2ui/open_configuration", "section": "endpoint_integration", "endpoint": "chat-created-deployment" }
+  ]
+}

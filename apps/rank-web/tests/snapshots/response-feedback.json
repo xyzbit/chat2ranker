@@ -1,0 +1,6 @@
+{
+  "source": { "status": "completed", "searchable": true, "instructions": "Answer in one sentence." },
+  "captured": { "version": 1, "input": "Contact [email] about shipping.", "expected": { "summary": "Explain the shipping options." }, "provenance": true },
+  "evaluation": { "status": "complete", "total": 1, "validTrials": 1, "datasetVersion": 1, "sourceRetained": true },
+  "append": { "version": 2, "cases": 2, "oldRunCases": 1, "duplicateStatus": 409 }
+}

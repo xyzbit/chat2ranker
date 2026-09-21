@@ -1,0 +1,11 @@
+{
+  "modelCalls": 1,
+  "sharedConnections": 2,
+  "workerProcesses": 2,
+  "beforeStart": { "ready": 1, "quotaBlocked": 1 },
+  "afterDebitReady": 0,
+  "tpmBlockedAfterAPIRestart": 1,
+  "replayAttempt": 1,
+  "unsupportedCode": "unsupported_model_quota",
+  "completedOutput": "Shared quota works"
+}

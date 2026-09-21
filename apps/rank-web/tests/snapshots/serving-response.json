@@ -11,6 +11,8 @@
     "revokedRequestStatus": 401
   },
   "response": {
+    "instructions": "Use three sentences.",
+    "instructionsAppended": true,
     "object": "response",
     "status": "completed",
     "model": "research-public@production",

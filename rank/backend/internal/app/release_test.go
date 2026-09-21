@@ -23,10 +23,21 @@ func TestDeploymentReleaseRegistryPinsAliasHistoryAndExactVersions(t *testing.T)
 		t.Fatal(err)
 	}
 	assertUUIDv7ID(t, string(deployment.ID), "deploy_")
-	if len(deployment.Aliases) != 3 {
-		t.Fatalf("deployment aliases = %d, want 3", len(deployment.Aliases))
+	if len(deployment.Aliases) != 1 {
+		t.Fatalf("deployment aliases = %d, want 1", len(deployment.Aliases))
 	}
-	latestV1, err := service.ResolveDeploymentReference(ctx, "tenant-one", "customer-support@latest")
+	if _, err := service.ResolveDeploymentReference(ctx, "tenant-one", "customer-support"); err == nil {
+		t.Fatal("unpublished deployment resolved")
+	}
+	initial, err := service.PromoteDeploymentAlias(ctx, app.PromoteDeploymentInput{
+		DeploymentID: deployment.ID, Alias: app.DeploymentAliasProduction,
+		AgentVersionID: "agent-research-demo-v1", PolicyResult: domain.ReleasePolicyManualOverride,
+		Actor: "operator", Reason: "initial reviewed release",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	latestV1, err := service.ResolveDeploymentReference(ctx, "tenant-one", "customer-support")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,12 +51,20 @@ func TestDeploymentReleaseRegistryPinsAliasHistoryAndExactVersions(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	latestV2, err := service.ResolveDeploymentReference(ctx, "tenant-one", "customer-support@latest")
+	latestV2, err := service.ResolveDeploymentReference(ctx, "tenant-one", "customer-support")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if latestV2.AgentVersion.ID != v2.ID || latestV2.ReleaseRevision.Revision != 2 || latestV2.ReleaseRevision.PreviousReleaseRevisionID != latestV1.ReleaseRevision.ID {
-		t.Fatalf("latest did not append v2: %#v", latestV2)
+	if latestV2.AgentVersion.ID != latestV1.AgentVersion.ID || latestV2.ReleaseRevision.ID != initial.ID {
+		t.Fatalf("creating an Agent version changed the deployed version: %#v", latestV2)
+	}
+	historical, err := service.ListDeploymentsByAgentVersion(ctx, "tenant-one", latestV1.AgentVersion.ID)
+	if err != nil || len(historical) != 1 || historical[0].ID != deployment.ID {
+		t.Fatalf("historical version lost its deployment: %v, %v", historical, err)
+	}
+	foreign, err := service.ListDeploymentsByAgentVersion(ctx, "tenant-two", latestV1.AgentVersion.ID)
+	if err != nil || len(foreign) != 0 {
+		t.Fatalf("version lookup crossed tenants: %v, %v", foreign, err)
 	}
 	exactV1, err := service.ResolveDeploymentReference(ctx, "tenant-one", "customer-support@v1")
 	if err != nil {
@@ -59,6 +78,7 @@ func TestDeploymentReleaseRegistryPinsAliasHistoryAndExactVersions(t *testing.T)
 		DeploymentID: deployment.ID, Alias: app.DeploymentAliasProduction,
 		AgentVersionID: v2.ID, PolicyResult: domain.ReleasePolicyManualOverride,
 		Actor: "operator@example.com", Reason: "initial production release",
+		ExpectedReleaseRevisionID: initial.ID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -81,10 +101,10 @@ func TestDeploymentReleaseRegistryPinsAliasHistoryAndExactVersions(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rollback.Revision != 2 || rollback.PreviousReleaseRevisionID != productionV2.ID {
+	if rollback.Revision != 3 || rollback.PreviousReleaseRevisionID != productionV2.ID {
 		t.Fatalf("rollback replaced history instead of appending: %#v", rollback)
 	}
-	production, err := service.ResolveDeploymentReference(ctx, "tenant-one", "customer-support@production")
+	production, err := service.ResolveDeploymentReference(ctx, "tenant-one", "customer-support")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,12 +117,12 @@ func TestDeploymentReleaseRegistryPinsAliasHistoryAndExactVersions(t *testing.T)
 		FROM release_revisions AS revision
 		JOIN deployment_aliases AS alias ON alias.id = revision.deployment_alias_id
 		JOIN deployments AS deployment ON deployment.id = alias.deployment_id
-		WHERE deployment.public_id = ?
+		WHERE deployment.public_id = $1
 	`, deployment.ID).Scan(&revisions); err != nil {
 		t.Fatal(err)
 	}
-	if revisions != 4 {
-		t.Fatalf("release revision count = %d, want 4; stale CAS may have persisted", revisions)
+	if revisions != 3 {
+		t.Fatalf("release revision count = %d, want 3; stale CAS may have persisted", revisions)
 	}
 }
 
@@ -133,10 +153,13 @@ func TestPolicyPassedReleaseRequiresCompletedMatchingEvaluation(t *testing.T) {
 	if run.Status != domain.RunComplete || !run.EvaluationComplete {
 		t.Fatalf("evaluation evidence is incomplete: %#v", run)
 	}
+	if _, err := service.SaveReleasePolicy(ctx, deployment.ID, domain.ReleasePolicy{DatasetVersionID: run.DatasetSnapshot.ID, MinPassRate: 80, MinValidTrialRate: 100, MaxEvidenceAgeHours: 168}, 0); err != nil {
+		t.Fatal(err)
+	}
 	release, err := service.PromoteDeploymentAlias(ctx, app.PromoteDeploymentInput{
 		DeploymentID: deployment.ID, Alias: app.DeploymentAliasProduction,
 		AgentVersionID: "agent-research-demo-v1", EvidenceRunID: run.ID,
-		PolicyResult: domain.ReleasePolicyPassed, Actor: "release-controller",
+		PolicyResult: domain.ReleasePolicyPassed, Actor: "release-controller", ExpectedPolicyRevision: 1,
 	})
 	if err != nil {
 		t.Fatal(err)

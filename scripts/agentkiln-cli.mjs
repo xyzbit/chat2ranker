@@ -131,7 +131,7 @@ async function ensureRuntime() {
 }
 
 function proxy(clientRequest, clientResponse, port) {
-  const upstream = httpRequest({ hostname: "127.0.0.1", port, path: clientRequest.url, method: clientRequest.method, headers: { ...clientRequest.headers, host: `127.0.0.1:${port}` } }, (response) => {
+  const upstream = httpRequest({ hostname: "127.0.0.1", port, path: clientRequest.url, method: clientRequest.method, headers: clientRequest.headers }, (response) => {
     clientResponse.writeHead(response.statusCode || 502, response.headers);
     response.pipe(clientResponse);
   });
@@ -165,7 +165,7 @@ async function serveFile(response, webRoot, requestURL) {
 
 function staticServer(webRoot) {
   return createServer((request, response) => {
-    if (request.url?.startsWith("/api")) return proxy(request, response, 8787);
+    if (request.url?.startsWith("/api") || request.url?.startsWith("/v1/")) return proxy(request, response, 8787);
     if (request.url?.startsWith("/control")) return proxy(request, response, 8788);
     void serveFile(response, webRoot, request.url || "/").catch((error) => response.writeHead(500).end(error.message));
   });

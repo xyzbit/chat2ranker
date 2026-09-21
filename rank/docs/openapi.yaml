@@ -4,8 +4,12 @@ info:
   version: 0.6.0
   description: >-
     OpenAI Responses-compatible API for invoking a governed
-    AgentKiln Deployment. The model field selects deployment@version-or-alias,
+    AgentKiln Deployment. The model field selects a stable deployment name,
     and previous_response_id continues a durable version-pinned Conversation.
+    Deployments are published through durable operator release
+    tasks with regression enabled by default, an explicit regression skip, or
+    a reasoned override of failed checks. Promotions and rollbacks affect new
+    conversations; existing conversations keep their accepted Agent version.
 servers:
   - url: http://127.0.0.1:8787
     description: Local development server
@@ -325,8 +329,8 @@ components:
       properties:
         model:
           type: string
-          description: Deployment reference in deployment@version-or-alias form.
-          examples: [research-public@production, research-public@v1]
+          description: Stable deployment name; explicit deployment@version-or-alias references are also supported.
+          examples: [research-public, research-public@v1]
         input:
           oneOf:
             - type: string
@@ -339,7 +343,7 @@ components:
                   - $ref: '#/components/schemas/FunctionCallOutput'
         instructions:
           type: string
-          description: Additional instructions accepted only when the Deployment policy allows them.
+          description: Additional instructions appended to the versioned system prompt for this request; not inherited by continuation.
         metadata:
           type: object
           maxProperties: 16
@@ -370,7 +374,7 @@ components:
           maxItems: 16
           items:
             $ref: '#/components/schemas/FunctionTool'
-          description: Caller-owned functions; the Deployment must enable caller tools.
+          description: Caller-owned functions available on every endpoint; the caller executes them and returns function_call_output.
     InputMessage:
       type: object
       additionalProperties: false
@@ -550,6 +554,9 @@ components:
           type: integer
         completed_at:
           type: [integer, 'null']
+        cancel_requested:
+          type: boolean
+          description: Durable cancellation intent; an active status means remote termination is not yet confirmed.
         status:
           type: string
           enum: [queued, in_progress, requires_action, completed, failed, cancelled]

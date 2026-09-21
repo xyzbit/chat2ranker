@@ -28,23 +28,29 @@ func problem(status int, code, message string) error {
 }
 
 type Options struct {
-	Runners               RunnerRegistry
-	Artifacts             ArtifactReader
-	Workers               bool
-	Clock                 func() time.Time
-	WorkerLatency         time.Duration
-	ActionSecret          string
-	JudgeHarness          string
-	JudgeModel            string
-	Connections           ModelConnectionClient
-	Execution             ServingExecutionClient
-	TenantID              string
-	InputFetcher          ResponseInputFetcher
-	WebhookSecrets        WebhookSecretStore
-	WebhookSender         WebhookSender
-	WebhookPollInterval   time.Duration
-	WebhookAttemptTimeout time.Duration
-	WebhookRetrySchedule  []time.Duration
+	// ExternalDispatch leaves durable admission to a separate single dispatcher.
+	ExternalDispatch        bool
+	EventPollInterval       time.Duration
+	DispatchRetryInterval   time.Duration
+	ExecutionObserveTimeout time.Duration
+	Runners                 RunnerRegistry
+	Artifacts               ArtifactReader
+	Workers                 bool
+	Clock                   func() time.Time
+	WorkerLatency           time.Duration
+	ActionSecret            string
+	JudgeHarness            string
+	JudgeModel              string
+	Connections             ModelConnectionClient
+	Execution               ServingExecutionClient
+	TrialPolicy             domain.DeploymentPolicy
+	TenantID                string
+	InputFetcher            ResponseInputFetcher
+	WebhookSecrets          WebhookSecretStore
+	WebhookSender           WebhookSender
+	WebhookPollInterval     time.Duration
+	WebhookAttemptTimeout   time.Duration
+	WebhookRetrySchedule    []time.Duration
 }
 
 type ServingExecutionClient interface {
@@ -55,6 +61,8 @@ type ServingExecutionClient interface {
 }
 
 type ModelConnectionClient interface {
+	DiscoverLocalModels(context.Context) (contract.LocalModelDiscovery, error)
+	ImportLocalModel(context.Context, string, string) (contract.ModelConnection, error)
 	ListModelCatalog(context.Context) ([]contract.ModelProvider, error)
 	ListModelConnections(context.Context) ([]contract.ModelConnection, error)
 	GetModelConnection(context.Context, string) (contract.ModelConnection, error)
@@ -68,28 +76,41 @@ type ModelConnectionClient interface {
 }
 
 type Service struct {
-	repo                  domain.Repository
-	runners               RunnerRegistry
-	workers               bool
-	now                   func() time.Time
-	workerLatency         time.Duration
-	actionSecret          []byte
-	artifacts             ArtifactReader
-	judgeHarness          string
-	judgeModel            string
-	connections           ModelConnectionClient
-	execution             ServingExecutionClient
-	inputFetcher          ResponseInputFetcher
-	webhookSecrets        WebhookSecretStore
-	webhookSender         WebhookSender
-	webhookPollInterval   time.Duration
-	webhookAttemptTimeout time.Duration
-	webhookRetrySchedule  []time.Duration
-	mu                    sync.Mutex
-	cancels               map[string]context.CancelFunc
-	responseWorkers       map[domain.ResponseID]struct{}
-	responseSubscriptions map[domain.ResponseID]map[chan struct{}]struct{}
-	tenantID              string
+	externalDispatch        bool
+	eventPollInterval       time.Duration
+	runContext              context.Context
+	stopRuns                context.CancelFunc
+	runWG                   sync.WaitGroup
+	runStopping             bool
+	dispatchRetryInterval   time.Duration
+	executionObserveTimeout time.Duration
+	responseContext         context.Context
+	stopResponses           context.CancelFunc
+	responseWG              sync.WaitGroup
+	responseStopping        bool
+	trialPolicy             domain.DeploymentPolicy
+	repo                    domain.Repository
+	runners                 RunnerRegistry
+	workers                 bool
+	now                     func() time.Time
+	workerLatency           time.Duration
+	actionSecret            []byte
+	artifacts               ArtifactReader
+	judgeHarness            string
+	judgeModel              string
+	connections             ModelConnectionClient
+	execution               ServingExecutionClient
+	inputFetcher            ResponseInputFetcher
+	webhookSecrets          WebhookSecretStore
+	webhookSender           WebhookSender
+	webhookPollInterval     time.Duration
+	webhookAttemptTimeout   time.Duration
+	webhookRetrySchedule    []time.Duration
+	mu                      sync.Mutex
+	cancels                 map[string]context.CancelFunc
+	responseWorkers         map[domain.ResponseID]struct{}
+	responseSubscriptions   map[domain.ResponseID]map[chan struct{}]struct{}
+	tenantID                string
 }
 
 func NewService(repo domain.Repository, options Options) *Service {
@@ -114,6 +135,15 @@ func NewService(repo domain.Repository, options Options) *Service {
 	if options.InputFetcher == nil {
 		options.InputFetcher = newSecureResponseInputFetcher()
 	}
+	if options.TrialPolicy.RequestsPerMinute <= 0 {
+		options.TrialPolicy.RequestsPerMinute = 60
+	}
+	if options.TrialPolicy.MaxConcurrentResponses <= 0 {
+		options.TrialPolicy.MaxConcurrentResponses = 4
+	}
+	if options.TrialPolicy.ExecutionTimeoutMs <= 0 {
+		options.TrialPolicy.ExecutionTimeoutMs = 120000
+	}
 	if options.WebhookAttemptTimeout <= 0 {
 		options.WebhookAttemptTimeout = 20 * time.Second
 	}
@@ -126,8 +156,25 @@ func NewService(repo domain.Repository, options Options) *Service {
 	if options.WebhookSender == nil {
 		options.WebhookSender = newSecureWebhookSender(options.WebhookAttemptTimeout)
 	}
-	return &Service{
-		repo: repo, runners: options.Runners, artifacts: options.Artifacts,
+	if options.DispatchRetryInterval <= 0 {
+		options.DispatchRetryInterval = time.Second
+	}
+	if options.ExecutionObserveTimeout <= 0 {
+		options.ExecutionObserveTimeout = 15 * time.Second
+	}
+	if options.EventPollInterval <= 0 {
+		options.EventPollInterval = time.Second
+	}
+	responseContext, stopResponses := context.WithCancel(context.Background())
+	runContext, stopRuns := context.WithCancel(context.Background())
+	service := &Service{
+		externalDispatch: options.ExternalDispatch, eventPollInterval: options.EventPollInterval,
+		runContext: runContext, stopRuns: stopRuns,
+		dispatchRetryInterval:   options.DispatchRetryInterval,
+		executionObserveTimeout: options.ExecutionObserveTimeout,
+		responseContext:         responseContext, stopResponses: stopResponses,
+		trialPolicy: options.TrialPolicy,
+		repo:        repo, runners: options.Runners, artifacts: options.Artifacts,
 		connections: options.Connections, execution: options.Execution, inputFetcher: options.InputFetcher, workers: options.Workers,
 		webhookSecrets: options.WebhookSecrets, webhookSender: options.WebhookSender,
 		webhookPollInterval: options.WebhookPollInterval, webhookAttemptTimeout: options.WebhookAttemptTimeout,
@@ -138,6 +185,16 @@ func NewService(repo domain.Repository, options Options) *Service {
 		cancels:  map[string]context.CancelFunc{}, responseWorkers: map[domain.ResponseID]struct{}{},
 		responseSubscriptions: map[domain.ResponseID]map[chan struct{}]struct{}{},
 	}
+	service.runners = RunnerRegistry{}
+	for name, value := range options.Runners {
+		if runner, ok := value.(ExecutionRunner); ok {
+			dispatcher := evaluationDispatcher{repo: repo, client: runner.config.Client, retry: options.DispatchRetryInterval, observe: options.ExecutionObserveTimeout}
+			runner.invoke = dispatcher.invoke
+			value = runner
+		}
+		service.runners[name] = value
+	}
+	return service
 }
 
 func newID(prefix string) string {
@@ -278,7 +335,9 @@ func (s *Service) CreateDataset(ctx context.Context, input CreateDatasetInput) (
 	if err != nil {
 		return domain.DatasetVersion{}, err
 	}
-	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.CreateDatasetFamily(ctx, family, version) })
+	err = s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
+		return repo.CreateDatasetFamily(ctx, family, version)
+	})
 	return version, err
 }
 
@@ -315,7 +374,7 @@ func (s *Service) CreateDatasetVersion(ctx context.Context, familyID string, inp
 		return domain.DatasetVersion{}, err
 	}
 	var created domain.DatasetVersion
-	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	err = s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		families, e := repo.ListDatasetFamilies(ctx)
 		if e != nil {
 			return e
@@ -368,14 +427,18 @@ func normalizeTools(tools []string) []string {
 }
 
 func (s *Service) CreateAgent(ctx context.Context, input CreateAgentInput) (domain.AgentVersionView, error) {
-	if err := s.validateAgentConnection(ctx, input); err != nil {
+	var err error
+	input, err = s.resolveAgentConnection(ctx, input)
+	if err != nil {
 		return domain.AgentVersionView{}, err
 	}
 	family, version, err := s.newAgent(input)
 	if err != nil {
 		return domain.AgentVersionView{}, err
 	}
-	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.CreateAgentFamily(ctx, family, version) })
+	err = s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
+		return repo.CreateAgentFamily(ctx, family, version)
+	})
 	return domain.AgentVersionView{AgentVersion: version, Runtime: s.probe(ctx, version)}, err
 }
 
@@ -410,11 +473,13 @@ func (s *Service) newAgent(input CreateAgentInput) (domain.AgentFamily, domain.A
 }
 
 func (s *Service) CreateAgentVersion(ctx context.Context, familyID string, input CreateAgentInput) (domain.AgentVersionView, error) {
-	if err := s.validateAgentConnection(ctx, input); err != nil {
+	var err error
+	input, err = s.resolveAgentConnection(ctx, input)
+	if err != nil {
 		return domain.AgentVersionView{}, err
 	}
 	var created domain.AgentVersion
-	err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	err = s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		var err error
 		created, err = s.createAgentVersion(ctx, repo, familyID, input)
 		return err
@@ -461,7 +526,7 @@ func (s *Service) createAgentVersion(ctx context.Context, repo domain.Repository
 	if err := repo.CreateAgentVersion(ctx, created); err != nil {
 		return domain.AgentVersion{}, err
 	}
-	return created, s.syncLatestAliases(ctx, repo, created)
+	return created, nil
 }
 
 func agentPreset(runnerType, preset string) string {
@@ -472,30 +537,38 @@ func agentPreset(runnerType, preset string) string {
 	return preset
 }
 
-func (s *Service) validateAgentConnection(ctx context.Context, input CreateAgentInput) error {
+func (s *Service) resolveAgentConnection(ctx context.Context, input CreateAgentInput) (CreateAgentInput, error) {
+	input.ModelConnectionID = strings.TrimSpace(input.ModelConnectionID)
+	input.Model = runtimeModel(input.Model)
 	if input.ModelConnectionID == "" {
-		return nil
+		return input, nil
 	}
 	if s.connections == nil {
-		return problem(503, "model_connections_unavailable", "模型连接服务不可用")
+		return input, problem(503, "model_connections_unavailable", "模型连接服务不可用")
 	}
 	connection, err := s.connections.GetModelConnection(ctx, input.ModelConnectionID)
 	if err != nil {
-		return problem(400, "model_connection_not_found", "模型连接不存在")
+		return input, problem(400, "model_connection_not_found", "模型连接不存在")
 	}
 	if connection.Status != "verified" {
-		return problem(400, "model_connection_unverified", "模型连接尚未验证")
+		return input, problem(400, "model_connection_unverified", "模型连接尚未验证")
 	}
 	if input.RunnerType == "codex" && connection.Protocol != contract.ProtocolOpenAIResponses {
-		return problem(400, "incompatible_model_protocol", "Codex 仅支持 Responses 连接")
+		return input, problem(400, "incompatible_model_protocol", "Codex 仅支持 Responses 连接")
 	}
 	if input.RunnerType == "hermes" && connection.Protocol != contract.ProtocolOpenAIChat {
-		return problem(400, "incompatible_model_protocol", "Hermes 仅支持 Chat Completions 连接")
+		return input, problem(400, "incompatible_model_protocol", "Hermes 仅支持 Chat Completions 连接")
 	}
 	if input.RunnerType == "claude-code" {
-		return problem(400, "incompatible_model_connection", "Claude Code 使用自身登录")
+		return input, problem(400, "incompatible_model_connection", "Claude Code 使用自身登录")
 	}
-	return nil
+	if input.Model == "" {
+		input.Model = strings.TrimSpace(connection.DefaultModel)
+	}
+	if input.Model == "" {
+		return input, problem(400, "model_required", "请填写模型名称，或先为连接设置默认模型")
+	}
+	return input, nil
 }
 
 func (s *Service) ListModelConnections(ctx context.Context) ([]contract.ModelConnection, error) {
@@ -503,6 +576,20 @@ func (s *Service) ListModelConnections(ctx context.Context) ([]contract.ModelCon
 		return nil, problem(503, "model_connections_unavailable", "模型连接服务不可用")
 	}
 	return s.connections.ListModelConnections(ctx)
+}
+
+func (s *Service) DiscoverLocalModels(ctx context.Context) (contract.LocalModelDiscovery, error) {
+	if s.connections == nil {
+		return contract.LocalModelDiscovery{}, problem(503, "model_connections_unavailable", "模型连接服务不可用")
+	}
+	return s.connections.DiscoverLocalModels(ctx)
+}
+
+func (s *Service) ImportLocalModel(ctx context.Context, id, model string) (contract.ModelConnection, error) {
+	if s.connections == nil {
+		return contract.ModelConnection{}, problem(503, "model_connections_unavailable", "模型连接服务不可用")
+	}
+	return s.connections.ImportLocalModel(ctx, id, model)
 }
 func (s *Service) CreateModelConnection(ctx context.Context, input contract.ModelConnectionInput) (contract.ModelConnection, error) {
 	if s.connections == nil {
@@ -537,7 +624,9 @@ func (s *Service) CreateExperiment(ctx context.Context, title string) (domain.Ex
 	experimentID := newID("exp")
 	experiment := domain.Experiment{ID: experimentID, Title: title, ControlSessionID: "control-" + experimentID, CreatedAt: now, UpdatedAt: now}
 	initial := domain.Message{ID: newID("msg"), ExperimentID: experiment.ID, Role: "assistant", Content: "这次想验证什么？你可以先选一个测试集和 Agent，也可以直接描述目标。", CreatedAt: now}
-	err := s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.CreateExperiment(ctx, experiment, initial) })
+	err := s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
+		return repo.CreateExperiment(ctx, experiment, initial)
+	})
 	if err != nil {
 		return domain.ExperimentView{}, err
 	}
@@ -586,7 +675,7 @@ type ExperimentPatch struct {
 }
 
 func (s *Service) UpdateExperiment(ctx context.Context, id string, patch ExperimentPatch) (domain.ExperimentView, error) {
-	err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	err := s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		experiment, e := repo.GetExperiment(ctx, id)
 		if e != nil {
 			return mapNotFound(e, "experiment_not_found", "实验不存在")
@@ -614,6 +703,9 @@ func (s *Service) UpdateExperiment(ctx context.Context, id string, patch Experim
 				return mapNotFound(e, "agent_not_found", "Agent 版本不存在")
 			}
 			experiment.AgentVersionID = agent.ID
+			if err := applyDevelopmentDefault(ctx, repo, &experiment, agent); err != nil {
+				return err
+			}
 			message.Content = fmt.Sprintf("已选 Agent「%s v%d」。", agent.Handle, agent.Version)
 		}
 		experiment.UpdatedAt = message.CreatedAt
@@ -637,7 +729,9 @@ func (s *Service) AddMessage(ctx context.Context, experimentID, content string) 
 	now := s.now().UTC()
 	user := domain.Message{ID: newID("msg"), ExperimentID: experimentID, Role: "user", Content: content, CreatedAt: now}
 	assistant := domain.Message{ID: newID("msg"), ExperimentID: experimentID, Role: "assistant", Content: s.guidance(experiment), CreatedAt: now.Add(time.Nanosecond)}
-	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.AddMessages(ctx, experimentID, user, assistant) })
+	err = s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
+		return repo.AddMessages(ctx, experimentID, user, assistant)
+	})
 	if err != nil {
 		return domain.ExperimentView{}, err
 	}

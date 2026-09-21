@@ -18,8 +18,9 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
     proxy: {
-      "/api": { target: rankApiURL, changeOrigin: true },
-      "/control": { target: rankControlURL, changeOrigin: true },
+      "/api": { target: rankApiURL, changeOrigin: false },
+      "/v1": { target: rankApiURL, changeOrigin: true },
+      "/control": { target: rankControlURL, changeOrigin: false },
     },
   },
   plugins: [react()],

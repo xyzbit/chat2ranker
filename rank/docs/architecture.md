@@ -37,8 +37,8 @@ For a DSH case, `ctx.agents.create()` executes only inside the isolated DSH Runn
 | Data | System of record |
 |---|---|
 | User and assistant conversation, tool calls, control-session events | Control DSH Session log |
-| Dataset, DatasetVersion, EvaluatorVersion, Agent, AgentVersion, Experiment, Run, RunItem, RunTrial | Rank Repository; local adapter: `rank.db` SQLite |
-| Deployment, DeploymentAlias current head, append-only ReleaseRevision, API credential digest, Conversation, Response with frozen input, public Response event, Webhook endpoint metadata and delivery outbox | Rank Repository; local adapter: `rank.db` SQLite |
+| Dataset, DatasetVersion, EvaluatorVersion, Agent, AgentVersion, Experiment, Run, RunItem, RunTrial | Rank SQL Repository; `rank.db` SQLite locally or a private PostgreSQL schema |
+| Deployment, DeploymentAlias current head, append-only ReleaseRevision, API credential digest, Conversation, Response with frozen input, public Response event, Webhook endpoint metadata and delivery outbox | Rank SQL Repository; `rank.db` SQLite locally or a private PostgreSQL schema |
 | Webhook signing secret | Rank credential-store port; local adapter: private filesystem directory |
 | Execution, attempt, frozen execution specification, ordered progress events, terminal result | Execution Repository; local adapter: `execution.db` SQLite |
 | Frozen run input and evaluation result | Rank Repository plus immutable Execution and Artifact references |
@@ -46,9 +46,9 @@ For a DSH case, `ctx.agents.create()` executes only inside the isolated DSH Runn
 | Ephemeral workspace | Case or Judge Sandbox |
 | Per-execution DSH home | Filesystem artifact store, isolated by execution identifier |
 
-Rank stores the candidate and Judge Execution identifiers on each `RunTrial` result and aggregates them into case-facing projections. Neither the Execution Repository nor DSH Session JSONL is used as the Rank business database.
+Rank persists candidate dispatch with Run/Trial admission, freezes Judge routing before admission, and stores each invocation request, replay cursor and authoritative outcome projection. Candidate and Judge Execution identifiers remain on each `RunTrial` result and its case-facing aggregate. Recovery reuses the logical invocation; a user rerun creates new Run/Trial identities. Neither the Execution Repository nor DSH Session JSONL is used as the Rank business database.
 
-Serving relations use integer physical keys and separate UUIDv7 public identifiers. A Deployment owns `latest`, `staging`, and `production` aliases. Agent-version creation advances `latest` transactionally; trusted release decisions advance other aliases with an expected-revision compare-and-swap. Request acceptance stores the resolved AgentVersion and optional ReleaseRevision before submitting an idempotent private Execution. Exact-version resolution has no synthetic ReleaseRevision.
+Serving relations use integer physical keys and separate UUIDv7 public identifiers. A new Deployment owns one empty internal `production` alias; explicit release decisions advance it with an expected-revision compare-and-swap. Agent-version creation never changes a published target. Bare deployment names resolve the published target; existing explicit alias references remain readable. Request acceptance stores the resolved AgentVersion and optional ReleaseRevision before submitting an idempotent private Execution. Exact-version resolution has no synthetic ReleaseRevision.
 
 The public [Agent Serving API](serving-api.md) authenticates credential and Deployment scope, freezes bounded image and file input before admission, applies request-rate and active-concurrency limits transactionally, and exposes durable Responses-compatible objects, version-pinned Conversation continuation, strict JSON Schema output, caller function and approval round trips, SSE events, and signed Webhook notifications. Execution copies frozen inputs into its private worker workspace and artifact store. Caller functions remain external; Rank validates calls and results but never executes caller code. The public endpoint does not accept privileged execution-specification fields owned by Rank and Execution Service.
 
@@ -66,7 +66,7 @@ Rank distinguishes quality failures from infrastructure and grading failures. On
 
 The local product assembly starts one Control DSH host, one `rankd`, one `executiond`, and one `execution-worker` child per candidate or Judge invocation. Rank and Execution use separate SQLite databases through independent Repository interfaces. The filesystem stores execution artifacts, native harness homes, and Webhook signing secrets in separate private directories, and each invocation receives a private temporary workspace.
 
-A production assembly supplies PostgreSQL Repository adapters, object storage, and Docker, Kubernetes Job, Kata, or remote Sandbox Executors without changing Rank domain code or the versioned Execution Service contract. Every DSH Session store has one live writer.
+Rank and Execution provide separate PostgreSQL repositories; River delivers Execution jobs and an S3-compatible store retains artifacts independently of workers. The installed Executor runs trusted local processes. The [production design](../../.agents/notes/proposed/architecture/2026-09-14-rank-production-execution.md) defines remote isolation and deployment acceptance. Rank coordinators and each DSH Session store retain one live owner.
 
 Horizontal scaling assigns each job and DSH Session to one worker owner. Rank state and job leases coordinate workers; shared direct writes to one DSH Session directory are forbidden.
 

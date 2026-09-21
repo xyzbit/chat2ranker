@@ -66,6 +66,8 @@ A `user/message` stores the complete `UserMessage` directly, including the ident
 
 `tool/result` persists one identified user-role tool-result message, optional internal failure identity, and optional presentation metadata. A tool's successful canonical `value` and human-readable canonical failure message remain execution-local; rendered error content is the replay-authoritative message.
 
+`history/message` imports an external user, assistant or tool-result message between native turns. It contributes model context without creating native turn, step, tool execution or usage records. The importer validates ordering and call/result correlation. Assistant recall may use plugin provenance; a native `assistant/message` still requires provider/model provenance. Compaction preserves tool pairs across imported history and current input.
+
 ### Session event vocabulary (`types.ts`)
 
 The generated [persistence log event catalog](../../../docs/persistence-catalog.md) enumerates each append-only event type with its payload, surface badge, and declaration site. Token accounting reads per-step `assistant/chunk { type: 'usage' }` records and treats `assistant/message.usage` as the committed-step fallback when no usage chunk exists; failed model-request attempts have no assistant message. Each `assistant/message` records the provider, model, and optional replay state.
@@ -98,7 +100,7 @@ Every `SessionEvent` carries three optional top-level fields (structural metadat
 
 #### What the model sees
 
-The model receives the complete messages from `user/message`, `assistant/message`, and `tool/result` surface entries verbatim. Their identities, roles, sources, and content blocks are the same values established at creation; projections do not mint identities. A prompt envelope changes only human presentation; its prefix context and request delimiter are already present in the event content. Tool calls live inside assistant messages. Chunks, boundaries, usage, hook records, todo records, and other log-only events add no message.
+The model receives the complete messages from `user/message`, `history/message`, `assistant/message`, and `tool/result` surface entries verbatim. Their identities, roles, sources, and content blocks are the same values established at creation; projections do not mint identities. A prompt envelope changes only human presentation; its prefix context and request delimiter are already present in the event content. Tool calls live inside assistant messages. Chunks, boundaries, usage, hook records, todo records, and other log-only events add no message.
 
 #### Token effect
 

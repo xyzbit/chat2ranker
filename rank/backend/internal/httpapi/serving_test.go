@@ -18,7 +18,8 @@ import (
 	"github.com/xyzbit/agentkiln/rank/backend/internal/app"
 	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 	"github.com/xyzbit/agentkiln/rank/backend/internal/httpapi"
-	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlstore"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/testdb"
 	"github.com/xyzbit/agentkiln/rank/backend/internal/webhooksecret"
 )
 
@@ -115,7 +116,11 @@ func (fake *fakeServingExecution) completeLocked(id string) {
 		return
 	}
 	value.Status = contract.StatusCompleted
-	output := "served: " + value.Spec.Prompt
+	input := value.Spec.Prompt
+	if len(value.Spec.Messages) > 0 {
+		input = value.Spec.Messages[len(value.Spec.Messages)-1].Content
+	}
+	output := "served: " + input
 	var structured []byte
 	if value.Spec.StructuredOutput != nil {
 		output = `{"status":"ok"}`
@@ -224,9 +229,9 @@ func TestWebhookEndpointHTTPReturnsSecretOnceAndCreatesOutbox(t *testing.T) {
 	}
 }
 
-func setupServingHTTP(t *testing.T, execution *fakeServingExecution, policy domain.DeploymentPolicy, configure ...func(*app.Options)) (*httptest.Server, *http.Client, domain.Deployment, string, *sqlite.Store) {
+func setupServingHTTP(t *testing.T, execution *fakeServingExecution, policy domain.DeploymentPolicy, configure ...func(*app.Options)) (*httptest.Server, *http.Client, domain.Deployment, string, *sqlstore.Store) {
 	t.Helper()
-	store, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "rank.db"))
+	store, err := testdb.Open(t, filepath.Join(t.TempDir(), "rank.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,6 +241,7 @@ func setupServingHTTP(t *testing.T, execution *fakeServingExecution, policy doma
 		apply(&options)
 	}
 	service := app.NewService(store, options)
+	t.Cleanup(service.StopServingResponses)
 	if err := service.EnsureSeed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -320,8 +326,8 @@ func TestResponsesHTTPFreezesImageAndFileInputs(t *testing.T) {
 		t.Fatalf("continuation received %d attachments, want prior and current inputs", len(secondSpec.InputAttachments))
 	}
 	for _, fragment := range []string{"[input_image: image-2.png, sha256:", "[input_file: brief.txt, sha256:", "compare with this"} {
-		if !strings.Contains(secondSpec.Prompt, fragment) {
-			t.Fatalf("continuation prompt omitted %q: %s", fragment, secondSpec.Prompt)
+		if len(secondSpec.Messages) != 3 || secondSpec.Prompt != "" || !strings.Contains(secondSpec.Messages[0].Content+secondSpec.Messages[2].Content, fragment) {
+			t.Fatalf("continuation messages omitted %q: %+v", fragment, secondSpec.Messages)
 		}
 	}
 }
@@ -329,7 +335,7 @@ func TestResponsesHTTPFreezesImageAndFileInputs(t *testing.T) {
 func TestResponsesHTTPCallerFunctionRoundTrip(t *testing.T) {
 	execution := newFakeServingExecution(true)
 	server, client, _, apiKey, store := setupServingHTTP(t, execution, domain.DeploymentPolicy{
-		RequestsPerMinute: 100, MaxConcurrentResponses: 4, ExecutionTimeoutMs: 30_000, AllowCallerTools: true,
+		RequestsPerMinute: 100, MaxConcurrentResponses: 4, ExecutionTimeoutMs: 30_000,
 	})
 	tool := map[string]any{
 		"type": "function", "name": "lookup_order", "description": "Look up one order", "strict": true,
@@ -372,7 +378,17 @@ func TestResponsesHTTPCallerFunctionRoundTrip(t *testing.T) {
 		t.Fatalf("continue with function output %d: %s", status, payload)
 	}
 	continued := decodeBody[app.ResponseObject](t, payload)
-	if len(continued.Output) != 1 || continued.Output[0].Type != "message" || !strings.Contains(continued.Output[0].Content[0].Text, "function_call_output") || len(continued.Tools) != 1 {
+	execution.mu.Lock()
+	spec := execution.executions["exec-serving-2"].Spec
+	execution.mu.Unlock()
+	if spec.Prompt != "" || len(spec.Messages) != 3 || spec.Messages[1].Role != "assistant" ||
+		len(spec.Messages[1].ToolCalls) != 1 || spec.Messages[1].ToolCalls[0].ID != called.Output[0].CallID ||
+		spec.Messages[1].ToolCalls[0].Name != "lookup_order" || string(spec.Messages[1].ToolCalls[0].Arguments) != `{"order_id":"123"}` ||
+		spec.Messages[2].Role != "tool" || spec.Messages[2].ToolCallID != called.Output[0].CallID {
+		t.Fatalf("continuation lost native tool correlation: %+v", spec.Messages)
+	}
+
+	if len(continued.Output) != 1 || continued.Output[0].Type != "message" || !strings.Contains(continued.Output[0].Content[0].Text, `{"status":"shipped"}`) || len(continued.Tools) != 1 {
 		t.Fatalf("function output did not reach continued Agent: %#v", continued)
 	}
 
@@ -566,12 +582,13 @@ func TestResponsesHTTPContinuesConversationWithoutVersionDrift(t *testing.T) {
 		t.Fatalf("continuation lost predecessor or release lineage: %#v", second)
 	}
 	execution.mu.Lock()
-	prompt := execution.executions["exec-serving-2"].Spec.Prompt
+	spec := execution.executions["exec-serving-2"].Spec
 	execution.mu.Unlock()
-	for _, fragment := range []string{`"role":"user","content":"remember alpha"`, `"role":"assistant"`, `"content":"what did I ask you to remember?"`} {
-		if !strings.Contains(prompt, fragment) {
-			t.Fatalf("conversation prompt omitted %q: %s", fragment, prompt)
-		}
+	if spec.Prompt != "" || len(spec.Messages) != 3 ||
+		spec.Messages[0].Role != "user" || spec.Messages[0].Content != "remember alpha" ||
+		spec.Messages[1].Role != "assistant" || spec.Messages[1].Content != first.Output[0].Content[0].Text ||
+		spec.Messages[2].Role != "user" || spec.Messages[2].Content != "what did I ask you to remember?" {
+		t.Fatalf("conversation lost native roles or content: %+v", spec.Messages)
 	}
 	status, payload = requestJSON(t, client, http.MethodPost, server.URL+"/v1/responses", map[string]any{
 		"model": "research-public@production", "input": "what did I ask you to remember?",
@@ -666,8 +683,22 @@ func TestResponsesHTTPEnforcesConcurrencyAndCancels(t *testing.T) {
 		t.Fatalf("concurrency limit returned %d: %s", status, payload)
 	}
 	status, payload = requestJSON(t, client, http.MethodPost, server.URL+"/v1/responses/"+string(first.ID)+"/cancel", map[string]any{}, map[string]string{"Authorization": "Bearer " + apiKey})
-	if status != http.StatusOK || decodeBody[app.ResponseObject](t, payload).Status != domain.ResponseCancelled {
+	if status != http.StatusOK {
 		t.Fatalf("cancel Response %d: %s", status, payload)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		current, err := store.GetResponse(t.Context(), first.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current.Status == domain.ResponseCancelled {
+			break
+		}
+		if !current.CancelRequested || time.Now().After(deadline) {
+			t.Fatalf("cancellation not reconciled: %+v", current)
+		}
+		time.Sleep(time.Millisecond)
 	}
 	events, err := store.ListResponseEvents(context.Background(), first.ID, 0)
 	if err != nil {
@@ -774,5 +805,42 @@ func waitFor(t *testing.T, condition func() bool) {
 			t.Fatal("condition was not met before timeout")
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestResponsesHTTPPreservesUserInputAfterToolResult(t *testing.T) {
+	execution := newFakeServingExecution(true)
+	server, client, _, apiKey, _ := setupServingHTTP(t, execution, domain.DeploymentPolicy{RequestsPerMinute: 100, MaxConcurrentResponses: 4, ExecutionTimeoutMs: 30000})
+	headers := map[string]string{"Authorization": "Bearer " + apiKey}
+	status, payload := requestJSON(t, client, http.MethodPost, server.URL+"/v1/responses", map[string]any{
+		"model": "research-public@production", "input": "look up order 123",
+		"tools": []any{map[string]any{"type": "function", "name": "lookup_order", "parameters": map[string]any{"type": "object"}}},
+	}, headers)
+	if status != http.StatusOK {
+		t.Fatalf("request call: %d %s", status, payload)
+	}
+	called := decodeBody[app.ResponseObject](t, payload)
+	output := map[string]any{"type": "function_call_output", "call_id": called.Output[0].CallID, "output": "shipped"}
+	user := map[string]any{"role": "user", "content": "Answer in Chinese"}
+	status, payload = requestJSON(t, client, http.MethodPost, server.URL+"/v1/responses", map[string]any{
+		"model": "research-public@production", "previous_response_id": called.ID, "input": []any{user, output},
+	}, headers)
+	if status != http.StatusBadRequest {
+		t.Fatalf("interrupted tool pair: %d %s", status, payload)
+	}
+	status, payload = requestJSON(t, client, http.MethodPost, server.URL+"/v1/responses", map[string]any{
+		"model": "research-public@production", "previous_response_id": called.ID, "input": []any{output, user},
+	}, headers)
+	if status != http.StatusOK {
+		t.Fatalf("tool plus user: %d %s", status, payload)
+	}
+	execution.mu.Lock()
+	defer execution.mu.Unlock()
+	if execution.next != 2 {
+		t.Fatalf("invalid input admitted an execution: %d", execution.next)
+	}
+	messages := execution.executions["exec-serving-2"].Spec.Messages
+	if len(messages) != 4 || messages[2].Role != "tool" || messages[2].Content != "shipped" || messages[3].Role != "user" || messages[3].Content != "Answer in Chinese" {
+		t.Fatalf("lost user followup: %+v", messages)
 	}
 }

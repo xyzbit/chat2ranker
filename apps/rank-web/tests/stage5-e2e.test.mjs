@@ -1,11 +1,19 @@
+import { verifyModelResolution } from './model-resolution.e2e.mjs';
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer as createHTTPServer } from "node:http";
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { verifyReleaseLifecycle } from "./release-lifecycle.e2e.mjs";
+import { verifyReleasePipeline } from "./release-pipeline.e2e.mjs";
+import { verifyTrials } from "./trials.e2e.mjs";
+import { verifyEvaluationRecovery } from "./evaluation-recovery.e2e.mjs";
+import { startServingFaultProxy, verifyServingRecovery } from "./serving-recovery.e2e.mjs";
+import { verifyResponseFeedback } from "./response-feedback.e2e.mjs";
 
 const appRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(appRoot, "../..");
@@ -48,6 +56,25 @@ async function build(output, target, cwd = backendRoot) {
     child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(details)));
     child.once("error", reject);
   });
+}
+
+async function prepareRankStorage(environment, rankBinary) {
+  delete environment.RANK_DATABASE_URL;
+  delete environment.EXECUTION_DATABASE_URL;
+  for (const name of Object.keys(environment)) if (name.startsWith("EXECUTION_S3_")) delete environment[name];
+  if (!process.env.RANK_TEST_DATABASE_URL) return async () => {};
+  const schema = `rank_snapshot_${randomBytes(8).toString("hex")}`;
+  environment.RANK_DATABASE_URL = process.env.RANK_TEST_DATABASE_URL;
+  environment.RANK_POSTGRES_SCHEMA = schema;
+  environment.RANK_ACTION_SECRET = randomBytes(32).toString("hex");
+  environment.RANK_CONTROL_TOKEN = randomBytes(32).toString("hex");
+  environment.EXECUTION_SERVICE_TOKEN = randomBytes(32).toString("hex");
+  const finish = child => new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", code => code === 0 ? resolve() : reject(new Error(child.output())));
+  });
+  await finish(launch(rankBinary, ["-migrate"], { cwd: repositoryRoot, env: environment }));
+  return () => finish(launch("go", ["run", "./internal/testdb/cleanup", schema], { cwd: backendRoot, env: environment }));
 }
 
 async function request(baseURL, pathname, options = {}) {
@@ -107,6 +134,84 @@ async function fileCount(directory) {
   return count;
 }
 
+async function verifyReleaseBrowser(baseURL, script = "release-policy.browser.js") {
+  const port = await freePort();
+  const url = `http://127.0.0.1:${port}`;
+  const vite = launch(process.execPath, [path.join(appRoot, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"], { cwd: appRoot, env: { ...process.env, RANK_API_URL: baseURL } });
+  const wrapper = path.join(os.homedir(), ".codex/skills/playwright/scripts/playwright_cli.sh");
+  async function cli(...args) {
+    const child = launch(wrapper, [`-s=rank-release-${port}`, ...args], { cwd: repositoryRoot, env: process.env });
+    await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", code => code === 0 && !child.output().includes("### Error") ? resolve() : reject(new Error(child.output())));
+    });
+    console.log(child.output());
+  }
+  try {
+    await waitFor(url, "/api/health", vite);
+    await mkdir(path.join(repositoryRoot, "output/playwright"), { recursive: true });
+    await cli("open", `${url}/#/deployments`);
+    await cli("run-code", "--filename", path.join(appRoot, "tests", script));
+  } catch (error) {
+    await cli("snapshot");
+    await cli("screenshot", "--filename", "output/playwright/release-error.png");
+    throw error;
+  } finally {
+    await cli("close");
+    await stop(vite);
+  }
+}
+
+test("Conversation configuration forms persist changes without exposing secrets to chat", { timeout: 120_000, skip: process.env.RANK_CONFIG_BROWSER !== "1" }, async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "rank-configuration-"));
+  const rankBinary = path.join(temporaryRoot, "rankd");
+  const executionBinary = path.join(temporaryRoot, "executiond");
+  await Promise.all([build(rankBinary, "./cmd/rankd"), build(executionBinary, "./cmd/executiond", executionBackendRoot)]);
+  const [port, executionPort] = await Promise.all([freePort(), freePort()]);
+  const baseURL = `http://127.0.0.1:${port}`;
+  const executionURL = `http://127.0.0.1:${executionPort}`;
+  const environment = { ...process.env, RANK_CONTROL_TOKEN: "configuration-browser-fixture", EXECUTION_REPO_ROOT: repositoryRoot };
+  const execution = launch(executionBinary, ["-addr", `127.0.0.1:${executionPort}`, "-db", path.join(temporaryRoot, "execution.db"), "-repo-root", repositoryRoot, "-artifacts", path.join(temporaryRoot, "artifacts"), "-sandboxes", path.join(temporaryRoot, "sandboxes"), "-credentials", path.join(temporaryRoot, "credentials")], { cwd: repositoryRoot, env: environment });
+  const rank = launch(rankBinary, ["-addr", `127.0.0.1:${port}`, "-db", path.join(temporaryRoot, "rank.db"), "-execution-url", executionURL, "-webhook-poll-interval", "1h"], { cwd: repositoryRoot, env: environment });
+  try {
+    await waitFor(executionURL, "/v1/health", execution);
+    await waitFor(baseURL, "/api/health", rank);
+    await verifyReleaseBrowser(baseURL, "conversation-configuration.browser.js");
+  } finally {
+    await stop(rank); await stop(execution);
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("Agent playground runs isolated conversations through the serving execution lifecycle", { timeout: 180_000 }, async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "rank-trials-"));
+  const rankBinary = path.join(temporaryRoot, "rankd");
+  const executionBinary = path.join(temporaryRoot, "executiond");
+  const worker = path.join(temporaryRoot, "worker");
+  await Promise.all([build(rankBinary, "./cmd/rankd"), build(executionBinary, "./cmd/executiond", executionBackendRoot), build(worker, "./cmd/execution-worker", executionBackendRoot)]);
+  const [port, executionPort] = await Promise.all([freePort(), freePort()]);
+  const baseURL = `http://127.0.0.1:${port}`;
+  const executionURL = `http://127.0.0.1:${executionPort}`;
+  await writeFile(path.join(temporaryRoot, "codex"), await readFile(path.join(appRoot, "tests/fixtures/trial-codex.mjs")), { mode: 0o755 });
+  const environment = { ...process.env, PATH: `${temporaryRoot}${path.delimiter}${process.env.PATH}`, EXECUTION_REPO_ROOT: repositoryRoot, DEEPSEEK_API_KEY: "keyless-trial-fixture", RANK_DSH_BIN: path.join(appRoot, "tests/fixtures/trial-dsh.mjs"), DSH_HOME: path.join(temporaryRoot, "dsh"), CODEX_HOME: path.join(temporaryRoot, "codex-home") };
+  const cleanupStorage = await prepareRankStorage(environment, rankBinary);
+  const execution = launch(executionBinary, ["-addr", `127.0.0.1:${executionPort}`, "-db", path.join(temporaryRoot, "execution.db"), "-worker", worker, "-repo-root", repositoryRoot, "-artifacts", path.join(temporaryRoot, "artifacts"), "-sandboxes", path.join(temporaryRoot, "sandboxes"), "-credentials", path.join(temporaryRoot, "credentials")], { cwd: repositoryRoot, env: environment });
+  const start = () => launch(rankBinary, ["-addr", `127.0.0.1:${port}`, "-db", path.join(temporaryRoot, "rank.db"), "-execution-url", executionURL, "-webhook-poll-interval", "1h", "-webhook-secret-dir", path.join(temporaryRoot, "webhook-secrets")], { cwd: repositoryRoot, env: environment });
+  let rank = start();
+  const restart = async () => { await stop(rank); rank = start(); await waitFor(baseURL, "/api/health", rank); };
+  try {
+    await waitFor(executionURL, "/v1/health", execution);
+    const health = await waitFor(baseURL, "/api/health", rank);
+    assert.equal(health.storage, process.env.RANK_TEST_DATABASE_URL ? "postgres" : "sqlite");
+    await verifyTrials({ baseURL, request, restart, controlToken: environment.RANK_CONTROL_TOKEN });
+    if (process.env.RANK_TRIAL_BROWSER === "1") await verifyReleaseBrowser(baseURL, "trials.browser.js");
+  } finally {
+    await stop(rank); await stop(execution);
+    await cleanupStorage();
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
 test("Rank runs candidate and Judge through executiond with isolated workers and readable artifacts", { timeout: 90_000 }, async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "agentkiln-stage5-"));
   const binaryRoot = path.join(temporaryRoot, "bin");
@@ -125,6 +230,13 @@ test("Rank runs candidate and Judge through executiond with isolated workers and
   const artifactRoot = path.join(temporaryRoot, "artifacts");
   const sandboxRoot = path.join(temporaryRoot, "sandboxes");
   const environment = { ...process.env, EXECUTION_REPO_ROOT: repositoryRoot };
+  environment.CODEX_HOME = path.join(temporaryRoot, "codex");
+  environment.DSH_HOME = path.join(temporaryRoot, "dsh");
+  environment.RANK_DISCOVERY_FIXTURE_KEY = "keyless-discovery-secret";
+  await mkdir(environment.CODEX_HOME);
+  await mkdir(environment.DSH_HOME);
+  await writeFile(path.join(environment.CODEX_HOME, "config.toml"), 'model = "fixture-model"\nmodel_provider = "fixture"\n[model_providers.fixture]\nbase_url = "https://fixture.example/v1"\nenv_key = "RANK_DISCOVERY_FIXTURE_KEY"\nwire_api = "responses"\n');
+  await writeFile(path.join(environment.DSH_HOME, "settings.yaml"), "broken: [yaml");
   delete environment.DEEPSEEK_API_KEY;
   const executiond = launch(executiondBinary, [
     "-addr", `127.0.0.1:${executionPort}`,
@@ -157,6 +269,29 @@ test("Rank runs candidate and Judge through executiond with isolated workers and
       modelCount: provider.models.length,
     }));
     assert.deepEqual(catalogSnapshot, JSON.parse(await readFile(path.join(appRoot, "tests/snapshots/model-catalog.json"), "utf8")));
+    const discovery = await request(baseURL, "/api/local-model-connections/discover", { method: "POST", body: "{}" });
+    assert.equal(discovery.candidates.length, 1);
+    assert.equal(JSON.stringify(discovery).includes(environment.RANK_DISCOVERY_FIXTURE_KEY), false);
+    assert.equal((await request(baseURL, "/api/bootstrap")).modelConnections.length, 0);
+    const candidate = discovery.candidates[0];
+    const imported = await request(baseURL, `/api/local-model-connections/${candidate.id}/import`, { method: "POST", body: "{}" });
+    const duplicate = await request(baseURL, `/api/local-model-connections/${candidate.id}/import`, { method: "POST", body: "{}" });
+    assert.equal(imported.id, duplicate.id);
+    const customImported = await request(baseURL, `/api/local-model-connections/${candidate.id}/import`, { method: "POST", body: JSON.stringify({ model: "custom-fixture-model" }) });
+    assert.notEqual(customImported.id, imported.id);
+    assert.equal(customImported.defaultModel, "custom-fixture-model");
+    const customAgain = await request(baseURL, `/api/local-model-connections/${candidate.id}/import`, { method: "POST", body: JSON.stringify({ model: "custom-fixture-model" }) });
+    assert.equal(customAgain.id, customImported.id);
+    const rediscovered = await request(baseURL, "/api/local-model-connections/discover", { method: "POST", body: "{}" });
+    const discoverySnapshot = {
+      candidates: discovery.candidates.map(({ source, name, protocol, baseUrl, model }) => ({ source, name, protocol, baseUrl, model })),
+      issues: discovery.issues,
+      imported: { hasCredential: imported.hasCredential, verified: imported.status === "verified", reused: rediscovered.candidates[0].connectionId === imported.id },
+      customModel: customImported.defaultModel,
+      systemModels: (await request(baseURL, "/api/bootstrap")).systemModels,
+    };
+    assert.deepEqual(discoverySnapshot, JSON.parse(await readFile(path.join(appRoot, "tests/snapshots/local-model-discovery.json"), "utf8")));
+    await assert.rejects(request(baseURL, "/api/local-model-connections/unknown/import", { method: "POST", body: "{}" }), /本地配置已变化/);
     const metadataOnlyConnection = await request(baseURL, "/api/model-connections", {
       method: "POST",
       body: JSON.stringify({ name: "E2E Gateway", provider: "custom", protocol: "openai-chat-completions", baseUrl: "https://example.invalid/v1", defaultModel: "e2e-model", prices: { "e2e-model": { input: 1, output: 2, cacheRead: .5, cacheWrite: 0 } } }),
@@ -190,6 +325,9 @@ test("Rank runs candidate and Judge through executiond with isolated workers and
     providerModels = ["catalog-a", "account-latest"];
     synced = await request(baseURL, `/api/model-connections/${syncConnection.id}/verify`, { method: "POST", body: "{}" });
     assert.deepEqual(synced.models, ["account-latest", "catalog-a"]);
+    const modelResolution = await verifyModelResolution({ baseURL, executionURL, request, connection: syncConnection, providerURL });
+    if (process.env.RANK_RECORD_MODEL_SNAPSHOT === '1') await writeFile(path.join(appRoot, 'tests/snapshots/model-resolution.json'), JSON.stringify(modelResolution, null, 2) + '\n');
+    assert.deepEqual(modelResolution, JSON.parse(await readFile(path.join(appRoot, 'tests/snapshots/model-resolution.json'), 'utf8')));
     providerFailure = true;
     await assert.rejects(request(baseURL, `/api/model-connections/${syncConnection.id}/verify`, { method: "POST", body: "{}" }), /temporary failure/);
     const afterFailedSync = await request(baseURL, "/api/bootstrap");
@@ -269,7 +407,7 @@ test("Rank runs candidate and Judge through executiond with isolated workers and
     const failure = run.results.find((result) => !result.passed);
     const artifact = failure.artifacts.find((item) => item.kind === "result");
     const content = await request(baseURL, `/api/runs/${run.id}/artifacts?caseId=${encodeURIComponent(failure.caseId)}&path=${encodeURIComponent(artifact.path)}`);
-    assert.match(content.content, /"protocolVersion":1/);
+    assert.match(content.content, /"protocolVersion":3/);
     const executionEvents = await collectEvents(executionURL, `/v1/executions/${failure.executionId}/events?after=0`);
     assert.deepEqual(executionEvents.map((event) => event.type), ["execution.queued", "execution.running", "harness.started", "harness.output", "execution.completed"]);
     assert.equal(await fileCount(sandboxRoot), 0);
@@ -304,7 +442,7 @@ test("Rank runs candidate and Judge through executiond with isolated workers and
   }
 });
 
-test("Serving resolves a Deployment, executes its pinned Agent version, and emits Responses events", { timeout: 45_000 }, async () => {
+test("Serving executes Responses and evaluates, publishes, updates and rolls back pinned Agent versions", { timeout: 180_000 }, async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "agentkiln-serving-"));
   const binaryRoot = path.join(temporaryRoot, "bin");
   await mkdir(binaryRoot);
@@ -321,6 +459,8 @@ test("Serving resolves a Deployment, executes its pinned Agent version, and emit
   const executionURL = `http://127.0.0.1:${executionPort}`;
   const environment = { ...process.env, EXECUTION_REPO_ROOT: repositoryRoot };
   delete environment.DEEPSEEK_API_KEY;
+  const postgres = Boolean(process.env.RANK_TEST_DATABASE_URL);
+  const cleanupStorage = await prepareRankStorage(environment, rankdBinary);
   const executiond = launch(executiondBinary, [
     "-addr", `127.0.0.1:${executionPort}`,
     "-db", path.join(temporaryRoot, "execution.db"),
@@ -330,22 +470,27 @@ test("Serving resolves a Deployment, executes its pinned Agent version, and emit
     "-sandboxes", path.join(temporaryRoot, "sandboxes"),
     "-credentials", path.join(temporaryRoot, "credentials"),
   ], { cwd: repositoryRoot, env: environment });
-  const rankd = launch(rankdBinary, [
+  const proxy = await startServingFaultProxy(executionURL);
+  const startRank = () => launch(rankdBinary, [
     "-addr", `127.0.0.1:${port}`,
     "-db", path.join(temporaryRoot, "rank.db"),
-    "-execution-url", executionURL,
+    "-execution-url", proxy.url,
+    "-dispatch-retry-interval", "100ms",
     "-webhook-poll-interval", "1h",
+    "-webhook-secret-dir", path.join(temporaryRoot, "webhook-secrets"),
   ], { cwd: repositoryRoot, env: environment });
+  let rankd = startRank();
   try {
     await waitFor(executionURL, "/v1/health", executiond);
-    await waitFor(baseURL, "/api/health", rankd);
+    const health = await waitFor(baseURL, "/api/health", rankd);
+    assert.equal(health.storage, postgres ? "postgres" : "sqlite");
     const deployment = await request(baseURL, "/api/deployments", {
       method: "POST",
       body: JSON.stringify({
         tenantId: "tenant-serving-e2e",
         agentFamilyId: "agent-research-demo",
         name: "research-public",
-        policy: { requestsPerMinute: 60, maxConcurrentResponses: 4, executionTimeoutMs: 30_000, allowInstructions: false, allowCallerTools: true },
+        policy: { requestsPerMinute: 60, maxConcurrentResponses: 4, executionTimeoutMs: 30_000 },
       }),
     });
     const release = await request(baseURL, `/api/deployments/${deployment.id}/aliases/production/releases`, {
@@ -380,14 +525,14 @@ test("Serving resolves a Deployment, executes its pinned Agent version, and emit
     const first = await request(baseURL, "/v1/responses", {
       method: "POST",
       headers: { ...authorization, "idempotency-key": "serving-e2e-sync" },
-      body: JSON.stringify({ model: "research-public@production", input: "summarize the release", metadata: { suite: "serving-e2e" } }),
+      body: JSON.stringify({ model: "research-public@production", input: "summarize the release", instructions: "Use three sentences.", metadata: { suite: "serving-e2e" } }),
     });
     const webhookEndpoints = await request(baseURL, "/api/webhook-endpoints?tenantId=tenant-serving-e2e");
     const webhookDeliveries = await request(baseURL, `/api/webhook-endpoints/${webhookEndpoint.id}/deliveries`);
     const replay = await request(baseURL, "/v1/responses", {
       method: "POST",
       headers: { ...authorization, "idempotency-key": "serving-e2e-sync" },
-      body: JSON.stringify({ model: "research-public@production", input: "summarize the release", metadata: { suite: "serving-e2e" } }),
+      body: JSON.stringify({ model: "research-public@production", input: "summarize the release", instructions: "Use three sentences.", metadata: { suite: "serving-e2e" } }),
     });
     assert.equal(replay.id, first.id);
     const continued = await request(baseURL, "/v1/responses", {
@@ -451,6 +596,12 @@ test("Serving resolves a Deployment, executes its pinned Agent version, and emit
         input: [{ type: "function_call_output", call_id: toolCall.output[0].call_id, output: "order shipped" }],
       }),
     });
+    const toolDetail = await request(baseURL, `/api/responses/${toolResult.id}?tenantId=tenant-serving-e2e`);
+    const toolExecution = await request(executionURL, `/v1/executions/${toolDetail.response.executionId}`, { headers: environment.EXECUTION_SERVICE_TOKEN ? { authorization: `Bearer ${environment.EXECUTION_SERVICE_TOKEN}` } : {} });
+    assert.ok(!toolExecution.spec.prompt);
+    assert.equal(toolExecution.spec.messages[1].role, "assistant");
+    assert.equal(toolExecution.spec.messages[1].toolCalls[0].id, toolCall.output[0].call_id);
+    assert.deepEqual(toolExecution.spec.messages[2], { role: "tool", toolCallId: toolCall.output[0].call_id, content: "order shipped" });
     const stream = await fetch(baseURL + "/v1/responses", {
       method: "POST",
       headers: { "content-type": "application/json", ...authorization, "idempotency-key": "serving-e2e-stream" },
@@ -463,6 +614,27 @@ test("Serving resolves a Deployment, executes its pinned Agent version, and emit
     const operatorPage = await request(baseURL, `/api/responses?tenantId=tenant-serving-e2e&deploymentId=${deployment.id}&limit=2`);
     const operatorOlder = await request(baseURL, `/api/responses?tenantId=tenant-serving-e2e&deploymentId=${deployment.id}&limit=2&before=${operatorPage.nextCursor}`);
     const operatorDetail = await request(baseURL, `/api/responses/${first.id}?tenantId=tenant-serving-e2e`);
+    const firstExecution = await request(executionURL, `/v1/executions/${operatorDetail.response.executionId}`, { headers: environment.EXECUTION_SERVICE_TOKEN ? { authorization: `Bearer ${environment.EXECUTION_SERVICE_TOKEN}` } : {} });
+    await stop(rankd);
+    rankd = startRank();
+    await waitFor(baseURL, "/api/health", rankd);
+    const restored = await request(baseURL, `/v1/responses/${first.id}`, { headers: authorization });
+    assert.deepEqual(restored, first);
+    const restoredDeliveries = await request(baseURL, `/api/webhook-endpoints/${webhookEndpoint.id}/deliveries`);
+    assert.ok(restoredDeliveries.some(item => item.id === webhookDeliveries[0].id));
+    const restartRank = async beforeStart => {
+        const exited = new Promise(resolve => rankd.once("close", resolve));
+        if (process.platform === "win32") rankd.kill("SIGKILL");
+        else process.kill(-rankd.pid, "SIGKILL");
+        await exited;
+        beforeStart();
+        rankd = startRank();
+        await waitFor(baseURL, "/api/health", rankd);
+      };
+    const recovery = await verifyServingRecovery({ baseURL, request, authorization, proxy, restartRank });
+    const evaluationRecovery = await verifyEvaluationRecovery({ baseURL, request, completeRun, proxy, restartRank });
+    assert.deepEqual(evaluationRecovery, JSON.parse(await readFile(path.join(appRoot,"tests/snapshots/evaluation-recovery.json"),"utf8")));
+    assert.deepEqual(recovery, JSON.parse(await readFile(path.join(appRoot,"tests/snapshots/serving-recovery.json"),"utf8")));
     const operatorKeys = await request(baseURL, "/api/serving-credentials?tenantId=tenant-serving-e2e");
     await request(baseURL, `/api/serving-credentials/${credential.id}/revoke?tenantId=tenant-serving-e2e`, {method:"POST",body:"{}"});
     const denied = await fetch(baseURL+"/v1/responses", {method:"POST",headers:{"content-type":"application/json",...authorization},body:JSON.stringify({model:"research-public@production",input:"revoked"})});
@@ -479,6 +651,8 @@ test("Serving resolves a Deployment, executes its pinned Agent version, and emit
         revokedRequestStatus: denied.status,
       },
       response: {
+        instructions: first.instructions,
+        instructionsAppended: firstExecution.spec.systemPrompt.endsWith("\n\nUse three sentences."),
         object: first.object,
         status: first.status,
         model: first.model,
@@ -514,7 +688,7 @@ test("Serving resolves a Deployment, executes its pinned Agent version, and emit
         requested: toolCall.status === "requires_action" && toolCall.output[0]?.type === "function_call",
         approvalRequired: toolCall.output[0]?.approval_required,
         approved: approvedToolCall.status === "completed" && approvedToolCall.output[0]?.approval_status === "approved",
-        resultContinued: toolResult.status === "completed" && toolResult.output[0]?.content[0]?.text.includes("function_call_output"),
+        resultContinued: toolResult.status === "completed" && toolResult.output[0]?.content[0]?.text.includes("order shipped"),
         sameConversation: toolResult.conversation.id === toolCall.conversation.id,
       },
       webhook: {
@@ -531,9 +705,16 @@ test("Serving resolves a Deployment, executes its pinned Agent version, and emit
     };
     const expectedSnapshot = JSON.parse(await readFile(path.join(appRoot, "tests/snapshots/serving-response.json"), "utf8"));
     assert.deepEqual(snapshot, expectedSnapshot);
+    await verifyReleaseLifecycle({ baseURL, request, command, completeRun, controlToken: environment.RANK_CONTROL_TOKEN });
+    await verifyReleasePipeline({ baseURL, request, completeRun, controlToken: environment.RANK_CONTROL_TOKEN });
+    await verifyResponseFeedback({ baseURL, request, command, completeRun });
+    if (process.env.RANK_FEEDBACK_BROWSER === "1") await verifyReleaseBrowser(baseURL, "response-feedback.browser.js");
+    if (process.env.RANK_RELEASE_BROWSER === "1") await verifyReleaseBrowser(baseURL);
   } finally {
     await stop(rankd).catch(() => {});
+    await proxy.close();
     await stop(executiond).catch(() => {});
+    await cleanupStorage();
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });

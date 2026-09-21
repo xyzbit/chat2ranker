@@ -1,0 +1,32 @@
+{
+  "sandboxId": "b9aca7b6-994f-423f-a895-0b182de166c3",
+  "lifecycleServerKilled": true,
+  "backgroundCommandIgnoresTerm": true,
+  "runtimeStoppedAfterServerKillSeconds": 13.83,
+  "runtimeState": {
+    "Running": false,
+    "ExitCode": 137,
+    "OOMKilled": false,
+    "StartedAt": "2026-09-14T15:42:20.468678759Z",
+    "FinishedAt": "2026-09-14T15:42:35.567255544Z"
+  },
+  "runtimeTimerSeconds": 15,
+  "serverTTLSeconds": 90,
+  "limitations": "Stock bootstrap plus root timeout smoke only; not integrated Executor or complete isolation acceptance.",
+  "serverVersion": "0.2.3",
+  "execdImage": "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/execd@sha256:6cf7dba2f21f0b536e100563d841ac58a9f31c2b0a081b7ac76796a24d6f47e2",
+  "execdVersion": "docker/execd/v1.1.0",
+  "execdCommit": "48b0215f1bd097b31d0f022a44640e00c11ac49d",
+  "sdkReviewCommit": "07f0a68dd230d5498645df2fbd0d5174b3edb5c1",
+  "commandProbes": {
+    "unauthenticatedHTTPStatus": 401,
+    "argvOnlyHTTPStatus": 400,
+    "uidWithCommand": 1000,
+    "daemonTokenInheritedByDefault": true,
+    "daemonTokenVisibleAfterExplicitEmptyEnvOverride": false,
+    "daemonTokenInReadableEnvFile": false,
+    "rootProcessEnvironmentReadable": false,
+    "canSignalRootPID1": false
+  },
+  "cleanup": "Test containers removed explicitly after inspection; lifecycle server intentionally killed and left stopped."
+}

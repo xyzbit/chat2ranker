@@ -62,10 +62,14 @@ class RankDemoAdapter extends LlmAdapter {
       const agent = text.match(/agent-[a-zA-Z0-9-]+/i)?.[0];
       const embedded = jsonObjectIn(text);
       const callId = CallId(`rank-demo-${++this.#counter}`);
-      if (/列出|有哪些|可选|list/i.test(text) && /测试集|dataset|agent/i.test(text)) {
+      if (/打开|设置|配置|open|configure/i.test(text) && embedded?.section) {
+        chunks = toolChunks(callId, "rank_open_configuration", embedded);
+      } else if (/列出|有哪些|可选|list/i.test(text) && /测试集|dataset|agent/i.test(text)) {
         chunks = toolChunks(callId, "rank_list_assets", {});
       } else if (/新增|添加|追加|add|append/i.test(text) && /用例|case/i.test(text) && embedded?.baseDatasetVersionId && embedded?.cases) {
         chunks = toolChunks(callId, "rank_add_dataset_cases", embedded);
+      } else if (/更新|修改|version|update/i.test(text) && embedded?.baseDatasetVersionId) {
+        chunks = toolChunks(callId, "rank_create_dataset_version", embedded);
       } else if (/创建|新建|create/i.test(text) && /测试集|dataset/i.test(text) && embedded?.cases) {
         chunks = toolChunks(callId, "rank_create_dataset", embedded);
       } else if (/新版本|version/i.test(text) && /agent/i.test(text) && embedded?.baseAgentVersionId) {
@@ -76,6 +80,16 @@ class RankDemoAdapter extends LlmAdapter {
         chunks = toolChunks(callId, "rank_create_model_connection", embedded);
       } else if (/切换|设置|使用|switch|set/i.test(text) && /对话模型|评审模型|judge|control/i.test(text) && embedded?.connectionId) {
         chunks = toolChunks(callId, "rank_set_system_model", embedded);
+      } else if (/创建|新建|create/i.test(text) && /端点|endpoint|部署|deployment/i.test(text) && embedded?.name) {
+        chunks = toolChunks(callId, "rank_create_deployment", embedded);
+      } else if (/默认|default/i.test(text) && /测试集|dataset/i.test(text) && embedded) {
+        chunks = toolChunks(callId, "rank_set_evaluation_defaults", embedded);
+      } else if (/门槛|release policy/i.test(text) && embedded?.deploymentId) {
+        chunks = toolChunks(callId, "rank_set_release_policy", embedded);
+      } else if (/试用|试试|try agent|playground/i.test(text)) {
+        chunks = toolChunks(callId, "rank_open_trial", embedded || (agent ? { agentVersionId: agent } : {}));
+      } else if (/发布进度|发布状态|release status/i.test(text)) {
+        chunks = toolChunks(callId, "rank_release_status", {});
       } else if (/创建|新建|create/i.test(text) && /agent/i.test(text) && embedded?.name) {
         chunks = toolChunks(callId, "rank_create_agent", embedded);
 	  } else if (/发布|上线|publish|release/i.test(text)) {
@@ -126,6 +140,10 @@ async function requestJSON(url, options = {}) {
 export default class RankControl extends Service {
   static inject = ["llm", "tools"];
 
+  async requestJSON(url, options = {}) {
+    return requestJSON(url, { ...options, headers: { ...options.headers, "x-rank-control-token": this.controlToken } });
+  }
+
   constructor(ctx, config = {}) {
     super(ctx, "rankControl", true);
     this.apiURL = String(config.rankApiURL || "http://127.0.0.1:8787").replace(/\/$/, "");
@@ -136,7 +154,7 @@ export default class RankControl extends Service {
 
   setupAgent(agentCtx, binding) {
     const command = async (type, payload, exec) => {
-      const response = await requestJSON(`${this.apiURL}/api/internal/control/commands`, {
+      const response = await this.requestJSON(`${this.apiURL}/api/internal/control/commands`, {
         method: "POST",
         signal: exec.signal,
         headers: {
@@ -160,13 +178,15 @@ export default class RankControl extends Service {
       output: objectOutput,
       execute: async (_args, exec) => {
 		const [bootstrap, experiment] = await Promise.all([
-		  requestJSON(`${this.apiURL}/api/bootstrap`, { signal: exec.signal }),
-		  requestJSON(`${this.apiURL}/api/experiments/${binding.experimentId}`, { signal: exec.signal }),
+		  this.requestJSON(`${this.apiURL}/api/bootstrap`, { signal: exec.signal }),
+		  this.requestJSON(`${this.apiURL}/api/experiments/${binding.experimentId}`, { signal: exec.signal }),
 		]);
+		const evaluationDefaults = Object.fromEntries(await Promise.all(bootstrap.agents.map(async agent => [agent.familyId, await this.requestJSON(`${this.apiURL}/api/agent-families/${encodeURIComponent(agent.familyId)}/evaluation-defaults`, { signal: exec.signal })])));
         return {
+		  evaluationDefaults,
 		  currentExperiment: { id: experiment.id, datasetVersionId: experiment.datasetVersionId || "", agentVersionId: experiment.agentVersionId || "", dataset: experiment.dataset || null, agent: experiment.agent || null },
-          datasets: bootstrap.datasets.map((dataset) => ({ id: dataset.id, name: dataset.name, version: dataset.version, caseCount: dataset.caseCount, source: dataset.source })),
-		  agents: bootstrap.agents.map((agent) => ({ id: agent.id, handle: agent.handle, version: agent.version, runnerType: agent.runnerType, model: agent.model, preset: agent.preset || "", tools: agent.tools || [], skills: agent.skills || [], available: agent.runtime?.available === true, unavailableReason: agent.runtime?.reason || "" })),
+          datasets: bootstrap.datasets.map((dataset) => ({ id: dataset.id, familyId: dataset.familyId, name: dataset.name, version: dataset.version, caseCount: dataset.caseCount, source: dataset.source })),
+		  agents: bootstrap.agents.map((agent) => ({ id: agent.id, familyId: agent.familyId, handle: agent.handle, version: agent.version, runnerType: agent.runnerType, model: agent.model, preset: agent.preset || "", tools: agent.tools || [], skills: agent.skills || [], available: agent.runtime?.available === true, unavailableReason: agent.runtime?.reason || "" })),
 		  modelConnections: (bootstrap.modelConnections || []).map((connection) => ({ id: connection.id, name: connection.name, provider: connection.provider || "custom", protocol: connection.protocol, baseUrl: connection.baseUrl, defaultModel: connection.defaultModel || "", models: connection.models || [], prices: connection.prices || {}, status: connection.status })),
 		  modelCatalog: bootstrap.modelCatalog || [],
 		  systemModels: bootstrap.systemModels || [],
@@ -211,11 +231,12 @@ export default class RankControl extends Service {
       parameters: { ...connectionParameters, required: ["provider"] },
       output: objectOutput,
       execute: async (args, exec) => {
-        const bootstrap = await requestJSON(`${this.apiURL}/api/bootstrap`, { signal: exec.signal });
-        const connection = await requestJSON(`${this.apiURL}/api/model-connections`, {
+        const bootstrap = await this.requestJSON(`${this.apiURL}/api/bootstrap`, { signal: exec.signal });
+        const connection = await this.requestJSON(`${this.apiURL}/api/model-connections`, {
           method: "POST", signal: exec.signal, headers: { "content-type": "application/json" }, body: JSON.stringify(connectionBody(args, bootstrap)),
         });
-        return { connection, next: "在模型连接中添加 API Key 并验证后即可供 Agent 使用。" };
+        await command("open_configuration", { section: "model_connections", connectionId: connection.id }, exec);
+        return { connection, next: "在会话中的连接表单添加 API Key 并验证。" };
       },
     });
     agentCtx.tools.register({
@@ -224,13 +245,14 @@ export default class RankControl extends Service {
       parameters: { ...connectionParameters, properties: { connectionId: { type: "string" }, ...connectionParameters.properties }, required: ["connectionId"] },
       output: objectOutput,
       execute: async ({ connectionId, ...args }, exec) => {
-        const bootstrap = await requestJSON(`${this.apiURL}/api/bootstrap`, { signal: exec.signal });
+        const bootstrap = await this.requestJSON(`${this.apiURL}/api/bootstrap`, { signal: exec.signal });
         const current = (bootstrap.modelConnections || []).find((item) => item.id === connectionId);
         if (!current) throw new Error("模型连接不存在");
-        const connection = await requestJSON(`${this.apiURL}/api/model-connections/${encodeURIComponent(connectionId)}`, {
+        const connection = await this.requestJSON(`${this.apiURL}/api/model-connections/${encodeURIComponent(connectionId)}`, {
           method: "PATCH", signal: exec.signal, headers: { "content-type": "application/json" }, body: JSON.stringify(connectionBody(args, bootstrap, current)),
         });
-        return { connection, next: connection.hasCredential ? "连接配置已更新，请重新验证。" : "请在模型连接中添加 API Key 并验证。" };
+        await command("open_configuration", { section: "model_connections", connectionId: connection.id }, exec);
+        return { connection, next: "连接配置已更新，请在会话中的安全表单验证。" };
       },
     });
     agentCtx.tools.register({
@@ -239,10 +261,10 @@ export default class RankControl extends Service {
       parameters: { type: "object", properties: { role: { type: "string", enum: ["control", "judge"] }, connectionId: { type: "string" }, model: { type: "string" } }, required: ["role", "connectionId"], additionalProperties: false },
       output: objectOutput,
       execute: async ({ role, connectionId, model }, exec) => {
-        const bootstrap = await requestJSON(`${this.apiURL}/api/bootstrap`, { signal: exec.signal });
+        const bootstrap = await this.requestJSON(`${this.apiURL}/api/bootstrap`, { signal: exec.signal });
         const connection = (bootstrap.modelConnections || []).find((item) => item.id === connectionId);
         if (!connection || connection.status !== "verified") throw new Error("请选择一个已验证的模型连接");
-        const binding = await requestJSON(`${this.apiURL}/api/system-models/${role}`, { method: "PUT", signal: exec.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ connectionId, model: model || connection.defaultModel }) });
+        const binding = await this.requestJSON(`${this.apiURL}/api/system-models/${role}`, { method: "PUT", signal: exec.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ connectionId, model: model || connection.defaultModel }) });
         return { binding, applied: role === "control" ? "本轮结束后切换对话模型" : "后续评审立即使用新模型" };
       },
     });
@@ -293,6 +315,26 @@ export default class RankControl extends Service {
       },
       output: objectOutput,
       execute: (args, exec) => command("add_dataset_cases", args, exec),
+    });
+    agentCtx.tools.register({
+      name: "rank_create_dataset_version",
+      description: "Create and select a new immutable dataset version, preserving omitted fields. Replace the full cases array to edit or remove cases; use rank_add_dataset_cases for additions. Read the base dataset before changing cases. Rubric, schema and description can be changed independently without resending cases.",
+      parameters: { type: "object", properties: {
+        baseDatasetVersionId: { type: "string" }, description: { type: "string" },
+        rubric: { type: "object", additionalProperties: true }, schema: { type: "object", additionalProperties: true },
+        cases: { type: "array", minItems: 1, maxItems: 200, items: { type: "object", properties: { id: { type: "string" }, title: { type: "string" }, input: { type: "string" }, expected: { type: "object", additionalProperties: true } }, required: ["input"], additionalProperties: false } },
+      }, required: ["baseDatasetVersionId"], additionalProperties: false },
+      output: objectOutput,
+      execute: (args, exec) => command("create_dataset_version", args, exec),
+    });
+    agentCtx.tools.register({
+      name: "rank_set_release_policy",
+      description: "Update an endpoint's numeric publication thresholds for future releases. Omitted fields stay unchanged (new defaults: 100% pass, 100% valid coverage, 24h). This does not publish a version or change already running release checks. Use rank_open_configuration with release_policy to review fields when requested.",
+      parameters: { type: "object", properties: {
+        deploymentId: { type: "string" }, minPassRate: { type: "integer", minimum: 0, maximum: 100 }, minValidTrialRate: { type: "integer", minimum: 1, maximum: 100 }, maxEvidenceAgeHours: { type: "integer", minimum: 1 },
+      }, required: ["deploymentId"], additionalProperties: false },
+      output: objectOutput,
+      execute: (args, exec) => command("set_release_policy", args, exec),
     });
     agentCtx.tools.register({
       name: "rank_create_agent",
@@ -378,20 +420,59 @@ export default class RankControl extends Service {
         execute: (args, exec) => command("prepare_run", args, exec),
       });
     agentCtx.tools.register({
+      name: "rank_open_configuration",
+      description: "Present a durable in-conversation configuration action. Opens the actual secure form without leaving chat: model_connections (credential entry, verify, delete, pricing), local_connections (discover/import), system_models, preferences (language and companion), api_keys (create/revoke/permissions), webhooks (create/enable/disable), release_policy (publication thresholds), endpoint_integration (select/create key and executable examples). Use deploymentId from assets for endpoint sections and optional connectionId for an exact model connection. Never accept or return secrets. Use direct mutation tools when the user already supplied non-secret values; use this for secrets, browsing and reviewing settings. Opening a form does not mean a change has been saved.",
+      parameters: { type: "object", properties: {
+        section: { type: "string", enum: ["model_connections", "local_connections", "system_models", "preferences", "api_keys", "webhooks", "release_policy", "endpoint_integration"] },
+        deploymentId: { type: "string" }, connectionId: { type: "string" },
+      }, required: ["section"], additionalProperties: false },
+      output: objectOutput,
+      execute: (args, exec) => command("open_configuration", args, exec),
+    });
+    agentCtx.tools.register({
+      name: "rank_open_trial",
+        description: "Open a separate Agent playground conversation to try the Agent directly. Use when users ask to try or chat with an Agent. No dataset or evaluation is required. Returns an actionable handoff; never impersonate the tested Agent or execute a trial from control chat. Draft can carry the user's original message; exclude secrets.",
+        parameters: { type: "object", properties: { agentVersionId: { type: "string" }, draft: { type: "string" } }, additionalProperties: false },
+        output: objectOutput,
+        execute: (args, exec) => command("open_trial", args, exec),
+      });
+    agentCtx.tools.register({
         name: "rank_prepare_release",
-		description: "Prepare a release-confirmation card that compares the version currently routed by a Deployment alias with a candidate immutable Agent version. This never changes routing by itself.",
+		description: "Prepare a release-confirmation card comparing an endpoint's current version with a candidate immutable Agent version. Use separate endpoints for environments. Call these serving targets endpoints (端点) in replies. This never publishes by itself.",
 		parameters: {
 		  type: "object",
 		  properties: {
 			deploymentId: { type: "string", description: "Deployment id from rank_list_assets. Omit when the selected Agent family has one Deployment." },
-			alias: { type: "string", enum: ["staging", "production"] },
 			agentVersionId: { type: "string", description: "Candidate immutable Agent version. Defaults to the experiment selection." },
+			developmentDatasetVersionId: { type: "string", description: "Optional exact development DatasetVersion for this review; omission resolves the Agent default." },
+			regressionDatasetVersionId: { type: "string", description: "Optional exact regression DatasetVersion for this release; omission resolves the Agent default." },
 		  },
 		  additionalProperties: false,
 		},
         output: objectOutput,
         execute: (args, exec) => command("prepare_release", args, exec),
       });
+    agentCtx.tools.register({
+      name: "rank_create_deployment",
+      description: "Create a named endpoint for an Agent family with immutable execution limits. Omit agentFamilyId to use the selected Agent. Defaults: 60 requests/minute, 4 concurrent responses, 120000ms timeout. Ask only for a name if missing; then prepare release for confirmation.",
+      parameters: { type: "object", properties: { name: { type: "string", pattern: "^[a-z][a-z0-9-]{0,62}$" }, agentFamilyId: { type: "string" }, requestsPerMinute: { type: "integer", minimum: 1 }, maxConcurrentResponses: { type: "integer", minimum: 1 }, executionTimeoutMs: { type: "integer", minimum: 1 } }, required: ["name"], additionalProperties: false },
+      output: objectOutput,
+      execute: (args, exec) => command("create_deployment", args, exec),
+    });
+    agentCtx.tools.register({
+      name: "rank_set_evaluation_defaults",
+      description: "Set optional default development and regression Dataset families shared by all versions of an Agent. Omitted fields stay unchanged; empty string clears a default. Dataset remains generic. Use familyId from assets, never a dataset version ID.",
+      parameters: { type: "object", properties: { agentFamilyId: { type: "string" }, developmentDatasetId: { type: "string" }, regressionDatasetId: { type: "string" } }, additionalProperties: false },
+      output: objectOutput,
+      execute: (args, exec) => command("set_evaluation_defaults", args, exec),
+    });
+    agentCtx.tools.register({
+      name: "rank_release_status",
+      description: "Read durable release pipeline progress and results for this conversation.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      output: objectOutput,
+      execute: (args, exec) => command("release_status", args, exec),
+    });
     return { commit() {} };
   }
 }

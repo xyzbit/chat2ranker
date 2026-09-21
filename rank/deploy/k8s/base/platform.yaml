@@ -1,0 +1,242 @@
+apiVersion: v1
+kind: Service
+metadata: {name: rank-api}
+spec:
+  selector: {app: rank-api}
+  ports: [{port: 8787}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: rank-control}
+spec:
+  selector: {app: rank-control}
+  ports: [{port: 8788}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: rank-gateway}
+spec:
+  selector: {app: rank-gateway}
+  ports: [{port: 8080}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: rank-model-fixture}
+spec:
+  selector: {app: rank-model-fixture}
+  ports: [{port: 8800}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: rank-api}
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  minReadySeconds: 5
+  selector:
+    matchLabels: {app: rank-api}
+  template:
+    metadata:
+      labels: {app: rank-api}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000}
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: api
+          image: rank-platform-lab:build
+          imagePullPolicy: Never
+          command: [/usr/local/bin/rankd]
+          args: ['-mode=api', '-shutdown-timeout=30s', '-event-poll-interval=250ms', '-addr=0.0.0.0:8787', '-access-file=/run/rank-access/access.json', '-database-timeout=3s', '-execution-url=http://execution-api:8790', '-webhook-secret-dir=/state/webhook-secrets', '-execution-timeout=60s', '-trial-timeout=60s']
+          envFrom:
+            - secretRef: {name: rank-platform}
+          env:
+            - {name: RANK_CONTROL_URL, value: 'http://rank-control:8788'}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: '1', memory: 384Mi}
+          lifecycle:
+            preStop:
+              exec: {command: [/bin/sleep, "5"]}
+          readinessProbe:
+            httpGet: {path: /api/health, port: 8787}
+            periodSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: access, mountPath: /run/rank-access, readOnly: true}
+            - {name: state, mountPath: /state}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: access
+          secret: {secretName: rank-management, defaultMode: 0440}
+        - name: state
+          persistentVolumeClaim: {claimName: rank-private-data}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: rank-dispatcher}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: rank-dispatcher}
+  template:
+    metadata:
+      labels: {app: rank-dispatcher}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: rank-platform-lab:build
+          imagePullPolicy: Never
+          command: [/usr/local/bin/rankd]
+          args: ['-mode=dispatcher', '-shutdown-timeout=30s', '-addr=0.0.0.0:8787', '-access-file=/run/rank-access/access.json', '-database-timeout=3s', '-execution-url=http://execution-api:8790', '-webhook-secret-dir=/state/webhook-secrets', '-execution-timeout=60s', '-trial-timeout=60s']
+          envFrom:
+            - secretRef: {name: rank-platform}
+          env:
+            - {name: RANK_CONTROL_URL, value: 'http://rank-control:8788'}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: '1', memory: 384Mi}
+          readinessProbe:
+            httpGet: {path: /api/health, port: 8787}
+            periodSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: access, mountPath: /run/rank-access, readOnly: true}
+            - {name: state, mountPath: /state}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: access
+          secret: {secretName: rank-management, defaultMode: 0440}
+        - name: state
+          persistentVolumeClaim: {claimName: rank-private-data}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: rank-control}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: rank-control}
+  template:
+    metadata:
+      labels: {app: rank-control}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: control
+          image: rank-platform-lab:build
+          imagePullPolicy: Never
+          command: [node, /opt/rank/apps/rank-web/control-host/src/main.mjs]
+          envFrom:
+            - secretRef: {name: rank-control}
+          env:
+            - {name: RANK_API_URL, value: 'http://rank-api:8787'}
+            - {name: RANK_EXECUTION_URL, value: 'http://execution-api:8790'}
+            - {name: RANK_CONTROL_ADDR, value: '0.0.0.0'}
+            - {name: RANK_CONTROL_PORT, value: '8788'}
+            - {name: RANK_DSH_HOME, value: /state/dsh}
+            - {name: HOME, value: /state}
+          resources:
+            requests: {cpu: 100m, memory: 192Mi}
+            limits: {cpu: '1', memory: 768Mi}
+          readinessProbe:
+            httpGet: {path: /control/v1/health, port: 8788}
+            periodSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: state, mountPath: /state}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: state
+          persistentVolumeClaim: {claimName: rank-control-data}
+        - name: tmp
+          emptyDir: {sizeLimit: 128Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: rank-model-fixture}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: rank-model-fixture}
+  template:
+    metadata:
+      labels: {app: rank-model-fixture}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {runAsNonRoot: true, runAsUser: 1000}
+      containers:
+        - name: model
+          image: rank-platform-lab:build
+          imagePullPolicy: Never
+          command: [node, /opt/rank/fixtures/model.mjs]
+          resources:
+            requests: {cpu: 25m, memory: 48Mi}
+            limits: {cpu: '1', memory: 128Mi}
+          readinessProbe:
+            httpGet: {path: /health, port: 8800}
+            periodSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: rank-gateway}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: rank-gateway}
+  template:
+    metadata:
+      labels: {app: rank-gateway}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {runAsNonRoot: true, runAsUser: 101, fsGroup: 101}
+      containers:
+        - name: gateway
+          image: rank-gateway-lab:build
+          imagePullPolicy: Never
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          readinessProbe:
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}

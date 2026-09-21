@@ -1,0 +1,24 @@
+.rank-auth {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 48px 24px;
+  background: var(--canvas);
+}
+.rank-auth-content { width: min(100%, 340px); padding-bottom: 7vh; }
+.rank-auth-brand { display: inline-block; margin-bottom: 44px; font-size: 32px; font-weight: 700; letter-spacing: -1.8px; color: var(--text); text-decoration: none; }
+.rank-auth-brand span { color: var(--muted); }
+.rank-auth h1 { margin: 0 0 10px; font-size: 25px; font-weight: 600; letter-spacing: -.5px; }
+.rank-auth-subtitle { color: var(--muted); font-size: 14px; margin: 0 0 32px; }
+.rank-auth form { display: flex; flex-direction: column; gap: 10px; }
+.rank-auth label { font-size: 13px; font-weight: 500; }
+.rank-auth input { width: 100%; height: 44px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); padding: 0 12px; color: var(--text); font-size: 15px; margin-bottom: 12px; }
+.rank-auth input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rank-auth .rank-auth-submit { width: 100%; height: 44px; margin-top: 6px; background: var(--accent); color: white; border: 0; border-radius: 6px; font-size: 14px; font-weight: 500; justify-content: center; }
+.rank-auth .rank-auth-submit:hover:enabled { background: var(--accent-hover); }
+.rank-auth button:disabled { opacity: .5; cursor: default; }
+.rank-auth-error { color: var(--danger); font-size: 13px; line-height: 1.6; margin: 0; }
+.rank-auth .rank-auth-retry { background: transparent; border: 0; color: var(--muted); justify-content: center; }
+.rank-account { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.rank-account h2 { margin: 0 0 6px; }
+.rank-account p { color: var(--muted); margin: 0; }

@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/xyzbit/agentkiln/execution/backend/contract"
 	"math"
 	"sync"
 	"time"
@@ -14,7 +16,6 @@ import (
 const (
 	defaultTrialCount = 5
 	maxTrialCount     = 20
-	trialAttempts     = 2
 )
 
 type RunOptions struct {
@@ -53,9 +54,28 @@ func (s *Service) StartRun(ctx context.Context, experimentID, idempotencyKey str
 	if err != nil {
 		return domain.Run{}, err
 	}
+	if existing, err := s.repo.GetRunByIdempotencyKey(ctx, experimentID, idempotencyKey); err == nil {
+		if existing.TrialCount != trialCount {
+			return domain.Run{}, problem(409, "idempotency_conflict", "相同幂等键已用于不同的运行次数")
+		}
+		return existing, nil
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return domain.Run{}, err
+	}
+	selected, err := s.repo.GetExperiment(ctx, experimentID)
+	if err != nil {
+		return domain.Run{}, mapNotFound(err, "experiment_not_found", "实验不存在")
+	}
+	if selected.DatasetVersionID == "" || selected.AgentVersionID == "" {
+		return domain.Run{}, problem(409, "experiment_not_ready", "请先选择测试集和 Agent")
+	}
+	prepared, err := s.prepareEvaluation(ctx, selected.DatasetVersionID, []string{selected.AgentVersionID})
+	if err != nil {
+		return domain.Run{}, err
+	}
 	var created domain.Run
 	replayed := false
-	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	err = s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		existing, err := repo.GetRunByIdempotencyKey(ctx, experimentID, idempotencyKey)
 		if err == nil {
 			if existing.TrialCount != trialCount {
@@ -91,15 +111,14 @@ func (s *Service) StartRun(ctx context.Context, experimentID, idempotencyKey str
 		if err != nil {
 			return err
 		}
-		availability := s.probe(ctx, agent)
-		if !availability.Available {
-			return problem(409, "runner_unavailable", availability.Reason)
+		if dataset.ID != selected.DatasetVersionID || agent.ID != selected.AgentVersionID {
+			return problem(409, "experiment_changed", "实验配置已变化，请重新开始")
 		}
 		var items []domain.RunItem
 		var trials []domain.RunTrial
 		var event domain.RunEvent
-		created, items, trials, event = s.buildRun(experimentID, idempotencyKey, "", dataset, agent, trialCount, s.now().UTC())
-		return repo.CreateRun(ctx, created, items, trials, event)
+		created, items, trials, event = s.buildRun(experimentID, idempotencyKey, "", dataset, agent, trialCount, s.now().UTC(), prepared[agent.ID])
+		return s.createRunWithDispatch(ctx, repo, created, items, trials, event)
 	})
 	if err != nil {
 		return domain.Run{}, err
@@ -122,10 +141,37 @@ func (s *Service) StartComparison(ctx context.Context, experimentID, idempotency
 	if len(agentIDs) < 2 || len(agentIDs) > 4 {
 		return ComparisonResult{}, problem(400, "invalid_comparison_agents", "对比运行需要选择 2 到 4 个 Agent 版本")
 	}
+	if existing, err := s.repo.GetRunGroupByIdempotencyKey(ctx, experimentID, idempotencyKey); err == nil {
+		if existing.TrialCount != trialCount || !sameStrings(existing.AgentVersionIDs, agentIDs) {
+			return ComparisonResult{}, problem(409, "idempotency_conflict", "相同幂等键已用于不同的对比运行")
+		}
+		result := ComparisonResult{Group: existing, Runs: []domain.Run{}}
+		for _, id := range existing.RunIDs {
+			run, err := s.repo.GetRun(ctx, id)
+			if err != nil {
+				return ComparisonResult{}, err
+			}
+			result.Runs = append(result.Runs, run)
+		}
+		return result, nil
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return ComparisonResult{}, err
+	}
+	selected, err := s.repo.GetExperiment(ctx, experimentID)
+	if err != nil {
+		return ComparisonResult{}, mapNotFound(err, "experiment_not_found", "实验不存在")
+	}
+	if selected.DatasetVersionID == "" {
+		return ComparisonResult{}, problem(409, "experiment_not_ready", "请先选择测试集")
+	}
+	prepared, err := s.prepareEvaluation(ctx, selected.DatasetVersionID, agentIDs)
+	if err != nil {
+		return ComparisonResult{}, err
+	}
 	var group domain.RunGroup
 	var runs []domain.Run
 	replayed := false
-	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	err = s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		existing, err := repo.GetRunGroupByIdempotencyKey(ctx, experimentID, idempotencyKey)
 		if err == nil {
 			if existing.TrialCount != trialCount || !sameStrings(existing.AgentVersionIDs, agentIDs) {
@@ -163,8 +209,8 @@ func (s *Service) StartComparison(ctx context.Context, experimentID, idempotency
 			if err != nil {
 				return mapNotFound(err, "agent_version_not_found", "Agent 版本不存在")
 			}
-			if availability := s.probe(ctx, agent); !availability.Available {
-				return problem(409, "runner_unavailable", fmt.Sprintf("%s v%d：%s", agent.Handle, agent.Version, availability.Reason))
+			if dataset.ID != selected.DatasetVersionID {
+				return problem(409, "experiment_changed", "实验配置已变化，请重新开始")
 			}
 			agents = append(agents, agent)
 		}
@@ -174,8 +220,8 @@ func (s *Service) StartComparison(ctx context.Context, experimentID, idempotency
 			return err
 		}
 		for index, agent := range agents {
-			run, items, trials, event := s.buildRun(experimentID, fmt.Sprintf("%s/%d", idempotencyKey, index+1), group.ID, dataset, agent, trialCount, now)
-			if err := repo.CreateRun(ctx, run, items, trials, event); err != nil {
+			run, items, trials, event := s.buildRun(experimentID, fmt.Sprintf("%s/%d", idempotencyKey, index+1), group.ID, dataset, agent, trialCount, now, prepared[agent.ID])
+			if err := s.createRunWithDispatch(ctx, repo, run, items, trials, event); err != nil {
 				return err
 			}
 			group.RunIDs = append(group.RunIDs, run.ID)
@@ -204,9 +250,13 @@ func (s *Service) StartComparison(ctx context.Context, experimentID, idempotency
 	return ComparisonResult{Group: group, Runs: runs}, err
 }
 
-func (s *Service) buildRun(experimentID, key, groupID string, dataset domain.DatasetVersion, agent domain.AgentVersion, trialCount int, now time.Time) (domain.Run, []domain.RunItem, []domain.RunTrial, domain.RunEvent) {
+func (s *Service) buildRun(experimentID, key, groupID string, dataset domain.DatasetVersion, agent domain.AgentVersion, trialCount int, now time.Time, judge domain.JudgeConfig) (domain.Run, []domain.RunItem, []domain.RunTrial, domain.RunEvent) {
 	scheduled := len(dataset.Cases) * trialCount
-	run := domain.Run{ID: newID("run"), ExperimentID: experimentID, GroupID: groupID, IdempotencyKey: key, Status: domain.RunQueued, DatasetSnapshot: dataset, AgentSnapshot: agent, EvaluatorSnapshot: s.freezeEvaluator(dataset, agent), TrialCount: trialCount, Concurrency: 5, CreatedAt: now, Total: scheduled, ScheduledTrials: scheduled, CaseCount: len(dataset.Cases), CostKnown: true, Results: []domain.CaseResult{}, Events: []domain.RunEvent{}}
+	run := domain.Run{ExecutionFormat: 1, ID: newID("run"), ExperimentID: experimentID, GroupID: groupID, IdempotencyKey: key, Status: domain.RunQueued, DatasetSnapshot: dataset, AgentSnapshot: agent, EvaluatorSnapshot: s.freezeEvaluator(dataset, agent), TrialCount: trialCount, Concurrency: 5, CreatedAt: now, Total: scheduled, ScheduledTrials: scheduled, CaseCount: len(dataset.Cases), CostKnown: true, Results: []domain.CaseResult{}, Events: []domain.RunEvent{}}
+	run.EvaluatorSnapshot.Judge = judge
+	if runner, ok := s.runners[agent.RunnerType].(ExecutionRunner); ok {
+		run.ExecutionSettings = domain.RunExecutionSettings{TenantID: runner.config.TenantID, TimeoutMs: runner.config.Timeout.Milliseconds()}
+	}
 	items := make([]domain.RunItem, len(dataset.Cases))
 	trials := make([]domain.RunTrial, 0, scheduled)
 	ordinal := 0
@@ -289,19 +339,33 @@ func (s *Service) WaitRunEvents(ctx context.Context, id string, afterSequence in
 	}
 }
 
+// CancelRun durably stops scheduling first; remote invocations are reconciled
+// before the Run becomes cancelled.
 func (s *Service) CancelRun(ctx context.Context, id string) (domain.Run, error) {
-	now := s.now().UTC()
-	err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
-		return repo.CancelRun(ctx, id, now, domain.RunEvent{RunID: id, Type: "run.status", Status: domain.RunCancelled, At: now})
-	})
-	if err != nil && !errors.Is(err, domain.ErrConflict) {
-		return domain.Run{}, mapNotFound(err, "run_not_found", "运行不存在")
+	if _, err := s.GetRun(ctx, id); err != nil {
+		return domain.Run{}, err
+	}
+	if err := s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
+		run, err := repo.GetRun(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !domain.IsActiveRun(run.Status) {
+			return nil
+		}
+		if err := repo.RequestRunCancellation(ctx, id); err != nil {
+			return err
+		}
+		return repo.AppendRunEventOnce(ctx, "cancel-requested", domain.RunEvent{RunID: id, Type: "run.cancel_requested", Status: run.Status, At: s.now().UTC()})
+	}); err != nil {
+		return domain.Run{}, err
 	}
 	s.mu.Lock()
 	if cancel := s.cancels[id]; cancel != nil {
 		cancel()
 	}
 	s.mu.Unlock()
+	s.dispatch(id)
 	return s.GetRun(ctx, id)
 }
 
@@ -311,7 +375,13 @@ func (s *Service) ResumeActiveRuns(ctx context.Context) error {
 		return err
 	}
 	for _, run := range runs {
-		err = s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+		if err := validateFrozenAgentModel(run.AgentSnapshot); err != nil {
+			return err
+		}
+		if _, remote := s.runners[run.AgentSnapshot.RunnerType].(ExecutionRunner); remote && run.ExecutionFormat != 1 {
+			return fmt.Errorf("active Run %s predates durable invocation requests; resolve it before upgrading", run.ID)
+		}
+		err = s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 			if err := repo.ResetActiveRunTrials(ctx, run.ID); err != nil {
 				return err
 			}
@@ -332,23 +402,85 @@ func (s *Service) ResumeActiveRuns(ctx context.Context) error {
 }
 
 func (s *Service) dispatch(runID string) {
+	if s.externalDispatch {
+		return
+	}
 	s.mu.Lock()
-	if _, exists := s.cancels[runID]; exists {
+	if _, exists := s.cancels[runID]; exists || s.runStopping {
 		s.mu.Unlock()
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(s.runContext)
 	s.cancels[runID] = cancel
+	s.runWG.Add(1)
 	s.mu.Unlock()
 	go func() {
+		defer s.runWG.Done()
+		defer cancel()
 		defer func() { s.mu.Lock(); delete(s.cancels, runID); s.mu.Unlock() }()
-		_ = s.executeRun(ctx, runID)
+		for s.runContext.Err() == nil {
+			_ = s.executeRun(ctx, runID)
+			current, err := s.repo.GetRun(s.runContext, runID)
+			if err == nil && !domain.IsActiveRun(current.Status) {
+				return
+			}
+			if err == nil && current.CancelRequested {
+				if s.reconcileCancelledRun(s.runContext, current) == nil {
+					return
+				}
+			}
+			if err := wait(s.runContext, s.dispatchRetryInterval); err != nil {
+				return
+			}
+			if err := s.repo.ResetActiveRunTrials(s.runContext, runID); err != nil {
+				continue
+			}
+		}
 	}()
+}
+
+// StopRunWorkers waits for local evaluation observers without cancelling the
+// accepted remote invocations that the next Rank owner will recover.
+func (s *Service) StopRunWorkers() {
+	s.mu.Lock()
+	s.runStopping = true
+	s.stopRuns()
+	s.mu.Unlock()
+	s.runWG.Wait()
+}
+
+func (s *Service) reconcileCancelledRun(ctx context.Context, run domain.Run) error {
+	values, err := s.repo.ListEvaluationInvocations(ctx, run.ID)
+	if err != nil {
+		return err
+	}
+	if len(values) > 0 {
+		runner, ok := s.runners[run.AgentSnapshot.RunnerType].(ExecutionRunner)
+		if !ok {
+			return fmt.Errorf("Run %s has no invocation owner", run.ID)
+		}
+		for _, value := range values {
+			if len(value.Result) > 0 {
+				continue
+			}
+			var request contract.SubmitRequest
+			if err := json.Unmarshal(value.Request, &request); err != nil {
+				return err
+			}
+			result, err := runner.invoke(ctx, request, nil)
+			if !contract.IsTerminal(result.Status) {
+				return err
+			}
+		}
+	}
+	return s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
+		return repo.CancelRun(ctx, run.ID, s.now().UTC(), domain.RunEvent{RunID: run.ID, Type: "run.status", Status: domain.RunCancelled, At: s.now().UTC()})
+	})
 }
 
 func (s *Service) transition(ctx context.Context, runID, status string) error {
 	now := s.now().UTC()
-	return s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	return s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		if err := repo.UpdateRunStatus(ctx, runID, status, now, ""); err != nil {
 			return err
 		}
@@ -365,10 +497,8 @@ func (s *Service) executeRun(ctx context.Context, runID string) error {
 	if runner == nil {
 		return s.failRun(context.Background(), runID, fmt.Errorf("runner %q is not registered", run.AgentSnapshot.RunnerType))
 	}
-	if preflight, ok := runner.(interface{ PreflightJudge(context.Context) error }); ok && len(run.EvaluatorSnapshot.Rubric) > 0 {
-		if err := preflight.PreflightJudge(ctx); err != nil {
-			return s.failRun(context.Background(), runID, fmt.Errorf("Judge 预检失败：%w", err))
-		}
+	if run.CancelRequested {
+		return nil
 	}
 	if err := s.transition(ctx, runID, domain.RunPreparing); err != nil {
 		return err
@@ -428,7 +558,7 @@ func (s *Service) executeRun(ctx context.Context, runID string) error {
 		return ctx.Err()
 	}
 	if firstErr != nil {
-		return s.failRun(context.Background(), runID, firstErr)
+		return firstErr
 	}
 	if err := s.transition(ctx, runID, domain.RunScoring); err != nil {
 		return err
@@ -439,7 +569,7 @@ func (s *Service) executeRun(ctx context.Context, runID string) error {
 func (s *Service) processTrial(ctx context.Context, run domain.Run, runner AgentRunner, trial domain.RunTrial, caseItem domain.Case) error {
 	started := s.now().UTC()
 	claimed := false
-	if err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	if err := s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		value, err := repo.ClaimRunTrial(ctx, run.ID, trial.ID, started)
 		if err != nil {
 			return err
@@ -448,35 +578,40 @@ func (s *Service) processTrial(ctx context.Context, run domain.Run, runner Agent
 		if !claimed {
 			return nil
 		}
-		if err := repo.AppendRunEvent(ctx, trialEvent(run.ID, trial, "trial.started", started)); err != nil {
+		if err := repo.AppendRunEventOnce(ctx, trial.ID+":trial.started", trialEvent(run.ID, trial, "trial.started", started)); err != nil {
 			return err
 		}
-		return repo.AppendRunEvent(ctx, trialEvent(run.ID, trial, "case.started", started))
+		return repo.AppendRunEventOnce(ctx, trial.ID+":case.started", trialEvent(run.ID, trial, "case.started", started))
 	}); err != nil || !claimed {
 		return err
 	}
 	emit := func(event RunnerEvent) error {
-		return s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+		return s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 			value := trialEvent(run.ID, trial, event.Type, s.now().UTC())
 			value.Status, value.Reason = event.Status, event.Reason
+			if event.InvocationID != "" {
+				invocation, err := repo.GetEvaluationInvocation(ctx, event.InvocationID)
+				if err != nil {
+					return err
+				}
+				if event.Sequence <= invocation.Sequence {
+					return nil
+				}
+				if err := repo.AdvanceInvocationSequence(ctx, invocation.ID, invocation.Sequence, event.Sequence); err != nil {
+					return err
+				}
+			}
 			return repo.AppendRunEvent(ctx, value)
 		})
 	}
-	var candidate CandidateResult
-	var candidateErr error
-	attempts := 0
-	for attempt := 1; attempt <= trialAttempts; attempt++ {
-		attempts = attempt
-		candidate, candidateErr = runner.RunCandidate(ctx, ExecutionSpec{RunID: run.ID, TrialID: trial.ID, TrialIndex: trial.TrialIndex, Attempt: attempt, Case: caseItem, Agent: run.AgentSnapshot, Emit: emit})
-		if candidateErr == nil {
-			break
-		}
-		if attempt < trialAttempts {
-			_ = emit(RunnerEvent{Type: "trial.retry", Status: "candidate", Reason: candidateErr.Error()})
-		}
+	attempts := 1
+	candidate, candidateErr := runner.RunCandidate(ctx, ExecutionSpec{Settings: run.ExecutionSettings, RunID: run.ID, TrialID: trial.ID, TrialIndex: trial.TrialIndex, Case: caseItem, Agent: run.AgentSnapshot, Emit: emit})
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 	if candidateErr != nil {
-		result := domain.TrialResult{ID: trial.ID, RunID: run.ID, CaseID: trial.CaseID, TrialIndex: trial.TrialIndex, Status: domain.TrialComplete, FailureClass: domain.FailureInfra, Valid: false, Reason: candidateErr.Error(), CostKnown: false, Attempts: attempts, Criteria: []domain.CriterionResult{}, JudgeExecutionIDs: []string{}, CreatedAt: trial.CreatedAt, StartedAt: &started}
+		result := baseTrialResult(run, trial, candidate, started, attempts)
+		result.Valid, result.FailureClass, result.Reason = false, domain.FailureInfra, candidateErr.Error()
 		return s.completeTrial(ctx, trial, result, "trial.invalid")
 	}
 	criteria, deterministicPassed := deterministicResults(caseItem, candidate, run.EvaluatorSnapshot)
@@ -493,25 +628,27 @@ func (s *Service) processTrial(ctx context.Context, run domain.Run, runner Agent
 	costKnown := candidate.CostKnown
 	costEstimated := candidate.CostEstimated
 	for _, rubric := range run.EvaluatorSnapshot.Rubric {
-		var verdict JudgeResult
-		var judgeErr error
-		judgeAttempts := 0
-		for attempt := 1; attempt <= trialAttempts; attempt++ {
-			judgeAttempts = attempt
-			verdict, judgeErr = runner.RunJudge(ctx, JudgeSpec{RunID: run.ID, TrialID: trial.ID, TrialIndex: trial.TrialIndex, Attempt: attempt, Case: caseItem, Agent: run.AgentSnapshot, Evaluator: run.EvaluatorSnapshot, Criterion: rubric, Candidate: candidate, Emit: emit})
-			if judgeErr == nil {
-				break
-			}
-			if attempt < trialAttempts {
-				_ = emit(RunnerEvent{Type: "trial.retry", Status: "judge", Reason: judgeErr.Error()})
-			}
+		verdict, judgeErr := runner.RunJudge(ctx, JudgeSpec{Settings: run.ExecutionSettings, RunID: run.ID, TrialID: trial.ID, TrialIndex: trial.TrialIndex, Case: caseItem, Agent: run.AgentSnapshot, Evaluator: run.EvaluatorSnapshot, Criterion: rubric, Candidate: candidate, Emit: emit})
+		attempts++
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-		attempts += judgeAttempts
 		if judgeErr != nil {
 			result := baseTrialResult(run, trial, candidate, started, attempts)
 			result.Valid, result.FailureClass, result.Reason, result.Criteria = false, domain.FailureGrading, judgeErr.Error(), criteria
 			result.EvaluationCost, result.Cost = evaluationCost, candidate.Cost+evaluationCost
-			result.CostKnown, result.CostEstimated, result.DurationMs, result.Usage = false, costEstimated, durationMs, usage
+			result.CostKnown, result.CostEstimated, result.DurationMs, result.Usage = costKnown && verdict.CostKnown, costEstimated || verdict.CostEstimated, durationMs+verdict.DurationMs, usage
+			result.EvaluationCost += verdict.Cost
+			result.Cost += verdict.Cost
+			result.Usage.InputTokens += verdict.Usage.InputTokens
+			result.Usage.OutputTokens += verdict.Usage.OutputTokens
+			result.Usage.CacheReadTokens += verdict.Usage.CacheReadTokens
+			result.Usage.CacheWriteTokens += verdict.Usage.CacheWriteTokens
+			result.Usage.ReasoningTokens += verdict.Usage.ReasoningTokens
+			if verdict.ExecutionID != "" {
+				judgeIDs = append(judgeIDs, verdict.ExecutionID)
+			}
+			judgeArtifacts = append(judgeArtifacts, verdict.Artifacts...)
 			result.JudgeExecutionIDs = judgeIDs
 			result.Artifacts = append(result.Artifacts, judgeArtifacts...)
 			return s.completeTrial(ctx, trial, result, "trial.invalid")
@@ -532,7 +669,9 @@ func (s *Service) processTrial(ctx context.Context, run domain.Run, runner Agent
 		costEstimated = costEstimated || verdict.CostEstimated
 		verdictEvent := trialEvent(run.ID, trial, "judge.verdict", s.now().UTC())
 		verdictEvent.Passed, verdictEvent.Score, verdictEvent.Reason = &passed, &score, verdict.Reason
-		if err := s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.AppendRunEvent(ctx, verdictEvent) }); err != nil {
+		if err := s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
+			return repo.AppendRunEventOnce(ctx, trial.ID+":verdict:"+rubric.ID, verdictEvent)
+		}); err != nil {
 			return err
 		}
 	}
@@ -581,7 +720,7 @@ func (s *Service) completeTrial(ctx context.Context, trial domain.RunTrial, resu
 	if result.CandidateExecutionID != "" {
 		resultKey = "execution:" + result.CandidateExecutionID
 	}
-	return s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	return s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		_, err := repo.CompleteRunTrial(ctx, trial.ID, resultKey, result, completed, events)
 		return err
 	})
@@ -608,7 +747,7 @@ func (s *Service) aggregateRun(ctx context.Context, run domain.Run) error {
 	}
 	completed := s.now().UTC()
 	results := make([]domain.CaseResult, 0, len(items))
-	if err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	if err := s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		for _, item := range items {
 			result := aggregateCase(caseByID[item.CaseID], run.TrialCount, trialsByCase[item.CaseID])
 			stored := result
@@ -620,7 +759,7 @@ func (s *Service) aggregateRun(ctx context.Context, run domain.Run) error {
 		}
 		return nil
 	}); err != nil {
-		return s.failRun(context.Background(), run.ID, err)
+		return err
 	}
 	run.Status, run.CompletedAt = domain.RunComplete, &completed
 	run.DurationMs = completed.Sub(run.CreatedAt).Milliseconds()
@@ -675,7 +814,9 @@ func (s *Service) aggregateRun(ctx context.Context, run domain.Run) error {
 	}
 	message := domain.Message{ID: newID("msg"), ExperimentID: run.ExperimentID, Role: "assistant", Content: content, RunID: run.ID, CreatedAt: completed}
 	event := domain.RunEvent{RunID: run.ID, Type: "run.completed", At: completed, Reason: content}
-	return s.repo.WithinTx(ctx, func(repo domain.Repository) error { return repo.FinishRun(ctx, run, message, event) })
+	return s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
+		return repo.FinishRun(ctx, run, message, event)
+	})
 }
 
 func aggregateCase(caseItem domain.Case, trialCount int, trials []domain.TrialResult) domain.CaseResult {
@@ -751,7 +892,7 @@ func combinations(n, k int) float64 {
 
 func (s *Service) failRun(ctx context.Context, runID string, cause error) error {
 	now := s.now().UTC()
-	return s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	return s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		if err := repo.UpdateRunStatus(ctx, runID, domain.RunFailed, now, cause.Error()); err != nil {
 			return err
 		}

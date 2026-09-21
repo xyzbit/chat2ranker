@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -22,6 +23,11 @@ type deploymentRequest struct {
 }
 
 func (h *Handler) listDeployments(response http.ResponseWriter, request *http.Request) {
+	if versionID := request.URL.Query().Get("agentVersionId"); versionID != "" {
+		value, err := h.service.ListDeploymentsByAgentVersion(request.Context(), request.URL.Query().Get("tenantId"), versionID)
+		writeResult(response, value, err, http.StatusOK)
+		return
+	}
 	value, err := h.service.ListDeployments(request.Context(), request.URL.Query().Get("tenantId"))
 	writeResult(response, value, err, http.StatusOK)
 }
@@ -48,6 +54,7 @@ func (h *Handler) promoteDeploymentAlias(response http.ResponseWriter, request *
 	var input struct {
 		AgentVersionID            string                   `json:"agentVersionId"`
 		ExpectedReleaseRevisionID domain.ReleaseRevisionID `json:"expectedReleaseRevisionId"`
+		ExpectedPolicyRevision    int64                    `json:"expectedPolicyRevision"`
 		EvidenceRunID             string                   `json:"evidenceRunId"`
 		PolicyResult              string                   `json:"policyResult"`
 		Actor                     string                   `json:"actor"`
@@ -60,7 +67,8 @@ func (h *Handler) promoteDeploymentAlias(response http.ResponseWriter, request *
 	value, err := h.service.PromoteDeploymentAlias(request.Context(), app.PromoteDeploymentInput{
 		DeploymentID: domain.DeploymentID(request.PathValue("id")), Alias: request.PathValue("alias"),
 		AgentVersionID: input.AgentVersionID, ExpectedReleaseRevisionID: input.ExpectedReleaseRevisionID,
-		EvidenceRunID: input.EvidenceRunID, PolicyResult: input.PolicyResult, Actor: input.Actor, Reason: input.Reason,
+		ExpectedPolicyRevision: input.ExpectedPolicyRevision,
+		EvidenceRunID:          input.EvidenceRunID, PolicyResult: input.PolicyResult, Actor: requestActor(request, input.Actor), Reason: input.Reason,
 	})
 	writeResult(response, value, err, http.StatusCreated)
 }
@@ -317,6 +325,8 @@ func writeServingError(response http.ResponseWriter, err error) {
 	var problem *app.Error
 	if errors.As(err, &problem) {
 		status, code, message = problem.Status, problem.Code, problem.Message
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		status, code, message = http.StatusServiceUnavailable, "dependency_timeout", "A service dependency timed out; check the existing request before retrying"
 	} else if errors.Is(err, domain.ErrNotFound) {
 		status, code, message = http.StatusNotFound, "not_found", "Response or Deployment not found"
 	} else if errors.Is(err, domain.ErrConflict) {

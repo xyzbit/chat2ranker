@@ -94,20 +94,27 @@ type ResponseToolCall struct {
 	ApprovalStatus   string          `json:"approvalStatus,omitempty"`
 }
 
-// Conversation pins one ordered Response chain to a Deployment and immutable
-// Agent version. LastResponseID is the compare-and-swap head for continuation.
+// Conversation pins one ordered Response chain to an immutable Agent version.
+// Trials may omit DeploymentID. LastResponseID is the compare-and-swap head.
 type Conversation struct {
 	ID                ConversationID    `json:"id"`
 	TenantID          string            `json:"tenantId"`
 	DeploymentID      DeploymentID      `json:"deploymentId"`
 	AgentVersionID    string            `json:"agentVersionId"`
+	Trial             bool              `json:"trial"`
 	ReleaseRevisionID ReleaseRevisionID `json:"releaseRevisionId,omitempty"`
 	LastResponseID    ResponseID        `json:"lastResponseId,omitempty"`
 	CreatedAt         time.Time         `json:"createdAt"`
 	UpdatedAt         time.Time         `json:"updatedAt"`
 }
 
-// ServingResponse pins the accepted public request to one exact Agent version
+// TrialConversation includes the first input for the operator's history list.
+type TrialConversation struct {
+	Conversation
+	Title string `json:"title"`
+}
+
+// ServingResponse pins the accepted public or trial request to one exact Agent version
 // before dispatch. Alias movement cannot change an active or replayed Response.
 type ServingResponse struct {
 	ID                 ResponseID             `json:"id"`
@@ -132,6 +139,9 @@ type ServingResponse struct {
 	TextFormat         ResponseTextFormat     `json:"textFormat"`
 	Background         bool                   `json:"background"`
 	Status             string                 `json:"status"`
+	ExecutionRequest   json.RawMessage        `json:"-"`
+	CancelRequested    bool                   `json:"cancelRequested,omitempty"`
+	ExecutionSequence  int64                  `json:"-"`
 	ExecutionID        string                 `json:"executionId,omitempty"`
 	OutputItemID       string                 `json:"outputItemId"`
 	OutputText         string                 `json:"outputText,omitempty"`
@@ -152,6 +162,14 @@ type ResponseEvent struct {
 	Type       string          `json:"type"`
 	Data       json.RawMessage `json:"data"`
 	CreatedAt  time.Time       `json:"createdAt"`
+}
+
+// TrialConversationFilter scopes history before applying its creation-order cursor.
+type TrialConversationFilter struct {
+	Before         string
+	AgentFamilyID  string
+	AgentVersionID string
+	DirectOnly     bool
 }
 
 func IsResponseTerminal(status string) bool {

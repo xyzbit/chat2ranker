@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
-	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlstore"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/testdb"
 )
 
 type evaluationRunner struct {
@@ -45,9 +46,9 @@ func (runner *evaluationRunner) counts() (int, int) {
 	return runner.candidateCalls, runner.judgeCalls
 }
 
-func evaluationService(t *testing.T, runner *evaluationRunner, expected map[string]any) (*Service, *sqlite.Store, string) {
+func evaluationService(t *testing.T, runner *evaluationRunner, expected map[string]any) (*Service, *sqlstore.Store, string) {
 	t.Helper()
-	store, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "rank.db"))
+	store, err := testdb.Open(t, filepath.Join(t.TempDir(), "rank.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +158,8 @@ func TestJudgeFailureIsExcludedFromQualityDenominator(t *testing.T) {
 		t.Fatalf("grading failure polluted quality denominator: %#v", run)
 	}
 	_, judgeCalls := runner.counts()
-	if judgeCalls != trialAttempts {
-		t.Fatalf("judge retry budget was not applied, calls=%d", judgeCalls)
+	if judgeCalls != 1 {
+		t.Fatalf("failed judge was automatically replayed, calls=%d", judgeCalls)
 	}
 }
 

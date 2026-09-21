@@ -1,0 +1,48 @@
+[
+  {
+    "name": "cpu",
+    "maxContainers": 1,
+    "blockedDemandExcluded": true,
+    "blockedAttemptsZero": true,
+    "outcomes": [
+      {
+        "status": "completed",
+        "attempt": 1,
+        "runtimeCleanupPending": false
+      },
+      {
+        "status": "completed",
+        "attempt": 1,
+        "runtimeCleanupPending": false
+      },
+      {
+        "status": "completed",
+        "attempt": 1,
+        "runtimeCleanupPending": false
+      }
+    ]
+  },
+  {
+    "name": "memory",
+    "maxContainers": 1,
+    "blockedDemandExcluded": true,
+    "blockedAttemptsZero": true,
+    "outcomes": [
+      {
+        "status": "completed",
+        "attempt": 1,
+        "runtimeCleanupPending": false
+      },
+      {
+        "status": "completed",
+        "attempt": 1,
+        "runtimeCleanupPending": false
+      },
+      {
+        "status": "completed",
+        "attempt": 1,
+        "runtimeCleanupPending": false
+      }
+    ]
+  }
+]

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rank 接入案例</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/demo.css">
+  <script type="module" src="/demo.js"></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/">Rank <span>接入案例</span></a><a href="http://127.0.0.1:4173/#/docs?topic=quickstart" target="_blank" rel="noreferrer">接入文档 ↗</a></header>
+  <main>
+    <div class="workspace-heading"><h1 id="heading">每日热点</h1><span id="endpoint" class="endpoint">正在连接…</span></div>
+    <nav class="tabs" aria-label="案例"><button id="news-tab" role="tab" aria-controls="news-panel" aria-selected="true">每日热点</button><button id="chat-tab" role="tab" aria-controls="chat-panel" aria-selected="false">聊天助手</button></nav>
+    <p id="error" role="alert" hidden></p>
+    <section id="news-panel" role="tabpanel" aria-labelledby="news-tab">
+      <div class="section-heading"><div class="source-label"><div><strong>科技与互联网</strong><p>Hacker News · 最近 24 小时提交的社区热点</p></div></div><button id="generate" class="primary" disabled>生成日报</button></div>
+      <div id="news-empty" class="empty"><h2>今天，社区在讨论什么？</h2><p>从热门标题中整理五条值得关注的话题。</p></div>
+      <div id="news-progress" class="progress" role="status" hidden>正在获取热点并整理日报…</div>
+      <div id="news-result" hidden><p id="news-time" class="meta"></p><article id="brief" class="prose"></article><div id="news-meta" class="request-meta"></div><h2 class="source-heading">来源索引</h2><p class="meta">按社区积分排序；提交时间不代表原文发布时间，摘要仅依据标题。</p><ol id="sources"></ol></div>
+    </section>
+    <section id="chat-panel" role="tabpanel" aria-labelledby="chat-tab" hidden>
+      <div class="section-heading"><div><strong>接入演示助手</strong><p>中文交流 · 连续对话</p></div><button id="new-chat" class="quiet" disabled>新对话</button></div>
+      <div id="messages" role="log" aria-label="聊天记录" tabindex="0"><div class="empty" id="chat-empty"><h2>有什么想一起聊聊？</h2><button class="suggestion" id="suggestion">我喜欢科技新闻，帮我安排每天 10 分钟的阅读计划。</button></div></div>
+      <form id="composer"><label for="message" class="sr-only">消息</label><textarea id="message" rows="2" maxlength="8000" placeholder="输入消息…" disabled></textarea><div class="composer-actions"><span id="chat-status" role="status">正在连接</span><button id="stop" type="button" hidden>停止</button><button id="send" class="primary" disabled>发送</button></div></form>
+    </section>
+  </main>
+</body>
+</html>

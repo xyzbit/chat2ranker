@@ -1,0 +1,25 @@
+# Dedicated laptop experiment; the operator watches only Rank's namespace.
+watchNamespace: rank-dev
+image:
+  pullPolicy: Never
+  keda:
+    registry: docker.io
+    repository: library/rank-keda-lab
+  metricsApiServer:
+    registry: docker.io
+    repository: library/rank-keda-metrics-apiserver-lab
+  webhooks:
+    registry: docker.io
+    repository: library/rank-keda-admission-webhooks-lab
+rbac:
+  enabledCustomScaledRefKinds: false
+resources:
+  operator:
+    requests: {cpu: 100m, memory: 100Mi}
+    limits: {cpu: '1', memory: 256Mi}
+  metricServer:
+    requests: {cpu: 100m, memory: 100Mi}
+    limits: {cpu: '1', memory: 256Mi}
+  webhooks:
+    requests: {cpu: 100m, memory: 100Mi}
+    limits: {cpu: '1', memory: 256Mi}

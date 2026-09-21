@@ -1,0 +1,99 @@
+[
+  {
+    "name": "complete-in-grace",
+    "observed": [
+      {
+        "status": "completed",
+        "attempt": 1,
+        "unknownOutcome": false,
+        "cleanupPending": false,
+        "effects": 1,
+        "runningEvents": 1
+      },
+      {
+        "status": "completed",
+        "attempt": 1,
+        "unknownOutcome": false,
+        "cleanupPending": false,
+        "effects": 1,
+        "runningEvents": 1
+      }
+    ],
+    "sentinel": {
+      "status": "completed",
+      "attempt": 1,
+      "unknownOutcome": false,
+      "cleanupPending": false,
+      "effects": 0,
+      "runningEvents": 1
+    },
+    "exitCodes": [
+      0
+    ]
+  },
+  {
+    "name": "interrupt-at-grace",
+    "observed": [
+      {
+        "status": "failed",
+        "attempt": 1,
+        "unknownOutcome": true,
+        "cleanupPending": false,
+        "effects": 1,
+        "runningEvents": 1
+      },
+      {
+        "status": "completed",
+        "attempt": 1,
+        "unknownOutcome": false,
+        "cleanupPending": false,
+        "effects": 1,
+        "runningEvents": 1
+      }
+    ],
+    "sentinel": {
+      "status": "completed",
+      "attempt": 1,
+      "unknownOutcome": false,
+      "cleanupPending": false,
+      "effects": 0,
+      "runningEvents": 1
+    },
+    "exitCodes": [
+      0
+    ]
+  },
+  {
+    "name": "rolling-update",
+    "observed": [
+      {
+        "status": "completed",
+        "attempt": 1,
+        "unknownOutcome": false,
+        "cleanupPending": false,
+        "effects": 1,
+        "runningEvents": 1
+      },
+      {
+        "status": "completed",
+        "attempt": 1,
+        "unknownOutcome": false,
+        "cleanupPending": false,
+        "effects": 1,
+        "runningEvents": 1
+      }
+    ],
+    "sentinel": {
+      "status": "completed",
+      "attempt": 1,
+      "unknownOutcome": false,
+      "cleanupPending": false,
+      "effects": 0,
+      "runningEvents": 1
+    },
+    "exitCodes": [
+      0,
+      0
+    ]
+  }
+]

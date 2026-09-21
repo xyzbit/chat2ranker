@@ -353,6 +353,96 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
 
+  apps/execution-runtime:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:^
+        version: link:../../packages/core/agent
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../../packages/llm/llm
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:^
+        version: link:../../packages/core/session
+      '@deepseek-ai/schemastery':
+        specifier: link:../../vendor/schemastery
+        version: link:../../vendor/schemastery
+
+  apps/rank-runtime:
+    dependencies:
+      '@deepseek-ai/cordis-plugin-group':
+        specifier: workspace:^
+        version: link:../../vendor/group
+      '@deepseek-ai/cosmokit':
+        specifier: link:../../vendor/cosmokit
+        version: link:../../vendor/cosmokit
+      '@deepseek-ai/dsh-anonymous-user-id':
+        specifier: workspace:^
+        version: link:../../packages/identity/anonymous-user-id
+      '@deepseek-ai/dsh-atomic-write':
+        specifier: workspace:^
+        version: link:../../packages/util/atomic-write
+      '@deepseek-ai/dsh-bash-local':
+        specifier: workspace:^
+        version: link:../../packages/shell/bash-local
+      '@deepseek-ai/dsh-code-runtime':
+        specifier: workspace:^
+        version: link:../../packages/code-runtime/code-runtime
+      '@deepseek-ai/dsh-compaction':
+        specifier: workspace:^
+        version: link:../../packages/compaction/compaction
+      '@deepseek-ai/dsh-execution-runtime':
+        specifier: workspace:^
+        version: link:../execution-runtime
+      '@deepseek-ai/dsh-fs':
+        specifier: workspace:^
+        version: link:../../packages/fs/fs
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../packages/runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-output-retention':
+        specifier: workspace:^
+        version: link:../../packages/util/output-retention
+      '@deepseek-ai/dsh-sandbox':
+        specifier: workspace:^
+        version: link:../../packages/sandbox/sandbox
+      '@deepseek-ai/dsh-scope':
+        specifier: workspace:^
+        version: link:../../packages/core/scope
+      '@deepseek-ai/dsh-session-telemetry':
+        specifier: workspace:^
+        version: link:../../packages/session/session-telemetry
+      '@deepseek-ai/dsh-session-title-llm':
+        specifier: workspace:^
+        version: link:../../packages/session/session-title-llm
+      '@deepseek-ai/dsh-shell':
+        specifier: workspace:^
+        version: link:../../packages/shell/shell
+      '@deepseek-ai/dsh-spill':
+        specifier: workspace:^
+        version: link:../../packages/spill/spill
+      '@deepseek-ai/dsh-subagent-in-process-driver':
+        specifier: workspace:^
+        version: link:../../packages/subagent/subagent-in-process-driver
+      '@deepseek-ai/dsh-subprocess':
+        specifier: workspace:^
+        version: link:../../packages/subprocess/subprocess
+      '@deepseek-ai/dsh-timeout':
+        specifier: workspace:^
+        version: link:../../packages/util/timeout
+      '@deepseek-ai/dsh-workflow':
+        specifier: workspace:^
+        version: link:../../packages/workflow/workflow
+      '@deepseek-ai/schemastery':
+        specifier: link:../../vendor/schemastery
+        version: link:../../vendor/schemastery
+      '@xyzbit/agentkiln-web':
+        specifier: workspace:^
+        version: link:../rank-web
+
   apps/rank-web:
     dependencies:
       '@deepseek-ai/cordis':
@@ -376,6 +466,9 @@ importers:
       '@radix-ui/react-select':
         specifier: ^2.3.7
         version: 2.3.7(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       react:
         specifier: ^18.2.0
         version: 18.3.1

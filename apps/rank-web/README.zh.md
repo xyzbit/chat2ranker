@@ -6,9 +6,23 @@
 
 本目录承载 agentkiln 的 Control DSH 产品组合与会话优先 UI。
 
+Agent 试用在 Agent 详情或部署路由页打开会话面板，历史与 Rank 中控实验独立。`rank_open_trial` 打开 Agent 面板，可携带未发送草稿。[试用语义](../../rank/docs/agent-playground.md)说明版本选择、历史恢复、执行行为和 API 限制。`RANK_TRIAL_BROWSER=1 node --test --test-name-pattern='Agent playground' tests/stage5-e2e.test.mjs` 使用隔离服务和免密钥 CLI 测试程序验证桌面及手机流程。
+
+`ConversationDock` 统一 Rank 与试用的位置、模式 Tab、焦点管理和关闭操作。宽屏在页面旁预留空间，窄屏使用抽屉，手机端占满屏幕。Agent 详情分为配置与评测 Tab：配置包含运行设置、直接展示的工具与 Skill、版本创建及独立可访问的对比页面链接；评测包含独立保存的 Agent 默认测试集与所选版本的记录。切换 Tab 保留未保存的默认值。评测打开新的 Rank 草稿，「去发布」通过[部署入口流程](../../rank/docs/release-policy.md#review-and-publish)定位正在查看的版本。部署导航打开列表，详情具有可直接访问的链接。
+
 应用只负责浏览器入口与 DSH 插件组合。实验状态、调度、结果和 Runner 生命周期由 [`rank/backend/`](../../rank/backend/README.md) 下的 Go Rank 服务负责。
 
+产品将对外服务目标称为端点；API 路径与持久化 Deployment 标识符保留原名。端点详情直接展示已发布版本、执行限制和发布检查记录，无需切换可见性。试用入口位于 Agent 详情。
+
+「接入」打开右侧栏：选择已有 API Key 并粘贴保存的原值，或就地创建，再复制可执行的 cURL 或 JavaScript 命令。Key 名称默认使用本地时间戳；端点和操作权限默认全选当前已有选项，仍可修改。这是固定访问列表，不包含未来端点。新建或粘贴的明文只保留在打开的侧栏中；复制命令包含密钥，「复制给 Agent」只包含环境变量引用。开发服务和安装包服务均将同源 `/v1/` 请求转发给 Rank。
+
+导航底部单行提供设置和本地文档中心 `#/docs` 的入口。文档覆盖产品流程、快速接入、追加指令、调用方函数、流式输出、支持 Responses 的聊天工具、完整案例与[调用反馈](../../rank/docs/response-feedback.md)。「复制给 Agent」链接到可直接读取的 Markdown API 参考。共用示例通过免密服务验收测试运行。
+
+接入侧栏和完整案例提供独立热点、聊天 ZIP，包含预填端点的 `.env.example`、依赖及中英文启动教程。明确的源码白名单排除凭据和本地文件。文档切换主题保留所选端点，并区分请求被拒绝与已记录的执行失败。开发环境和构建产物都通过按需加载的 ZIP 模块下载。
+
 对话信息完整时直接执行；只缺一两个必要值时，Rank 只追问这些值。结构化 UI 仅用于浏览候选、检查多字段、批量编辑和输入密钥；表单转对话时只使用用户可读名称，不暴露内部 ID 或 JSON。
+
+[对话配置](../../rank/docs/conversation-configuration.md)涵盖直接命令，以及在会话中打开共享设置、密钥、Webhook 和接入表单的持久化操作。密钥表单关闭后丢弃明文，不将其写入会话历史。
 
 该组合挂载 Rank Control Host 插件、持久化实验 Session 与 Rank 实验 Skill。Session 通过工具创建、生成新版本和选择不可变测试集与 Agent 资产。React UI 立即显示发送消息，通过 SSE 展示投影后的 DSH 工具活动，并提供结构化资产 Mention、紧凑运行摘要和按请求出现的 A2UI 卡片。控制 Agent 回复使用逐行 Rank Message JSON 对象，由前端统一渲染摘要、正文、列表、事实、提示和代码；已有 Markdown 历史仍可读，复制操作会把两种格式统一导出为 Markdown，同时提供明确的成功或失败反馈及旧浏览器降级方案。只有运行意图才显示运行确认；只有实验数据、结果或表现意图及其输入框快捷操作才显示实验表现，并比较当前实验的全部 Run 与 Agent 版本。单 Agent 运行仍是默认路径；统一的 Agent 多选器在只选一个版本时替换当前 Agent，选中多个版本时创建一个 RunGroup，并为每个版本创建一个不可变子 Run，因此现有 Runner 与 Execution Service API 仍保持单任务语义。选择结果在关闭多选器时立即生效，再次打开仍保持选中，并以紧凑列表显示；列表溢出时可滑动但隐藏滚动条并用渐隐提示，每行都会在实验工作区打开对应版本。这些卡片是持久对话事件，不是固定在页面尾部的组件。控制 Session 可通过对话准备测试集、Rubric、Agent、非敏感模型连接元数据、Tool、Skill、对比 Agent 与重复策略，再将结果渲染为可检查的 A2UI；Provider 密钥绝不进入对话，只留在确定性的安全连接表单。模型连接工作区提供 DeepSeek、MiniMax、GLM、OpenAI、Claude 与 Kimi 官方模板；选择厂商后只展示该厂商模型，并继承端点、协议、价格、来源和计价说明。本地单模型价格覆盖仍收在高级设置中；Agent 表单只能引用已验证连接。确认卡中的资产分别提供查看详情与快捷切换操作。按目录或连接价格计算的运行成本带近似标记；既无 Provider 成本也无匹配价格时显示缺少计价配置，并排除在成本图之外。按需打开的实验工作区在桌面端与对话并存，用于测试集与 Agent 配置、整体实验表现、运行记录、用例、日志和 Artifact；点击聊天卡片或图表点可直接定位到对应实体。用户可直接在工作区修改测试集用例和 Agent 配置；每次保存都会创建并选中一个不可变新版本。Agent Tool 与 Skill 引用使用可搜索多选框，支持显式自定义 ID，也可通过 Rank 对话修改。`rankd` 把被测 Agent 提交给独立 Execution Service，它们不会在 Control DSH 进程内运行。
 
@@ -18,16 +32,32 @@
 
 默认悬浮助手共用这套形象与视线行为。点击入口会打开已有助手抽屉；显示开关、自定义形象导入与工作状态圆点仍由助手设置管理。
 
-对话和最近会话区域隐藏滚动条，仅在仍有内容的边缘显示渐隐。键盘滚动保持可用；只有读者已接近底部时，对话更新才跟随最新内容。表单采用实底，移动端固定导航采用轻微半透明。原生模态弹窗约束焦点并在关闭时恢复焦点；可搜索模型菜单使用浏览器顶层，支持方向键、Enter 和 Escape。参见 [UI 交互决策](../../.agents/notes/implemented/feature/2026-09-10-rank-ui-interaction.md)。
+Rank、试用和最近会话区域隐藏滚动条，仅在仍有内容的边缘显示渐隐。其他滚动区域在悬停或获得键盘焦点时显示细滑块，不显示轨道背景或边框。键盘滚动保持可用；只有读者已接近底部时，对话更新才跟随最新内容。表单采用实底，移动端固定导航采用轻微半透明。原生模态弹窗约束焦点并在关闭时恢复焦点；可搜索模型菜单使用浏览器顶层，支持方向键、Enter 和 Escape。参见 [UI 交互决策](../../.agents/notes/implemented/feature/2026-09-10-rank-ui-interaction.md)。
 
 本地验收会话可用时，`playwright-cli run-code --filename apps/rank-web/tests/ui-layout.browser.js` 检查组装后的页面、桌面和移动端布局、语言切换、弹窗焦点、对话滚动和模型选择，不提交表单或模型请求。截图保存在 `output/playwright/`。
 
 在 Playwright CLI 中打开已配置的本地 Rank 对话后，运行 `playwright-cli run-code --filename apps/rank-web/tests/assistant-avatar.browser.js` 可检查视线交互，并将桌面和移动端截图保存到 `output/playwright/`，不发送模型请求。
 
-模型选择会合并平台内置目录与已保存连接发现的模型，标明来源并支持搜索；手动模型 ID 仅在需要时展开。保存密钥后可以重新同步模型列表；同步失败会保留上次成功结果，避免 Provider 临时故障清空配置。
+`ModelField` 为初始化、Agent 和连接编辑器以及系统模型绑定提供统一的可编辑模型选择器。输入框接受自定义模型 ID；箭头打开去重后的目录及连接建议，输入时过滤，方向键、Enter 和 Escape 用于选择或关闭且不丢弃已输入内容。浏览器 popover 层保证菜单在弹窗和滚动区域内可见。保存密钥后可以重新同步模型列表；同步失败会保留上次成功结果，避免 Provider 临时故障清空配置。
+
+设置将已保存的“模型连接”和“本地连接”合并在一个带 Tab 的“连接”模块。切换 Tab 保留连接草稿和发现结果。分区使用留白和标题，减少重复分隔线。`playwright-cli run-code --filename apps/rank-web/tests/settings-connections.browser.js` 通过无密钥浏览器响应检查桌面和移动端 Tab、模型直接输入、下拉及键盘选择、绑定参数、草稿保留和菜单位置。
 
 在仓库根目录运行 `pnpm rank:dev` 即可启动完整本地组合。无密钥与真实 Provider 验收流程见 [`rank/docs/local-acceptance.md`](../../rank/docs/local-acceptance.md)。
+
+没有绑定系统模型时，首次配置提供“本地连接”和“连接配置”两个 Tab。可选扫描发现候选后默认选中本地连接，否则保留连接配置；延迟返回的扫描不会打断正在填写的草稿。两个 Tab 都支持直接输入模型名称并提供目录建议。“开始对话”会导入或保存所选连接、验证该模型并绑定 Control 和 Judge。“稍后配置”会在当前浏览器记住跳过状态并打开平台。设置提供“重新发现”，将已导入候选标为已添加；导入的连接使用现有编辑和验证表单。浏览器扫描请求在五秒后超时，失败不禁用手动配置或跳过入口。支持的来源和凭据处理见 [Execution 后端](../../execution/backend/README.md)。
+
+`playwright-cli run-code --filename apps/rank-web/tests/local-model-discovery.browser.js` 在本地组合上以桌面和移动端尺寸检查初始化 Tab、可编辑模型、草稿保留、显式绑定、重新发现和扫描失败后的跳过。浏览器路由提供无密钥连接响应；服务端发现和导入快照通过真实 Rank 与 Execution 进程运行，在本目录执行 `node --test tests/stage5-e2e.test.mjs`。
 
 所有单选字段使用基于 Radix Select 的 `SelectField`。页面提供 `value`、`onValueChange` 和带标签的选项；共用组件负责空值、禁用项、必填校验、键盘导航、焦点恢复及适配模态弹窗的菜单挂载。可编辑模型联想和可搜索模型发现保留专用输入控件。`theme.css` 管理视觉变量，`controls.css` 管理共用控件外观和焦点，`ui-config.js` 管理菜单定位。语言选项位于 `i18n.js`，Provider 和协议选项位于 `model-connections.js`。表单草稿保持本地状态，模型目录来自服务端。参见 [共用控件决策](../../.agents/notes/implemented/feature/2026-09-10-rank-shared-controls.md)。
 
 导航语言控件共用一个翻译图标组件，提供本地化提示和无障碍名称。`playwright-cli run-code --filename apps/rank-web/tests/ui-controls.browser.js` 检查组装后的设置和筛选器、桌面和移动端布局、模态归属、嵌套 Escape 行为、禁用占位项及可选空值筛选，不保存表单。`playwright-cli run-code --filename apps/rank-web/tests/deployment-switcher.browser.js` 覆盖部署导航和语言切换。
+
+Agent 详情可编辑共用的默认开发集和回归集。部署页与对话共用[发布流程](../../rank/docs/release-policy.md)：同口径开发评测、可替换的数据集、默认开启的回归，以及持久化进度。失败任务在详情中提供带原因的覆盖；发布历史保留尝试和冻结决策。`RANK_RELEASE_BROWSER=1 node --test tests/stage5-e2e.test.mjs` 在临时服务上运行浏览器流程，截图保存在 `output/playwright/`。
+
+control-host 从 Execution 解析系统模型时，除 `RANK_CONTROL_TOKEN` 外还转发 `EXECUTION_SERVICE_TOKEN`。这些服务端环境变量不会提供给浏览器。参见 [Execution 配置](../../execution/backend/README.md#durable-execution-modes)。
+
+产物预览保留 Execution 响应编码：UTF-8 文本直接展示，二进制字节使用 base64，仅未截断的响应允许下载。详见[产物证据](../../.agents/notes/implemented/architecture/2026-09-15-execution-failure-evidence.md)。
+
+control-host 通过 Rank 身份接口授权公开对话和流请求。非回环监听要求 Rank 开启管理认证。`RANK_AUTH_TIMEOUT_MS` 默认为 3000，限制身份检查时长；授权服务不可用时，在启动新轮次前返回 503。`RANK_MANAGEMENT_ORIGIN` 设置 TLS 网关后的公开 HTTP(S) 来源，与 Rank 相同。浏览器凭据只转发到身份接口；Rank 工具调用使用单独受限的中控令牌。见[管理访问](../../rank/backend/README.md#management-access)。
+
+浏览器在挂载工作区前检查 `/api/identity`。未登录时显示账号密码表单，提供错误提示与重试；已登录管理员可在设置中退出。刷新保留 HttpOnly 会话 Cookie 与当前页面。管理请求 401、窗口重新聚焦及每分钟身份检查会让失效会话返回登录。密码和会话 ID 不进入浏览器存储或对话。中控服务仅向 Rank 身份验证接口转发 Cookie。有效期与部署限制见[管理访问](../../rank/backend/README.md#management-access)。

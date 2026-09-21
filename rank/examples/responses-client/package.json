@@ -4,9 +4,18 @@
   "type": "module",
   "scripts": {
     "start": "node --env-file-if-exists=.env main.mjs",
+    "demo": "node --env-file-if-exists=.env demo-server.mjs",
+    "news": "node --env-file-if-exists=.env daily-news.mjs",
+    "verify:demos": "node --env-file-if-exists=.env verify-demos.mjs",
     "verify:local": "node --env-file-if-exists=.env verify-local.mjs",
-    "test": "node --test client.test.mjs"
+    "test": "node --test client.test.mjs demo.test.mjs"
   },
-  "engines": { "node": ">=22.19" },
-  "dependencies": { "openai": "7.13.0" }
+  "engines": {
+    "node": ">=22.19"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.15",
+    "marked": "^18.0.13",
+    "openai": "7.13.0"
+  }
 }

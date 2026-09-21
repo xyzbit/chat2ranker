@@ -1,0 +1,102 @@
+{
+  "date": "2026-09-15",
+  "startedAt": "2026-09-14T18:32:48.048250+00:00",
+  "endedAt": "2026-09-14T18:35:54.185600+00:00",
+  "passed": true,
+  "images": {
+    "images": {
+      "platform": "rank-platform-lab:7157225f8c04f006",
+      "gateway": "rank-gateway-lab:7157225f8c04f006"
+    },
+    "arch": "arm64",
+    "digests": {
+      "platform": "sha256:81b2499f21837b23a32b3c62aefb74bb8f7f7edbab7eb20871e49e6b662822bd",
+      "gateway": "sha256:8c01f1630abd82ebf126134ea3a9cc636132208ad656f7a5551cb9082c129b8d"
+    }
+  },
+  "sandboxImage": {
+    "tag": "rank-sandbox-lab:c73caec57c58dbda",
+    "image": "sha256:4e2d91c5167a2002f5575b22e99a2528b9dc25ea152a71275eced5656117f5bb"
+  },
+  "topology": "One minikube node with two Worker Pods and a separate Docker Sandbox service on the same laptop",
+  "provider": "Real DSH and Bash tool with deterministic local model",
+  "kernel": "6.10.14-linuxkit",
+  "confinement": {
+    "policy": "read-only",
+    "landlockEnforced": false,
+    "bubblewrapVersion": "0.8.0-2+deb12u1",
+    "deniedWriteAndAllowedToolVerified": true,
+    "hostSeccompProfile": "Existing Docker Desktop unconfined profile; unchanged by this experiment"
+  },
+  "scenarios": [
+    {
+      "name": "tool-loss",
+      "status": "failed",
+      "attempt": 1,
+      "unknownOutcome": true,
+      "cleanupPending": false,
+      "ownerExitCode": 137,
+      "runningEvents": 1,
+      "effects": 1,
+      "closedEffects": 1,
+      "deniedWrites": 1
+    },
+    {
+      "name": "tool-cancel",
+      "status": "failed",
+      "attempt": 1,
+      "unknownOutcome": true,
+      "cleanupPending": false,
+      "ownerExitCode": 137,
+      "runningEvents": 1,
+      "effects": 1,
+      "closedEffects": 1,
+      "deniedWrites": 1
+    },
+    {
+      "name": "completed",
+      "status": "completed",
+      "attempt": 1,
+      "unknownOutcome": false,
+      "cleanupPending": false,
+      "ownerExitCode": 137,
+      "runningEvents": 1,
+      "effects": 0,
+      "closedEffects": 0,
+      "deniedWrites": 0
+    }
+  ],
+  "limitations": [
+    "No replay of unknown tool effects; a failed unknown result does not mean the external action failed",
+    "Not production hostile-code isolation or proof for other kernel/seccomp profiles",
+    "No sandbox-host admission, hard disk quotas or egress enforcement",
+    "No physical-host scaling or production HA proof"
+  ],
+  "fullPlatformRegression": {
+    "startedAt": "2026-09-14T18:36:18.669Z",
+    "completedAt": "2026-09-14T18:37:26.974Z",
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ]
+  },
+  "validation": {
+    "ownerLossScenarios": true,
+    "assembledSnapshotComparedWithRecordedRun": true,
+    "fullPlatformRegression": true,
+    "pythonSyntax": true,
+    "nodeSyntax": true,
+    "lint": true,
+    "gitDiffCheck": true,
+    "documentationGates": {
+      "passed": 27,
+      "failed": 1,
+      "existingFailure": "Root AGENTS.md 2398 words exceeds ceiling 1950"
+    }
+  }
+}

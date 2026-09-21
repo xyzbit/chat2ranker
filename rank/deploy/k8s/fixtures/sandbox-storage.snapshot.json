@@ -1,0 +1,18 @@
+{
+  "additionalVolumeRejected": true,
+  "isolationOverlayRejected": true,
+  "imageVolumeRejected": true,
+  "readonlyRootWithoutVolumes": true,
+  "swapDisabled": true,
+  "containerLogRotationConfigured": true,
+  "nativeProcessLimits": {
+    "uid": 1000,
+    "denied": ["/var/tmp", "/home/node", "/opt/rank", "/etc", "/root"],
+    "shared": {"error": "ENOSPC", "recovered": true},
+    "temporary": {"error": "ENOSPC", "recovered": true},
+    "sharedMemory": {"error": "ENOSPC", "recovered": true},
+    "inodeLimitEnforced": true,
+    "usableAfterCleanup": true
+  },
+  "sandboxDeleted": true
+}

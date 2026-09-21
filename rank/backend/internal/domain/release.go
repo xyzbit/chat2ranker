@@ -10,8 +10,6 @@ type DeploymentPolicy struct {
 	RequestsPerMinute      int   `json:"requestsPerMinute"`
 	MaxConcurrentResponses int   `json:"maxConcurrentResponses"`
 	ExecutionTimeoutMs     int64 `json:"executionTimeoutMs"`
-	AllowInstructions      bool  `json:"allowInstructions"`
-	AllowCallerTools       bool  `json:"allowCallerTools"`
 }
 
 const (

@@ -31,6 +31,17 @@ describe('session-log invariants', () => {
     }).not.toThrow()
   })
 
+  it('accepts recalled history between turns and refuses imports during native execution', async () => {
+    const { ctx } = await setup()
+    const session = ctx.sessions.create()
+    const message = createMessage({ role: 'assistant', source: { kind: 'plugin', plugin: 'import' }, content: [{ type: 'text', text: 'recalled' }] })
+    session.append('history/message', { message }, { surfaceOp: 'append' })
+    session.append('turn/start', { turn: 1 })
+    expect(() => session.append('history/message', { message }, { surfaceOp: 'append' })).toThrow('open turn')
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    expect(() => session.append('history/message', { message }, { surfaceOp: 'append' })).not.toThrow()
+  })
+
   it('accepts a well-formed turn, step, and tool sequence', async () => {
     const { ctx } = await setup()
     const session = ctx.sessions.create()

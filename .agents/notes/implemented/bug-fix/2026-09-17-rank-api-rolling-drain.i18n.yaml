@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-17-rank-api-rolling-drain.md
+2026-09-17-rank-api-rolling-drain.md: d86f237f81e3ce74275359eaa7de05fa40a1a3ca
+2026-09-17-rank-api-rolling-drain.zh.md: ea4ff59423667788ec81a9746da081795fdc840e

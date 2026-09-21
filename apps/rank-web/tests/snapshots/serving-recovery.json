@@ -1,0 +1,23 @@
+[
+  {
+    "window": "before_submit",
+    "status": "completed",
+    "sameResponse": true,
+    "originalExecutionRecovered": null,
+    "terminalEvents": 1
+  },
+  {
+    "window": "after_acceptance",
+    "status": "completed",
+    "sameResponse": true,
+    "originalExecutionRecovered": true,
+    "terminalEvents": 1
+  },
+  {
+    "window": "before_result_commit",
+    "status": "completed",
+    "sameResponse": true,
+    "originalExecutionRecovered": true,
+    "terminalEvents": 1
+  }
+]

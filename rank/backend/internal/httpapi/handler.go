@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -12,19 +13,28 @@ import (
 	"time"
 
 	"github.com/xyzbit/agentkiln/execution/backend/contract"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/access"
 	"github.com/xyzbit/agentkiln/rank/backend/internal/app"
 	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 )
 
 type Options struct {
-	ControlToken string
-	ControlURL   string
+	Sessions         *access.Sessions
+	AccessFile       *access.File
+	ManagementOrigin string
+	ControlToken     string
+	ControlURL       string
+	Storage          string
 }
 
 type Handler struct {
-	service      *app.Service
-	controlToken string
-	controlURL   string
+	sessions         *access.Sessions
+	accessFile       *access.File
+	managementOrigin string
+	service          *app.Service
+	controlToken     string
+	controlURL       string
+	storage          string
 }
 
 func New(service *app.Service, options ...Options) http.Handler {
@@ -32,12 +42,32 @@ func New(service *app.Service, options ...Options) http.Handler {
 	if len(options) > 0 {
 		configured = options[0]
 	}
-	handler := &Handler{service: service, controlToken: configured.ControlToken, controlURL: strings.TrimRight(configured.ControlURL, "/")}
+	if configured.Storage == "" {
+		configured.Storage = "sqlite"
+	}
+	if configured.Sessions == nil {
+		configured.Sessions, _ = access.NewSessions(8*time.Hour, 1024)
+	}
+	handler := &Handler{sessions: configured.Sessions, accessFile: configured.AccessFile, managementOrigin: configured.ManagementOrigin, service: service, controlToken: configured.ControlToken, controlURL: strings.TrimRight(configured.ControlURL, "/"), storage: configured.Storage}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", handler.health)
+	mux.HandleFunc("GET /api/identity", handler.identity)
+	mux.HandleFunc("POST /api/auth/login", handler.login)
+	mux.HandleFunc("POST /api/auth/logout", handler.logout)
+	mux.HandleFunc("GET /api/agent-families/{id}/evaluation-defaults", handler.getEvaluationDefaults)
+	mux.HandleFunc("PUT /api/agent-families/{id}/evaluation-defaults", handler.saveEvaluationDefaults)
+	mux.HandleFunc("POST /api/deployments/{id}/release-draft", handler.releaseDraft)
+	mux.HandleFunc("POST /api/deployments/{id}/release-comparison", handler.releaseComparison)
+	mux.HandleFunc("POST /api/deployments/{id}/release-tasks", handler.createReleaseTask)
+	mux.HandleFunc("GET /api/release-tasks", handler.listReleaseTasks)
+	mux.HandleFunc("GET /api/release-tasks/{id}", handler.getReleaseTask)
+	mux.HandleFunc("POST /api/release-tasks/{id}/cancel", handler.cancelReleaseTask)
+	mux.HandleFunc("POST /api/release-tasks/{id}/override", handler.overrideReleaseTask)
 	mux.HandleFunc("GET /api/deployments/{id}/aliases/{alias}/releases", handler.listReleaseHistory)
 	mux.HandleFunc("GET /api/bootstrap", handler.bootstrap)
 	mux.HandleFunc("GET /api/model-connections", handler.listModelConnections)
+	mux.HandleFunc("POST /api/local-model-connections/discover", handler.discoverLocalModels)
+	mux.HandleFunc("POST /api/local-model-connections/{id}/import", handler.importLocalModel)
 	mux.HandleFunc("POST /api/model-connections", handler.createModelConnection)
 	mux.HandleFunc("PATCH /api/model-connections/{id}", handler.updateModelConnection)
 	mux.HandleFunc("POST /api/model-connections/{id}/verify", handler.verifyModelConnection)
@@ -58,11 +88,21 @@ func New(service *app.Service, options ...Options) http.Handler {
 	mux.HandleFunc("POST /api/deployments", handler.createDeployment)
 	mux.HandleFunc("GET /api/deployments/{id}", handler.getDeployment)
 	mux.HandleFunc("POST /api/deployments/{id}/aliases/{alias}/releases", handler.promoteDeploymentAlias)
+	mux.HandleFunc("GET /api/deployments/{id}/release-policy", handler.getReleasePolicy)
+	mux.HandleFunc("PUT /api/deployments/{id}/release-policy", handler.saveReleasePolicy)
+	mux.HandleFunc("POST /api/deployments/{id}/aliases/{alias}/preflight", handler.preflightRelease)
+	mux.HandleFunc("GET /api/deployments/{id}/aliases/{alias}/decisions", handler.listReleaseDecisions)
 	mux.HandleFunc("POST /api/serving-credentials", handler.createServingCredential)
 	mux.HandleFunc("GET /api/serving-credentials", handler.listServingCredentials)
 	mux.HandleFunc("POST /api/serving-credentials/{id}/revoke", handler.revokeServingCredential)
 	mux.HandleFunc("GET /api/responses", handler.listOperatorResponses)
+	mux.HandleFunc("GET /api/trials", handler.listTrials)
+	mux.HandleFunc("GET /api/trials/{id}", handler.getTrial)
+	mux.HandleFunc("POST /api/trial-responses", handler.createTrialResponse)
+	mux.HandleFunc("GET /api/trial-responses/{id}/events", handler.trialResponseEvents)
+	mux.HandleFunc("POST /api/trial-responses/{id}/cancel", handler.cancelTrialResponse)
 	mux.HandleFunc("GET /api/responses/{id}", handler.getOperatorResponse)
+	mux.HandleFunc("POST /api/responses/{id}/dataset-cases", handler.captureResponseCase)
 	mux.HandleFunc("POST /api/webhook-endpoints/{id}/deliveries/{delivery}/retry", handler.replayWebhookDelivery)
 	mux.HandleFunc("GET /api/webhook-endpoints", handler.listWebhookEndpoints)
 	mux.HandleFunc("POST /api/webhook-endpoints", handler.createWebhookEndpoint)
@@ -80,7 +120,7 @@ func New(service *app.Service, options ...Options) http.Handler {
 	mux.HandleFunc("GET /v1/responses/{id}", handler.getServingResponse)
 	mux.HandleFunc("POST /v1/responses/{id}/cancel", handler.cancelServingResponse)
 	mux.HandleFunc("POST /v1/responses/{id}/approval", handler.decideServingApproval)
-	return recoverMiddleware(cors(mux))
+	return recoverMiddleware(cors(handler.authorizeManagement(mux)))
 }
 
 func (h *Handler) saveSystemModel(response http.ResponseWriter, request *http.Request) {
@@ -106,11 +146,36 @@ func (h *Handler) saveSystemModel(response http.ResponseWriter, request *http.Re
 	writeJSON(response, 200, value)
 }
 
+func (h *Handler) discoverLocalModels(response http.ResponseWriter, request *http.Request) {
+	value, err := h.service.DiscoverLocalModels(request.Context())
+	if err != nil {
+		writeError(response, err)
+		return
+	}
+	writeJSON(response, 200, value)
+}
+
+func (h *Handler) importLocalModel(response http.ResponseWriter, request *http.Request) {
+	var input struct {
+		Model string `json:"model"`
+	}
+	if err := decode(request, &input); err != nil {
+		writeError(response, err)
+		return
+	}
+	value, err := h.service.ImportLocalModel(request.Context(), request.PathValue("id"), input.Model)
+	if err != nil {
+		writeError(response, err)
+		return
+	}
+	writeJSON(response, 200, value)
+}
+
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Access-Control-Allow-Origin", "*")
 		response.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, Last-Event-ID, X-Rank-Action-Token, X-Rank-Control-Token")
-		response.Header().Set("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
+		response.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 		if request.Method == http.MethodOptions {
 			response.WriteHeader(http.StatusNoContent)
 			return
@@ -151,6 +216,11 @@ func writeError(response http.ResponseWriter, err error) {
 		writeJSON(response, 409, map[string]any{"error": map[string]any{"code": "conflict", "message": "资源状态冲突"}})
 		return
 	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		writeJSON(response, 503, map[string]any{"error": map[string]any{"code": "dependency_timeout", "message": "A service dependency timed out; check the existing request before retrying"}})
+		return
+	}
+
 	writeJSON(response, 500, map[string]any{"error": map[string]any{"code": "internal_error", "message": err.Error()}})
 }
 
@@ -163,7 +233,7 @@ func decode(request *http.Request, target any) error {
 }
 
 func (h *Handler) health(response http.ResponseWriter, request *http.Request) {
-	writeJSON(response, 200, map[string]any{"ok": true, "runtime": "rankd", "storage": "sqlite"})
+	writeJSON(response, 200, map[string]any{"ok": true, "runtime": "rankd", "storage": h.storage, "managementAuthentication": h.accessFile != nil})
 }
 func (h *Handler) bootstrap(response http.ResponseWriter, request *http.Request) {
 	value, err := h.service.Bootstrap(request.Context())
@@ -488,6 +558,9 @@ func (h *Handler) createModelConnection(response http.ResponseWriter, request *h
 		writeError(response, err)
 		return
 	}
+	if !allowControlConnectionInput(response, request, input) {
+		return
+	}
 	value, err := h.service.CreateModelConnection(request.Context(), input)
 	writeResult(response, value, err, 201)
 }
@@ -495,6 +568,9 @@ func (h *Handler) updateModelConnection(response http.ResponseWriter, request *h
 	var input contract.ModelConnectionInput
 	if err := decode(request, &input); err != nil {
 		writeError(response, err)
+		return
+	}
+	if !allowControlConnectionInput(response, request, input) {
 		return
 	}
 	value, err := h.service.UpdateModelConnection(request.Context(), request.PathValue("id"), input)

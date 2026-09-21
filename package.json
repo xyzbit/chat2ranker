@@ -141,7 +141,10 @@
     "rank:dev": "node scripts/rank-dev.mjs",
     "rank:build": "node scripts/rank-build.mjs",
     "rank:package": "node scripts/release-agentkiln.mjs",
-    "rank:test": "go -C execution/backend test ./... && go -C rank/backend test ./... && pnpm --filter @xyzbit/agentkiln-web test",
+    "rank:test": "go -C execution/backend test ./... && go -C rank/backend test ./... && node rank/examples/execution-lifecycle/verify.mjs && node rank/examples/access-control/verify.mjs && pnpm --filter @xyzbit/agentkiln-web test",
+    "rank:test:access": "node rank/examples/access-control/verify.mjs",
+    "rank:test:model-quota": "node rank/examples/model-quota/verify.mjs",
+    "rank:test:remote": "node rank/examples/execution-lifecycle/verify-remote.mjs",
     "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
     "dev:web": "tsx scripts/dev-web.ts --poll",
     "postinstall": "node scripts/install-lefthook.mjs"

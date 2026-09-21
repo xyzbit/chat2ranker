@@ -4,17 +4,21 @@ English | [中文](serving-api.zh.md)
 
 This reference defines the implemented local Agent serving data plane. The machine-readable contract is [OpenAPI 3.1](openapi.yaml); the broader lifecycle design remains in the [Agent lifecycle serving proposal](../../.agents/notes/proposed/feature/2026-09-08-agent-lifecycle-serving.md).
 
+Multi-turn calls require a Harness with structured-history support. DSH supports user/assistant history and correlated external function results; current native Codex, Claude Code and Hermes adapters accept first-turn prompts only. An unsupported continuation returns `409 unsupported_history` without admitting another Response. History restores messages, not a prior process or workspace.
+
 ## Deployment reference
 
-The `model` field is `<deployment>@<selector>`. A selector such as `v3` resolves the third immutable Agent version in the Deployment's Agent family. `latest`, `staging`, and `production` resolve the current DeploymentAlias head. Request acceptance persists the exact AgentVersion and, for an alias, its ReleaseRevision; a later promotion cannot change an accepted or replayed Response.
+The preferred `model` value is the deployment name, such as `research-public`. It resolves the current published target; an unpublished deployment returns `409 deployment_unpublished`. Existing installations resolve the first published alias in `production`, `staging`, `latest` order. New deployments create one empty `production` alias; Agent-version creation never advances publication.
 
-The version in `research-public@v3` is the Agent version, not the ReleaseRevision number. ReleaseRevision is an audit identifier for one alias movement and appears only in the returned `deployment.release_revision_id` when an alias was used.
+Explicit `<deployment>@<selector>` references remain supported. A selector such as `v3` previews the third immutable Agent version in the Deployment's Agent family, independently of publication. `latest`, `staging`, and `production` resolve an existing DeploymentAlias head. Request acceptance persists the exact AgentVersion and, for a published target, its ReleaseRevision; a later publication cannot change an accepted or replayed Response.
+
+The version in `research-public@v3` is the Agent version, not the ReleaseRevision number. ReleaseRevision audits a published target change and appears in `deployment.release_revision_id` for a bare deployment name or explicit alias, but not an exact-version preview.
 
 ## Authentication and admission
 
 Every data-plane request uses `Authorization: Bearer rnk_live_...`. A credential has explicit `responses:create`, `responses:read`, `responses:cancel`, and `responses:approve` scopes plus an allowlist of Deployment identifiers. Cross-tenant or out-of-scope resources return `404` where revealing their existence would disclose another tenant's data.
 
-Deployment policy enforces requests per minute, active Response concurrency, execution timeout, and whether caller `instructions` are accepted. Admission and Response creation share one SQLite transaction, so a rejected request does not start an Execution or consume an untracked queue slot.
+Endpoint policy enforces requests per minute, active Response concurrency, and execution timeout. Additional instructions and caller functions are available on every endpoint. Admission and Response creation share one SQLite transaction, so a rejected request does not start an Execution or consume an untracked queue slot.
 
 `Idempotency-Key` is scoped to the API credential. Repeating the same normalized request returns the original Response and sets `X-Idempotent-Replayed: true`; reusing the key with different content returns `409 idempotency_conflict`.
 
@@ -41,11 +45,11 @@ The local control plane also creates Deployments, advances aliases, issues crede
 | `stream` | Returns durable Responses-compatible SSE events. |
 | `background` | Returns after persistence and dispatch instead of waiting for a terminal state. |
 | `metadata` | Up to 16 string entries; keys are at most 64 characters and values at most 512 characters. |
-| `instructions` | Accepted only when the Deployment policy enables it; appended to the versioned system prompt. |
+| `instructions` | Appended to the versioned system prompt for this request; not inherited by continuation. |
 | `store` | Omit or set to `true`; accepted Responses are always durable. |
 | `previous_response_id` | Continue from the latest completed Response in the same Conversation. |
 | `text.format` | Plain `text`, or strict `json_schema` with a named Draft 2020-12 schema. |
-| `tools` | Up to 16 strict caller-owned function definitions when Deployment policy enables them. |
+| `tools` | Up to 16 strict caller-owned function definitions. |
 | `max_output_tokens` | Rejected by this version. |
 | Other fields | Rejected instead of being ignored. |
 
@@ -75,7 +79,7 @@ Each request accepts at most eight binary items and 20 MiB of decoded content. A
 
 ## Caller functions and approval
 
-A `tools` entry uses the Responses function form with `type`, `name`, optional `description`, object `parameters`, and `strict: true`. The Deployment must set `allowCallerTools`. Rank persists the canonical definitions and adds them to the immutable model-visible execution prompt. If the Agent selects a function, Rank validates its name and argument object against the frozen definition and returns a `function_call` output item; Rank never executes caller-owned code.
+A `tools` entry uses the Responses function form with `type`, `name`, optional `description`, object `parameters`, and `strict: true`. Rank persists the canonical definitions and adds them to the immutable model-visible execution prompt. If the Agent selects a function, Rank validates its name and argument object against the frozen definition and returns a `function_call` output item; Rank never executes caller-owned code.
 
 Continue that Response with a top-level `function_call_output` item whose `call_id` matches the prior call and whose `output` is a non-empty string. The continuation inherits the same tool definitions and rejects attempts to replace them. The ordered Conversation records both the call and its result, so a restart or retry reconstructs the same round trip.
 
@@ -95,6 +99,10 @@ curl http://127.0.0.1:8787/v1/responses \
 
 The requested `model` must identify the same Deployment. Alias movement is ignored for version selection during continuation: the new Response inherits the Conversation's AgentVersion and ReleaseRevision and reports `deployment.resolution_kind: conversation`. An exact selector that names another AgentVersion fails with `400 conversation_version_mismatch`. A non-terminal predecessor fails with `409 previous_response_not_completed`, and a predecessor that is no longer the Conversation head fails with `409 conversation_head_changed`.
 
+## Cancellation
+
+`POST /v1/responses/{id}/cancel` records a durable cancellation request before contacting Execution. The returned Response may remain `queued` or `in_progress` with `cancel_requested: true`. Continue reading its events or retrieving it until a terminal status arrives. `cancelled` means Execution confirmed cancellation; an already completed execution can still return `completed`. Network failure or Rank restart preserves the request for reconciliation and never proves that remote work stopped. Cancellation does not undo external side effects.
+
 ## Streaming and recovery
 
 Create with `stream: true`, or retrieve with `GET /v1/responses/{id}?stream=true`. Each SSE record has an integer `id`, a Responses event name, and a JSON `sequence_number`. Reconnect with `starting_after=<id>` or `Last-Event-ID`; only later durable events are sent.
@@ -105,7 +113,7 @@ Rank resumes queued and in-progress Responses from its repository after restart.
 
 ## Signed Webhooks
 
-Webhooks are configured on a Deployment through the control plane, not supplied by individual `/v1/responses` requests. `POST /api/webhook-endpoints` accepts a tenant, name, public HTTPS URL, one or more Deployment identifiers, and a subset of `response.completed`, `response.failed`, `response.cancelled`, and `response.requires_action`. The returned `whsec_...` signing secret is shown once. Rank stores only its opaque credential-store reference in SQLite; the local process provider writes the secret into a private `0700` directory with `0600` files.
+Webhooks are configured on a Deployment through the control plane, not supplied by individual `/v1/responses` requests. `POST /api/webhook-endpoints` accepts a tenant, name, public HTTPS URL, one or more Deployment identifiers, and a subset of `response.completed`, `response.failed`, `response.cancelled`, and `response.requires_action`. The returned `whsec_...` signing secret is shown once. Rank stores only its opaque credential-store reference in its business repository; the local process provider writes the secret into a private `0700` directory with `0600` files.
 
 Each event is a thin payload so the receiver retrieves the current Response with its own scoped API credential:
 

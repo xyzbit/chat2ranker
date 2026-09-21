@@ -32,13 +32,13 @@
 
 ## 工具配对边界
 
-该 Service Definition 导出 `toolPairingBalancedBefore(session, seq)` 与 `toolPairingBalancedAfter(session, seq)`，用于对齐和验证压缩边界。安全边界不会被尚未回答的 assistant 工具调用跨越。每个 helper 都会验证给定事件 seq 位于当前表层，并根据按表层顺序缓存的各切分点配对状态返回结果。
+该 Service Definition 导出 `toolPairingBalancedBefore(session, seq)` 与 `toolPairingBalancedAfter(session, seq)`，用于对齐和验证压缩边界。安全边界不会被尚未回答的 assistant 工具调用跨越。每个 helper 都会验证给定事件 seq 位于当前表层，并根据按表层顺序缓存的各切分点配对状态返回结果。 配对计数读取派生消息块，也包含导入历史及作为当前用户输入提交的工具结果。
 
 每个会话的私有 cache 以 `session.surface.replaceGeneration` 和已处理表层条目数为 key。generation 未变时，只需将尚未处理的尾部条目纳入累计结果；仅向日志追加、但未新增表层条目时，不会读取事件。replace generation 变化时则会重建当前成员关系与配对状态。事件 seq 缺失以及 `tool/result` 没有对应的先前未闭合调用，均会被视为表层状态损坏并遭拒绝。
 
 ## 表层约定
 
-`SurfaceEventType` 是封闭联合：只有 `user/message`、`assistant/message` 和 `tool/result` 可以携带 `surfaceOp`。因此 `compaction/*` 事件**不能**出现在表层上。成功压缩改为：
+`SurfaceEventType` 是封闭联合：只有 `user/message`、`history/message`、`assistant/message` 和 `tool/result` 可以携带 `surfaceOp`。因此 `compaction/*` 事件**不能**出现在表层上。成功压缩改为：
 
 1. 追加 `compaction/start`（仅日志）：获取锁；
 2. 摘要该范围；

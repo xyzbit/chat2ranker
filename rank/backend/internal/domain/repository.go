@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -17,7 +18,9 @@ var (
 )
 
 type UnitOfWork interface {
-	WithinTx(ctx context.Context, fn func(Repository) error) error
+	// WithinTx supplies the transaction context and repository. Every operation
+	// in fn must use that context; callbacks must not perform external work.
+	WithinTx(ctx context.Context, fn func(context.Context, Repository) error) error
 }
 
 type DatasetRepository interface {
@@ -29,6 +32,8 @@ type DatasetRepository interface {
 }
 
 type AgentRepository interface {
+	GetAgentEvaluationDefaults(context.Context, string) (AgentEvaluationDefaults, error)
+	SaveAgentEvaluationDefaults(context.Context, string, AgentEvaluationDefaults, int64) error
 	ListAgentFamilies(ctx context.Context) ([]AgentFamily, error)
 	ListAgentVersions(ctx context.Context, familyID string) ([]AgentVersion, error)
 	GetAgentVersion(ctx context.Context, id string) (AgentVersion, error)
@@ -55,6 +60,15 @@ type ControlRepository interface {
 }
 
 type RunRepository interface {
+	CreateEvaluationInvocation(context.Context, EvaluationInvocation) error
+	GetEvaluationInvocation(context.Context, InvocationID) (EvaluationInvocation, error)
+	ListEvaluationInvocations(context.Context, string) ([]EvaluationInvocation, error)
+	BeginInvocationSubmission(context.Context, InvocationID) error
+	SaveInvocationExecution(context.Context, InvocationID, string) error
+	CompleteInvocation(context.Context, InvocationID, json.RawMessage) error
+	AdvanceInvocationSequence(context.Context, InvocationID, int64, int64) error
+	RequestRunCancellation(context.Context, string) error
+	AppendRunEventOnce(context.Context, string, RunEvent) error
 	ListAgentEvaluationSummaries(ctx context.Context, agentVersionID string) ([]AgentEvaluationSummary, error)
 	GetRun(ctx context.Context, id string) (Run, error)
 	GetRunByIdempotencyKey(ctx context.Context, experimentID, key string) (Run, error)
@@ -81,12 +95,22 @@ type RunGroupRepository interface {
 }
 
 type ReleaseRepository interface {
+	CreateReleaseTask(context.Context, ReleaseTask) error
+	GetReleaseTask(context.Context, ReleaseTaskID) (ReleaseTask, error)
+	GetReleaseTaskByKey(context.Context, DeploymentID, string) (ReleaseTask, error)
+	ListReleaseTasks(context.Context, DeploymentID, string) ([]ReleaseTask, error)
+	SaveReleaseTask(context.Context, ReleaseTask, string) error
+	GetReleasePolicy(ctx context.Context, id DeploymentID) (ReleasePolicy, error)
+	SaveReleasePolicy(ctx context.Context, id DeploymentID, policy ReleasePolicy, expectedRevision int64) error
+	AppendReleaseDecision(ctx context.Context, decision ReleaseDecision) error
+	ListReleaseDecisions(ctx context.Context, id DeploymentID, alias string, before int64, limit int) (ReleaseDecisionPage, error)
 	ListReleaseHistory(ctx context.Context, aliasID DeploymentAliasID, before int64, limit int) (ReleaseHistoryPage, error)
 	CreateDeployment(ctx context.Context, deployment Deployment, aliases []DeploymentAlias) error
 	GetDeployment(ctx context.Context, id DeploymentID) (Deployment, error)
 	GetDeploymentByName(ctx context.Context, tenantID, name string) (Deployment, error)
 	ListDeployments(ctx context.Context, tenantID string) ([]Deployment, error)
 	ListDeploymentsByAgentFamily(ctx context.Context, familyID string) ([]Deployment, error)
+	ListDeploymentsByAgentVersion(ctx context.Context, tenantID, versionID string) ([]Deployment, error)
 	GetDeploymentAlias(ctx context.Context, deploymentID DeploymentID, name string) (DeploymentAlias, error)
 	AppendReleaseRevision(ctx context.Context, revision ReleaseRevision, expectedReleaseRevisionID ReleaseRevisionID) (ReleaseRevision, error)
 }
@@ -100,9 +124,12 @@ type ServingRepository interface {
 	AdmitResponse(ctx context.Context, response ServingResponse, conversation *Conversation, created ResponseEvent, requestsPerMinute, maxConcurrent int) error
 	GetConversation(ctx context.Context, id ConversationID) (Conversation, error)
 	GetResponse(ctx context.Context, id ResponseID) (ServingResponse, error)
-	GetResponseByIdempotencyKey(ctx context.Context, credentialID APICredentialID, key string) (ServingResponse, error)
+	GetResponseByIdempotencyKey(ctx context.Context, credentialID APICredentialID, key, tenantID string) (ServingResponse, error)
+	ListTrialConversations(ctx context.Context, tenantID string, filter TrialConversationFilter) ([]TrialConversation, error)
 	ListConversationResponses(ctx context.Context, conversationID ConversationID) ([]ServingResponse, error)
 	ListActiveResponses(ctx context.Context) ([]ServingResponse, error)
+	RequestResponseCancellation(ctx context.Context, id ResponseID) error
+	UpdateResponseProgress(ctx context.Context, response ServingResponse, expectedSequence int64, events []ResponseEvent) error
 	UpdateResponse(ctx context.Context, response ServingResponse, expectedStatus string, events []ResponseEvent) error
 	ListResponseEvents(ctx context.Context, responseID ResponseID, afterSequence int64) ([]ResponseEvent, error)
 }

@@ -14,6 +14,8 @@ An individually styled deployment menu leaves settings, filters, and forms using
 
 `SelectField` owns every fixed-choice dropdown. Its props carry the controlled value, value callback, accessible label, and options. Radix owns keyboard navigation and focus management. A disabled empty option becomes the required-field placeholder; optional empty choices remain selectable. Menus mount inside the nearest native dialog when present, and Escape closes the menu before its parent.
 
+`ModelField` owns editable model IDs in setup, Agent and connection editors, and system bindings. A single input combines direct entry and filtered suggestions; an explicit arrow exposes all supplied models. Popover positioning uses the shared menu parameters. Settings groups saved and discovered connections in sibling tabs, preserving their drafts and results while using headings and spacing instead of repeated separators. A model name is open-ended, so it cannot use the closed option semantics of `SelectField`.
+
 `theme.css` owns visual tokens; `controls.css` owns control and focus styling; `ui-config.js` owns shared menu geometry. Pages own placement and business state. Language choices belong to i18n; provider and protocol choices belong to model-connection code. Backend catalogs, credentials, and per-form drafts do not become UI constants. Editable model inputs and searchable model discovery retain their distinct interactions.
 
 This supersedes only the native single-select choice in the [UI interaction decision](2026-09-10-rank-ui-interaction.md), which remains authoritative for scrolling, modality, and translucency.
@@ -23,6 +25,8 @@ This supersedes only the native single-select choice in the [UI interaction deci
 **Style each page's dropdown independently.** The same keyboard, disabled, and focus behavior then needs repeated maintenance, and local changes do not fix the other pages.
 
 **Only style the native select trigger.** The browser-owned popup still varies between platforms, leaving the discrepancy visible when the user opens it.
+
+**Keep native datalists and a separate manual-model mode.** Datalists do not provide a consistent dropdown affordance across browsers, and switching input modes makes the same model selection require different actions across pages.
 
 **Move all values into one global configuration object.** Provider catalogs and form drafts have different owners and lifetimes. Combining them with visual tokens obscures which changes affect presentation and which affect saved experiments.
 

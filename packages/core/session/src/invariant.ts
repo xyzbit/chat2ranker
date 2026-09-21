@@ -142,6 +142,10 @@ function validateEvent(
       pendingCalls = { kind: 'delete', callId }
       break
     }
+    case 'history/message':
+      // Imported messages describe external history, never this driver's work.
+      if (trace.openTurn !== null) fail('history/message cannot be imported during an open turn')
+      break
     case 'user/message':
       break
     case 'session/end-seed':

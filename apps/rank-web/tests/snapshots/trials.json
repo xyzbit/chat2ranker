@@ -1,0 +1,18 @@
+{
+  "transcript": [
+    { "input": "Remember Ada", "status": "completed", "output": "Reply: Remember Ada" },
+    { "input": "Who?", "status": "completed", "output": "Reply: Who? | First: Remember Ada" },
+    { "input": "Who?", "status": "completed", "output": "Reply: Who? | First: Remember Ada" },
+    { "input": "fail", "status": "failed", "output": "" },
+    { "input": "Who?", "status": "completed", "output": "Reply: Who? | First: Remember Ada" },
+    { "input": "slow", "status": "cancelled", "output": "" },
+    { "input": "Who?", "status": "completed", "output": "Reply: Who? | First: Remember Ada" }
+  ],
+  "duplicateSuppressed": true,
+  "pinnedVersion": 1,
+  "noEvaluationCreated": true,
+  "resumed": "Reply: slow",
+  "scopedHistory": { "familyVersions": [2, 2, 1], "directVersionCount": 1, "olderCount": 2 },
+  "publishingEntry": { "version": 2, "targets": ["trial-published"], "unpublishedVersion": 1, "unpublishedStatus": 409, "reference": "trial-published" },
+  "handoff": [{ "type": "a2ui/open_trial", "label": "Trial Agent · v1", "draft": "Remember Ada" }]
+}

@@ -14,15 +14,26 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db        *sql.DB
+	maxQueued int
+}
 
 func Open(ctx context.Context, path string) (*Store, error) {
+	return OpenWithQueueLimit(ctx, path, 1000)
+}
+
+// OpenWithQueueLimit bounds admitted queued executions in the local database.
+func OpenWithQueueLimit(ctx context.Context, path string, maxQueued int) (*Store, error) {
+	if maxQueued < 1 {
+		return nil, errors.New("queue limit must be positive")
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	store := &Store{db: db}
+	store := &Store{db: db, maxQueued: maxQueued}
 	if _, err = db.ExecContext(ctx, `PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -87,6 +98,7 @@ CREATE TABLE IF NOT EXISTS model_connections(
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS runtime_pools(id TEXT PRIMARY KEY, endpoint TEXT NOT NULL UNIQUE, body TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS system_model_bindings(
   role TEXT PRIMARY KEY,
   connection_id TEXT NOT NULL REFERENCES model_connections(id) ON DELETE RESTRICT,
@@ -112,10 +124,57 @@ VALUES(2, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(4, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
 		return fmt.Errorf("record execution sqlite schema v4: %w", err)
 	}
-	return nil
+	for _, name := range []string{"runtime_timeout_ms", "cleanup_grace_ms"} {
+		if err := s.ensureColumn(ctx, "executions", name, "INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(5, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "executions", "runtime_cleanup_pending", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+UPDATE executions SET runtime_cleanup_pending=1
+ WHERE NOT EXISTS(SELECT 1 FROM schema_migrations WHERE version=6)
+ AND (status IN ('running','cancelling') OR (status='failed' AND (error LIKE '%execution_outcome_unknown%' OR error LIKE '%runtime stop could not be confirmed%')));
+INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(6,strftime('%Y-%m-%dT%H:%M:%fZ','now'));`)
+	if err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "executions", "runtime_json", "TEXT"); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(7,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`)
+	if err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "executions", "queue_deadline_ms", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(8,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`)
+	if err != nil {
+		return err
+	}
+	if err = s.ensureColumn(ctx, "executions", "runtime_plan_json", "TEXT"); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(9,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`)
+	if err != nil {
+		return err
+	}
+	if err = s.ensureColumn(ctx, "executions", "max_model_requests", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(10,strftime('%Y-%m-%dT%H:%M:%fZ','now'))`)
+	return err
 }
 
 func (s *Store) Create(ctx context.Context, execution contract.Execution, event contract.Event) error {
+	if execution.ModelQuota != nil {
+		return errors.New("shared model quota requires PostgreSQL")
+	}
 	spec, err := json.Marshal(execution.Spec)
 	if err != nil {
 		return err
@@ -125,9 +184,40 @@ func (s *Store) Create(ctx context.Context, execution contract.Execution, event 
 		return err
 	}
 	defer transaction.Rollback()
+	var exists bool
+	if err = transaction.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM executions WHERE idempotency_key=?)`, execution.IdempotencyKey).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return domain.ErrConflict
+	}
+	var planJSON any
+	if execution.Executor == "opensandbox" {
+		pool, err := runtimePool(ctx, transaction, execution.RuntimePlan)
+		if err != nil {
+			return err
+		}
+		if !domain.FitsRuntime(pool.Capacity, contract.RuntimeResources{}, execution.RuntimePlan.Resources) {
+			return domain.ErrRuntimePlan
+		}
+		body, err := json.Marshal(execution.RuntimePlan)
+		if err != nil {
+			return err
+		}
+		planJSON = string(body)
+	} else if execution.RuntimePlan != nil {
+		return domain.ErrRuntimePlan
+	}
+	var queued int
+	if err = transaction.QueryRowContext(ctx, `SELECT count(*) FROM executions WHERE status=?`, contract.StatusQueued).Scan(&queued); err != nil {
+		return err
+	}
+	if queued >= s.maxQueued {
+		return domain.ErrOverloaded
+	}
 	_, err = transaction.ExecContext(ctx, `INSERT INTO executions(
-id,idempotency_key,status,executor,attempt,external_handle,worker_version,spec_json,error,created_at
-) VALUES(?,?,?,?,?,?,?,?,?,?)`, execution.ID, execution.IdempotencyKey, execution.Status, execution.Executor, execution.Attempt, execution.ExternalHandle, execution.WorkerVersion, string(spec), execution.Error, formatTime(execution.CreatedAt))
+id,idempotency_key,status,executor,attempt,external_handle,worker_version,spec_json,error,created_at,runtime_timeout_ms,cleanup_grace_ms,queue_deadline_ms,runtime_plan_json,max_model_requests
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, execution.ID, execution.IdempotencyKey, execution.Status, execution.Executor, execution.Attempt, execution.ExternalHandle, execution.WorkerVersion, string(spec), execution.Error, formatTime(execution.CreatedAt), execution.RuntimeTimeoutMs, execution.CleanupGraceMs, execution.QueueExpiresAt.UnixMilli(), planJSON, execution.MaxModelRequests)
 	if err != nil {
 		return mapError(err)
 	}
@@ -138,15 +228,15 @@ id,idempotency_key,status,executor,attempt,external_handle,worker_version,spec_j
 }
 
 func (s *Store) Get(ctx context.Context, id string) (contract.Execution, error) {
-	return scanExecution(s.db.QueryRowContext(ctx, `SELECT id,idempotency_key,status,executor,attempt,external_handle,worker_version,spec_json,result_json,error,created_at,started_at,completed_at FROM executions WHERE id=?`, id))
+	return scanExecution(s.db.QueryRowContext(ctx, `SELECT id,idempotency_key,status,executor,attempt,external_handle,worker_version,spec_json,result_json,error,created_at,started_at,completed_at,runtime_timeout_ms,cleanup_grace_ms,runtime_cleanup_pending,runtime_json,queue_deadline_ms,runtime_plan_json,max_model_requests FROM executions WHERE id=?`, id))
 }
 
 func (s *Store) GetByIdempotencyKey(ctx context.Context, key string) (contract.Execution, error) {
-	return scanExecution(s.db.QueryRowContext(ctx, `SELECT id,idempotency_key,status,executor,attempt,external_handle,worker_version,spec_json,result_json,error,created_at,started_at,completed_at FROM executions WHERE idempotency_key=?`, key))
+	return scanExecution(s.db.QueryRowContext(ctx, `SELECT id,idempotency_key,status,executor,attempt,external_handle,worker_version,spec_json,result_json,error,created_at,started_at,completed_at,runtime_timeout_ms,cleanup_grace_ms,runtime_cleanup_pending,runtime_json,queue_deadline_ms,runtime_plan_json,max_model_requests FROM executions WHERE idempotency_key=?`, key))
 }
 
 func (s *Store) ListActive(ctx context.Context) ([]contract.Execution, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,idempotency_key,status,executor,attempt,external_handle,worker_version,spec_json,result_json,error,created_at,started_at,completed_at FROM executions WHERE status IN (?,?,?) ORDER BY created_at`, contract.StatusQueued, contract.StatusRunning, "cancelling")
+	rows, err := s.db.QueryContext(ctx, `SELECT id,idempotency_key,status,executor,attempt,external_handle,worker_version,spec_json,result_json,error,created_at,started_at,completed_at,runtime_timeout_ms,cleanup_grace_ms,runtime_cleanup_pending,runtime_json,queue_deadline_ms,runtime_plan_json,max_model_requests FROM executions WHERE status IN (?,?,?) ORDER BY created_at`, contract.StatusQueued, contract.StatusRunning, "cancelling")
 	if err != nil {
 		return nil, err
 	}
@@ -189,12 +279,31 @@ func (s *Store) ListEvents(ctx context.Context, executionID string, afterSequenc
 }
 
 func (s *Store) AppendEvent(ctx context.Context, event contract.Event) error {
-	return appendEvent(ctx, s.db, event)
+	return s.transition(ctx, func(transaction *sql.Tx) error {
+		result, err := transaction.ExecContext(ctx, `UPDATE executions SET id=id WHERE id=? AND status=? AND attempt=?`, event.ExecutionID, contract.StatusRunning, event.Attempt)
+		return affected(result, err)
+	}, event)
 }
 
-func (s *Store) MarkRunning(ctx context.Context, id string, attempt int, executor, externalHandle string, startedAt time.Time, event contract.Event) error {
+func (s *Store) MarkRunning(ctx context.Context, id string, attempt int, executor, externalHandle, workerVersion string, startedAt time.Time, event contract.Event) error {
 	return s.transition(ctx, func(transaction *sql.Tx) error {
-		result, err := transaction.ExecContext(ctx, `UPDATE executions SET status=?,attempt=?,executor=?,external_handle=?,started_at=?,completed_at=NULL,error='' WHERE id=? AND status=?`, contract.StatusRunning, attempt, executor, externalHandle, formatTime(startedAt), id, contract.StatusQueued)
+		if _, err := transaction.ExecContext(ctx, `UPDATE executions SET id=id WHERE id=?`, id); err != nil {
+			return err
+		}
+		var deadline int64
+		if err := transaction.QueryRowContext(ctx, `SELECT queue_deadline_ms FROM executions WHERE id=? AND status=? AND attempt=?`, id, contract.StatusQueued, attempt-1).Scan(&deadline); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return domain.ErrConflict
+			}
+			return err
+		}
+		if deadline <= max(time.Now().UnixMilli(), startedAt.UnixMilli()) {
+			return domain.ErrQueueExpired
+		}
+		if err := reserveRuntime(ctx, transaction, id); err != nil {
+			return err
+		}
+		result, err := transaction.ExecContext(ctx, `UPDATE executions SET runtime_cleanup_pending=1,status=?,attempt=?,executor=?,external_handle=?,worker_version=?,started_at=?,completed_at=NULL,error='' WHERE id=? AND status=? AND attempt=?`, contract.StatusRunning, attempt, executor, externalHandle, workerVersion, formatTime(startedAt), id, contract.StatusQueued, attempt-1)
 		return affected(result, err)
 	}, event)
 }
@@ -205,30 +314,56 @@ func (s *Store) Complete(ctx context.Context, id string, value contract.Result, 
 		return err
 	}
 	return s.transition(ctx, func(transaction *sql.Tx) error {
-		result, err := transaction.ExecContext(ctx, `UPDATE executions SET status=?,result_json=?,completed_at=?,error='' WHERE id=? AND status=?`, contract.StatusCompleted, string(resultJSON), formatTime(completedAt), id, contract.StatusRunning)
+		result, err := transaction.ExecContext(ctx, `UPDATE executions SET status=?,result_json=?,completed_at=?,error='' WHERE runtime_cleanup_pending=0 AND id=? AND status=? AND attempt=?`, contract.StatusCompleted, string(resultJSON), formatTime(completedAt), id, contract.StatusRunning, event.Attempt)
 		return affected(result, err)
 	}, event)
 }
 
+func (s *Store) RecordEvidence(ctx context.Context, id string, attempt int, value contract.Result) error {
+	body, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE executions SET result_json=? WHERE id=? AND attempt=? AND attempt>0 AND status IN (?,?)`, string(body), id, attempt, contract.StatusRunning, contract.StatusCancelling)
+	return affected(result, err)
+}
+
 func (s *Store) Fail(ctx context.Context, id, message string, completedAt time.Time, event contract.Event) error {
 	return s.transition(ctx, func(transaction *sql.Tx) error {
-		result, err := transaction.ExecContext(ctx, `UPDATE executions SET status=?,completed_at=?,error=? WHERE id=? AND status IN (?,?)`, contract.StatusFailed, formatTime(completedAt), message, id, contract.StatusQueued, contract.StatusRunning)
+		result, err := transaction.ExecContext(ctx, `UPDATE executions SET status=?,completed_at=?,error=? WHERE id=? AND status IN (?,?,?) AND attempt=?`, contract.StatusFailed, formatTime(completedAt), message, id, contract.StatusQueued, contract.StatusRunning, contract.StatusCancelling, event.Attempt)
 		return affected(result, err)
 	}, event)
 }
 
 func (s *Store) Cancel(ctx context.Context, id string, completedAt time.Time, event contract.Event) error {
 	return s.transition(ctx, func(transaction *sql.Tx) error {
-		result, err := transaction.ExecContext(ctx, `UPDATE executions SET status=?,completed_at=? WHERE id=? AND status IN (?,?)`, contract.StatusCancelled, formatTime(completedAt), id, contract.StatusQueued, contract.StatusRunning)
+		result, err := transaction.ExecContext(ctx, `UPDATE executions SET status=?,completed_at=? WHERE runtime_cleanup_pending=0 AND id=? AND status IN (?,?,?) AND attempt=?`, contract.StatusCancelled, formatTime(completedAt), id, contract.StatusQueued, contract.StatusRunning, contract.StatusCancelling, event.Attempt)
 		return affected(result, err)
 	}, event)
 }
 
-func (s *Store) Requeue(ctx context.Context, id string, event contract.Event) error {
-	return s.transition(ctx, func(transaction *sql.Tx) error {
-		result, err := transaction.ExecContext(ctx, `UPDATE executions SET status=?,external_handle='',started_at=NULL,completed_at=NULL,error='' WHERE id=? AND status IN (?,?)`, contract.StatusQueued, id, contract.StatusQueued, contract.StatusRunning)
-		return affected(result, err)
-	}, event)
+func (s *Store) RequestCancel(ctx context.Context, id string, at time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var status string
+	var attempt int
+	err = tx.QueryRowContext(ctx, `UPDATE executions SET
+status=CASE WHEN status=? THEN ? ELSE ? END,
+completed_at=CASE WHEN status=? THEN ? ELSE NULL END
+WHERE id=? AND status IN (?,?) RETURNING status,attempt`, contract.StatusQueued, contract.StatusCancelled, contract.StatusCancelling, contract.StatusQueued, formatTime(at), id, contract.StatusQueued, contract.StatusRunning).Scan(&status, &attempt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err = appendEvent(ctx, tx, contract.Event{ExecutionID: id, Attempt: attempt, Type: "execution." + status, Status: status, At: at}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) ListModelConnections(ctx context.Context) ([]contract.ModelConnection, error) {
@@ -444,9 +579,10 @@ type scanner interface{ Scan(...any) error }
 func scanExecution(row scanner) (contract.Execution, error) {
 	var value contract.Execution
 	var specJSON string
-	var resultJSON, startedAt, completedAt sql.NullString
+	var resultJSON, startedAt, completedAt, runtimeJSON, planJSON sql.NullString
 	var createdAt string
-	err := row.Scan(&value.ID, &value.IdempotencyKey, &value.Status, &value.Executor, &value.Attempt, &value.ExternalHandle, &value.WorkerVersion, &specJSON, &resultJSON, &value.Error, &createdAt, &startedAt, &completedAt)
+	var deadline int64
+	err := row.Scan(&value.ID, &value.IdempotencyKey, &value.Status, &value.Executor, &value.Attempt, &value.ExternalHandle, &value.WorkerVersion, &specJSON, &resultJSON, &value.Error, &createdAt, &startedAt, &completedAt, &value.RuntimeTimeoutMs, &value.CleanupGraceMs, &value.RuntimeCleanupPending, &runtimeJSON, &deadline, &planJSON, &value.MaxModelRequests)
 	if errors.Is(err, sql.ErrNoRows) {
 		return value, domain.ErrNotFound
 	}
@@ -456,6 +592,16 @@ func scanExecution(row scanner) (contract.Execution, error) {
 	if err = json.Unmarshal([]byte(specJSON), &value.Spec); err != nil {
 		return value, err
 	}
+	if planJSON.Valid {
+		if err = json.Unmarshal([]byte(planJSON.String), &value.RuntimePlan); err != nil {
+			return value, err
+		}
+	}
+	if runtimeJSON.Valid {
+		if err = json.Unmarshal([]byte(runtimeJSON.String), &value.Runtime); err != nil {
+			return value, err
+		}
+	}
 	if resultJSON.Valid {
 		var result contract.Result
 		if err = json.Unmarshal([]byte(resultJSON.String), &result); err != nil {
@@ -463,6 +609,7 @@ func scanExecution(row scanner) (contract.Execution, error) {
 		}
 		value.Result = &result
 	}
+	value.QueueExpiresAt = queueDeadline(deadline)
 	value.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
 	if err != nil {
 		return value, err
@@ -510,3 +657,10 @@ func affected(result sql.Result, err error) error {
 }
 
 var _ domain.Repository = (*Store)(nil)
+
+// ConfirmRuntimeStopped accepts only the recorded started attempt; cleanup of a
+// terminal unknown outcome leaves its business status unchanged.
+func (s *Store) ConfirmRuntimeStopped(ctx context.Context, id string, attempt int) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE executions SET runtime_cleanup_pending=0 WHERE id=? AND attempt=? AND attempt>0 AND status<>'queued'`, id, attempt)
+	return affected(result, err)
+}

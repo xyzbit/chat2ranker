@@ -10,10 +10,10 @@ import (
 )
 
 type ExecutionSpec struct {
+	Settings   domain.RunExecutionSettings
 	RunID      string
 	TrialID    string
 	TrialIndex int
-	Attempt    int
 	Case       domain.Case
 	Agent      domain.AgentVersion
 	Emit       func(RunnerEvent) error
@@ -31,10 +31,10 @@ type CandidateResult struct {
 }
 
 type JudgeSpec struct {
+	Settings   domain.RunExecutionSettings
 	RunID      string
 	TrialID    string
 	TrialIndex int
-	Attempt    int
 	Case       domain.Case
 	Agent      domain.AgentVersion
 	Evaluator  domain.EvaluatorVersion
@@ -57,9 +57,11 @@ type JudgeResult struct {
 }
 
 type RunnerEvent struct {
-	Type   string
-	Status string
-	Reason string
+	InvocationID domain.InvocationID
+	Sequence     int64
+	Type         string
+	Status       string
+	Reason       string
 }
 
 type AgentRunner interface {
@@ -98,7 +100,7 @@ func (runner UnavailableRunner) RunJudge(context.Context, JudgeSpec) (JudgeResul
 type DemoRunner struct{}
 
 func (DemoRunner) Probe(context.Context, domain.AgentVersion) domain.RuntimeAvailability {
-	return domain.RuntimeAvailability{Available: true, Label: "内置演示 Runner"}
+	return domain.RuntimeAvailability{StructuredHistory: true, Available: true, Label: "内置演示 Runner"}
 }
 
 func (DemoRunner) RunCandidate(ctx context.Context, spec ExecutionSpec) (CandidateResult, error) {

@@ -1,0 +1,88 @@
+{
+  "date": "2026-09-15",
+  "passed": true,
+  "environment": "Single laptop; minikube rank-dev, PostgreSQL/River and S3-compatible SeaweedFS; remote OpenSandbox with deterministic model fixtures",
+  "platform": {
+    "startedAt": "2026-09-14T22:01:44.328Z",
+    "completedAt": "2026-09-14T22:02:56.655Z",
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Known worker failure retains output, usage and S3 result evidence after cleanup; idempotent replay stays on attempt one",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ],
+    "runtime": {
+      "executor": "opensandbox",
+      "image": "sha256:97b2ed428f0b0e24064eac6a9e943f5ea378e2c7c64f48777634d8a0ec716ffa",
+      "egress": {
+        "allow": [
+          {
+            "protocol": "tcp",
+            "cidr": "192.168.49.0/24",
+            "port": 8800
+          }
+        ]
+      },
+      "cleanupPending": false
+    },
+    "failedResult": {
+      "status": "failed",
+      "output": "{\"status\":\"ok\"}",
+      "usage": {
+        "inputTokens": 70,
+        "outputTokens": 30
+      },
+      "costKnown": true,
+      "schemaFailureIdentified": true,
+      "failureArtifactReadable": true,
+      "replayAttempt": 1,
+      "cleanupPending": false
+    }
+  },
+  "images": {
+    "platform": "sha256:696655524adeeefdcd8c147ad5f6aae0db78c0d4fc3acca1629fcd344f14c90c",
+    "gateway": "sha256:9328cca895438eadbe166daa875227b911607697ccf1eef187a08a5c87c18f97"
+  },
+  "sandboxImage": "sha256:97b2ed428f0b0e24064eac6a9e943f5ea378e2c7c64f48777634d8a0ec716ffa",
+  "serverImage": "sha256:7ad1c044082d8278a9879b542d913f7a2736e4f903fc83daa7bbc97190b4575b",
+  "verification": {
+    "localSQLiteSnapshot": true,
+    "remoteSQLiteSnapshot": true,
+    "localPostgresTwoWorkerSnapshot": true,
+    "remotePostgresTwoWorkerSnapshot": true,
+    "focusedGoTests": true,
+    "contractsLint": true,
+    "docSync": {
+      "passed": 27,
+      "failed": 1,
+      "failure": "Pre-existing AGENTS.md word budget: 2398 > 1950"
+    }
+  },
+  "sourceSha256": {
+    "execution/backend/internal/app/spec_identity.go": "5ff9c1e7084e6dff12e46ee0138df63eb4fe99f9656c9460c3c41477033be77b",
+    "execution/backend/internal/app/idempotency_test.go": "104797e926448cb94b625672c5f3a00130f9ae4a9c4e36a50a9593b579b8128f",
+    "execution/backend/internal/app/service.go": "fcb0a00464642c88a254dc9c5c9a24d875c8de68654f67c824ace4e72a65c133",
+    "execution/backend/internal/executor/local.go": "375a1913568ac899602e74ba998ce0811ddb68f9cc9b6b1ae3071bcfae73e31e",
+    "execution/backend/internal/executor/opensandbox.go": "0efb875de8e162da359ac24f712c57e14c38ce6e40309f4e416130a0cd25263f",
+    "execution/backend/internal/executor/opensandbox_command.go": "47c419f959e62449c3f2ecbdd76eeb55bb02b83b0cc5645e34db73ab31f15b58",
+    "execution/backend/internal/executor/opensandbox_command_test.go": "db835beb2a5b4c5a4387ae7a079c99e2d4b61cc99230a6896460022d6ee4b811",
+    "execution/backend/internal/workerprotocol/protocol.go": "8dcc32dd7f7f7a14cb64984f59d803239a689ee7ea35ee4c7c473a4d135ad263",
+    "execution/backend/internal/workerprotocol/response_test.go": "d6d7a781db8473ec9017ffe5cc601a10ea43091125d4aa64d51911c816e791cc",
+    "rank/examples/execution-lifecycle/failed-result.mjs": "37e6f58b74af2225e3408533236b0edcc369bbaa5c2ecc7174acf556bd8810ae",
+    "rank/examples/execution-lifecycle/verify.mjs": "ed410b1be5d7f10c73975d49b3fe354f9fdb64e6be8168eca625dedf2556e758",
+    "rank/examples/execution-lifecycle/verify-remote.mjs": "f86cea32ff2c9b7cfeb2e5d05a6cfdd24e0a8524d0502e7177cad96ec1621c27",
+    "rank/examples/execution-lifecycle/snapshot.json": "4951f1dfb723a29179b1980fb4389f6423e9732f58a416f5500c1b0b7b6d4e07",
+    "rank/examples/execution-lifecycle/remote.snapshot.json": "0f13f1187d6fc69859c317730b424b3bd1c8c329dbdbe21ff9c5587294d284d7",
+    "rank/deploy/k8s/verify-platform.mjs": "6544861f5d86c37029879ebe35d721c019ea3117f72e26d0dfa88d9b66546b72"
+  },
+  "limitations": [
+    "No external model-provider requests or RPM/TPM enforcement validated",
+    "No cross-host capacity or production identity verification",
+    "A structured-output failure validates known worker errors, not every provider-specific failure",
+    "Interrupted transport still yields unknown outcome; uncommitted evidence is not guaranteed recoverable"
+  ]
+}

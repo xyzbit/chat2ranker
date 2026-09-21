@@ -53,6 +53,12 @@ interface SessionEventMap {
    * project their `content` verbatim; `source` tells them apart.
    */
   'user/message': UserMessage
+  /**
+   * A normalized message imported from an external conversation. It contributes
+   * model history without claiming a native turn, model request, or tool execution.
+   * The importing consumer validates ordering and tool-result correlation.
+   */
+  'history/message': { message: Message }
   /** Raw stream chunk — token-level replay fidelity. */
   'assistant/chunk': { turn: number; step: number; chunk: StreamChunk }
   /**
@@ -203,7 +209,7 @@ interface RequestContext {
  * unions), so `switch (event.type)` narrows `event.data` without casts.
  *
  * The {@link sourceEventSeqs} and {@link surfaceOp} fields are conditional:
- * they only exist on {@link SurfaceEventType} variants (`user/message`,
+ * they only exist on {@link SurfaceEventType} variants (`user/message`, `history/message`,
  * `assistant/message`, `tool/result`).
  * Non-surface events (boundary markers, chunks, usage, errors) never carry
  * surface metadata — the compiler enforces this at `Session.append()`
@@ -250,7 +256,7 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
 
 ## Surface 类型
 
-三种产生消息的类型（`SurfaceEventType`：`user/message`、`assistant/message`、`tool/result`）携带 surface 元数据，用来声明它们如何加入有序的派生 surface。见 [session surface Agent Note](../../.agents/notes/implemented/architecture/2026-06-18-session-surface.md)。
+四种产生消息的类型（`SurfaceEventType`：`user/message`、`history/message`、`assistant/message`、`tool/result`）携带 surface 元数据，用来声明它们如何加入有序的派生 surface。见 [session surface Agent Note](../../.agents/notes/implemented/architecture/2026-06-18-session-surface.md)。
 
 ### `SurfaceEventType`：事件类型中产生消息的子集
 
@@ -262,6 +268,7 @@ type SessionEvent<T extends SessionEventType = SessionEventType> = {
  */
 type SurfaceEventType =
   | 'user/message'
+  | 'history/message'
   | 'assistant/message'
   | 'tool/result'
 ```
@@ -748,7 +755,7 @@ fork(source: SessionForkSource, boundary?: number, childSessionId?: SessionId): 
 
 Types: [CreateSessionOptions](persistence.md) · [PrepareSessionOptions](persistence.md) · [SessionId](core.md)
 
-Source: [`packages/core/session/src/index.ts:792`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:796`](../../packages/core/session/src/index.ts)
 
 <a id="session-events"></a>
 

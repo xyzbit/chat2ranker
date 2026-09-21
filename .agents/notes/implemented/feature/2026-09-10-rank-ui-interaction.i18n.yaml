@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-10-rank-ui-interaction.md
-2026-09-10-rank-ui-interaction.md: 94455f8f1b037615d03ea9f973ce6efbadcf386d
-2026-09-10-rank-ui-interaction.zh.md: dd3ff712933a016d3d079f768e6a5f8eb5a0ca8c
+2026-09-10-rank-ui-interaction.md: 85393ef2dc35c66774dd36b5c2e190b4e8fc2502
+2026-09-10-rank-ui-interaction.zh.md: 09c7fe79e1eca11028d52334f6e7dbd68d322b44

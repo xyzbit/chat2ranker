@@ -1,0 +1,9 @@
+{
+  "initialModel": "catalog-a",
+  "afterDefaultChange": "account-latest",
+  "conversationInitialModel": "catalog-a",
+  "conversationNewVersionModel": "account-latest",
+  "explicitModel": "custom-model",
+  "replayKeepsOriginal": true,
+  "unresolvedExecutionStatus": 400
+}

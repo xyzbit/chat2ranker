@@ -10,7 +10,7 @@ Dense controls, inconsistent typography, and permanent internal scrollbars compe
 
 ## Decision
 
-Shared neutral surfaces, restrained accent colors, control dimensions, and readable secondary text align the management and conversation pages. Conversation and recent-session regions hide scrollbars and show fades only on edges with unseen content. Resize and content observers refresh those indicators; tail following depends on the reader remaining near the bottom. Forced-colors mode restores scrollbars and removes masks.
+Shared neutral surfaces, restrained accent colors, control dimensions, and readable secondary text align the management and conversation pages. Rank, trial, and recent-session regions hide scrollbars and show fades only on edges with unseen content. Other scroll regions use a thin thumb visible on hover or keyboard focus, with transparent tracks and no borders or arrow buttons. Resize and content observers refresh fade indicators; tail following depends on the reader remaining near the bottom. Forced-colors mode restores scrollbars and removes masks.
 
 Native modal dialogs own focus containment and dismissal. Searchable model menus use native popovers to avoid clipping inside scrollable panels, keep options keyboard selectable, and consume Escape before the enclosing inspector. Single-choice fields follow the [shared controls decision](2026-09-10-rank-shared-controls.md). Forms and text remain opaque; only fixed mobile navigation uses translucency.
 

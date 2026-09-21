@@ -1,47 +1,31 @@
-/** Browser smoke for deployment selection and shell language controls; no server writes. */
+/** Browser smoke for deployment list navigation and shell language controls; no server writes. */
 async (page) => {
   const check = (value, message) => { if (!value) throw new Error(message); };
-  await page.goto("http://127.0.0.1:4173/#/deployments");
-  await page.reload();
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("http://127.0.0.1:4173/#/deployments");
+    await page.reload();
+    const row = page.locator(".deployment-list-row").first();
+    await row.waitFor();
+    check(await page.locator(".deployment-heading").count() === 0, "List auto-selected a deployment");
+    const name = await row.locator("strong").innerText();
+    await page.screenshot({ path: `output/playwright/deployment-list-${width}.png` });
+    await row.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("heading", { name, exact: true }).waitFor();
+    check(page.url().includes("deploymentId="), "Detail URL lost deployment selection");
+    await page.reload();
+    await page.getByRole("heading", { name, exact: true }).waitFor();
+    await page.locator(".deployment-breadcrumb").click();
+    await row.waitFor();
+    check(await page.locator(".deployment-heading").count() === 0, "Back navigation did not restore list");
+    const language = page.locator(width > 640 ? ".sidebar-account .locale-control" : ".product-topbar .locale-control");
+    const label = await language.getAttribute("aria-label");
+    await language.click();
+    check(await language.getAttribute("aria-label") !== label, "Language toggle did not switch locale");
+    await language.click();
+    check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Deployment list overflows viewport");
+  }
   await page.setViewportSize({ width: 1440, height: 900 });
-  const trigger = page.locator(".deployment-switcher");
-  await trigger.waitFor();
-  const initial = await trigger.innerText();
-  await trigger.click();
-  const options = page.getByRole("option");
-  await options.first().waitFor();
-  check(await page.getByRole("option", { selected: true }).count() === 1, "Expected one selected deployment");
-  await page.screenshot({ path: "output/playwright/deployment-menu-desktop.png" });
-  await page.keyboard.press("End");
-  await page.waitForFunction(() => document.activeElement === [...document.querySelectorAll('[role="option"]')].at(-1));
-  const target = await options.last().innerText();
-  await page.keyboard.press("Enter");
-  await page.waitForFunction(() => document.activeElement === document.querySelector(".deployment-switcher"));
-  check(await trigger.innerText() === target, "Keyboard selection did not update deployment");
-  check(await trigger.evaluate(e => e === document.activeElement), "Selection must restore focus");
-  await trigger.click();
-  await page.keyboard.press("Escape");
-  check(await page.getByRole("listbox").count() === 0, "Escape must dismiss menu");
-  await trigger.click();
-  await page.getByRole("option", { name: initial, exact: true }).click();
-  await page.mouse.click(1000, 400);
-  const language = page.locator(".sidebar-account .locale-control");
-  check(await language.locator("svg").count() === 1, "Language control must use translation icon");
-  await language.hover();
-  await page.screenshot({ path: "output/playwright/language-control-desktop.png" });
-  const label = await language.getAttribute("aria-label");
-  await language.click();
-  check(await language.getAttribute("aria-label") !== label, "Language toggle did not switch locale");
-  await language.click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await trigger.click();
-  const menu = page.locator(".ui-select-menu");
-  await menu.waitFor();
-  const bounds = await menu.boundingBox();
-  check(bounds.x >= 0 && bounds.x + bounds.width <= 390 && bounds.y >= 0 && bounds.y + bounds.height <= 844, "Menu must fit mobile viewport");
-  await page.screenshot({ path: "output/playwright/deployment-menu-mobile.png" });
-  await page.keyboard.press("Escape");
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.mouse.click(1000, 400);
-  return "PASS: selection, keyboard, Escape, focus restoration, language toggle, mobile menu bounds";
+  return "PASS: deployment list, keyboard navigation, detail reload, back navigation, language toggle and mobile bounds";
 }

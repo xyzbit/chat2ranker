@@ -14,7 +14,7 @@ import (
 	"github.com/xyzbit/agentkiln/rank/backend/internal/app"
 	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
 	"github.com/xyzbit/agentkiln/rank/backend/internal/httpapi"
-	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/testdb"
 )
 
 func requestJSON(t *testing.T, client *http.Client, method, url string, body any, headers map[string]string) (int, []byte) {
@@ -56,8 +56,8 @@ func decodeBody[T any](t *testing.T, payload []byte) T {
 	return value
 }
 
-func TestHTTPContractRunsAgainstSQLiteRankd(t *testing.T) {
-	store, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "rank.db"))
+func TestHTTPContractRunsAgainstRankRepository(t *testing.T) {
+	store, err := testdb.Open(t, filepath.Join(t.TempDir(), "rank.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestHTTPContractRunsAgainstSQLiteRankd(t *testing.T) {
 	if err := service.EnsureSeed(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(httpapi.New(service))
+	server := httptest.NewServer(httpapi.New(service, httpapi.Options{Storage: store.Driver()}))
 	defer server.Close()
 	client := server.Client()
 	status, payload := requestJSON(t, client, http.MethodGet, server.URL+"/api/health", nil, nil)
@@ -74,7 +74,7 @@ func TestHTTPContractRunsAgainstSQLiteRankd(t *testing.T) {
 		t.Fatalf("health %d: %s", status, payload)
 	}
 	health := decodeBody[map[string]any](t, payload)
-	if health["runtime"] != "rankd" || health["storage"] != "sqlite" {
+	if health["runtime"] != "rankd" || health["storage"] != store.Driver() {
 		t.Fatalf("unexpected health: %#v", health)
 	}
 	status, payload = requestJSON(t, client, http.MethodPost, server.URL+"/api/experiments", map[string]any{"title": "HTTP contract"}, nil)
@@ -127,7 +127,7 @@ func TestHTTPContractRunsAgainstSQLiteRankd(t *testing.T) {
 }
 
 func TestA2UICommandAuthenticationAndControlHostBoundary(t *testing.T) {
-	store, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "rank.db"))
+	store, err := testdb.Open(t, filepath.Join(t.TempDir(), "rank.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,11 @@
+# Management access verification — 2026-09-15
+
+English | [中文](2026-09-15-management-access.zh.md)
+
+[Recorded evidence](2026-09-15-management-access.json) contains exact images, source hashes and ten passing complete-platform checks on minikube. Rank and control-host require operator authorization; the gateway forwards that identity and hides internal commands. A temporary operator becomes usable after Secret projection and is rejected after its entry is removed, while the original operator remains available.
+
+The shared [HTTP scenario](../../examples/access-control/scenario.mjs) verifies tenant and endpoint isolation for retrieval, event streams, cancellation, approval and conversation continuation. Missing operation scope returns 403; a revoked public key returns 401; a replacement key retains authorized history. Public keys cannot enter management, and operator tokens cannot invoke public Responses. Direct publication records the authenticated subject despite a forged actor in the submitted body. Direct private-service checks return 200 for the control service's bootstrap access, 403 for API-key management and 401 for unauthenticated control-host sessions.
+
+The [packaged snapshot](../../examples/access-control/README.md) also verifies overlapping operator rotation, invalid-file refusal and non-loopback startup protection. Authenticated configurations reject missing or known development service credentials before binding, including SQLite mode. Focused Go tests, three control-host tests and `pnpm run lint` pass. The full cluster retains daily-news/chat/trial behavior, model budgets, S3 evidence, SSE replay and recovery after Pod replacement and Worker scale-to-zero. Documentation passes 27 of 28 checks; the existing root `AGENTS.md` word-budget failure remains.
+
+This is shared-workspace operator access, not team-isolated Agent/Dataset ownership or enterprise SSO. Revocation affects later requests after file propagation; accepted tasks and open streams retain their documented lifetimes. Internal service-token rotation, complete audit, production TLS/workload identity, real-provider quotas and physical multi-host capacity remain independent work in the [production proposal](../../../.agents/notes/proposed/architecture/2026-09-14-rank-production-execution.md).

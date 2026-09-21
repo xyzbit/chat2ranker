@@ -1,0 +1,23 @@
+[
+  {
+    "name": "database",
+    "status": "failed",
+    "attempt": 1,
+    "unknownOutcome": true,
+    "cleanupPending": false,
+    "effects": 1,
+    "runningEvents": 1,
+    "evidenceRetained": false,
+    "boundedDependencyError": true
+  },
+  {
+    "name": "orphan",
+    "status": "failed",
+    "attempt": 1,
+    "unknownOutcome": true,
+    "cleanupPending": false,
+    "effects": 1,
+    "runningEvents": 1,
+    "evidenceRetained": true
+  }
+]

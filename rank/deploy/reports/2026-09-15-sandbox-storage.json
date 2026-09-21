@@ -1,0 +1,106 @@
+{
+  "date": "2026-09-15",
+  "passed": true,
+  "environment": "Single laptop, Docker Desktop linux/arm64 and dedicated rank-dev minikube profile; deterministic local model",
+  "storage": {
+    "passed": true,
+    "checks": {
+      "additionalVolumeRejected": true,
+      "isolationOverlayRejected": true,
+      "imageVolumeRejected": true,
+      "readonlyRootWithoutVolumes": true,
+      "swapDisabled": true,
+      "containerLogRotationConfigured": true,
+      "nativeProcessLimits": {
+        "uid": 1000,
+        "denied": [
+          "/var/tmp",
+          "/home/node",
+          "/opt/rank",
+          "/etc",
+          "/root"
+        ],
+        "shared": {
+          "error": "ENOSPC",
+          "recovered": true
+        },
+        "temporary": {
+          "error": "ENOSPC",
+          "recovered": true
+        },
+        "sharedMemory": {
+          "error": "ENOSPC",
+          "recovered": true
+        },
+        "inodeLimitEnforced": true,
+        "usableAfterCleanup": true
+      },
+      "sandboxDeleted": true
+    },
+    "sandboxImage": "sha256:aebaa4fe17ec46b76d6ed99b4cc8c44e8215f7e1fd42218bd94ac8645a99112c",
+    "serverImage": "sha256:cdaf66698958fe4f3a9b2da27c5c85173544854ef966b6843a38ff349899b993"
+  },
+  "protectedLifetime": {
+    "sandboxImage": "sha256:aebaa4fe17ec46b76d6ed99b4cc8c44e8215f7e1fd42218bd94ac8645a99112c",
+    "serverImage": "sha256:cdaf66698958fe4f3a9b2da27c5c85173544854ef966b6843a38ff349899b993",
+    "facts": {
+      "uid": 1000,
+      "tokenVisible": false,
+      "rootEnvironmentReadable": false,
+      "canSignalRoot": false,
+      "dockerSocketVisible": false
+    },
+    "detachedWorkloadObserved": true,
+    "lifecycleServerKilled": true,
+    "providerTTLSeconds": 90,
+    "protectedLifetimeSeconds": 25,
+    "stoppedAtDeadline": true,
+    "exitCode": 1
+  },
+  "platform": {
+    "report": "platform-verification-1789420058411.json",
+    "startedAt": "2026-09-14T21:06:31.810Z",
+    "completedAt": "2026-09-14T21:07:38.411Z",
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ],
+    "runtime": {
+      "executor": "opensandbox",
+      "image": "sha256:aebaa4fe17ec46b76d6ed99b4cc8c44e8215f7e1fd42218bd94ac8645a99112c",
+      "cleanupPending": false
+    },
+    "images": {
+      "platform": "sha256:22f1022b2d37c0e3158a226c6503e818e005e3a44560d8d0ab6af1e332713540",
+      "gateway": "sha256:9328cca895438eadbe166daa875227b911607697ccf1eef187a08a5c87c18f97"
+    }
+  },
+  "limits": {
+    "memoryMiB": 512,
+    "workspaceMiB": 128,
+    "tmpMiB": 32,
+    "shmMiB": 16,
+    "tmpfsInodesPerWorkspaceOrTmpMount": 8192,
+    "logRotationMiB": 2,
+    "logFiles": 2
+  },
+  "sourceSha256": {
+    "rank/deploy/k8s/sandbox.Dockerfile": "4e67eee497cc65d8c83decee1a3142d0bc6626b13ba519b5a5d93f2d285e94b0",
+    "rank/deploy/k8s/sandbox-lab.py": "dea3115c30b7fb64ba8d41d295e84b54006ab3225445d5eed147384e4c7ca46c",
+    "rank/deploy/k8s/opensandbox-proxy-only.py": "dd5d9740f987dad231f53b39ad3be17a4e9af41498199b7caee6e65410c2d013",
+    "rank/deploy/k8s/verify-sandbox-storage.py": "373b1ce445ad3aa4dad2dff5297eb28e6e80be6bf933bdc7c5f8984e107902b5",
+    "rank/deploy/k8s/fixtures/sandbox-storage.snapshot.json": "3f9e5b4c4da0387a91d50f3a35aa3f0665d1d49050632927dbeebb7caf40b355",
+    "execution/backend/harness/dsh.go": "cc1d3a8f6f71993d2411f1da0ad6ec6a85e89e78ed755527bc323ceab2a65258"
+  },
+  "limitations": [
+    "No production egress enforcement or scoped identity verification",
+    "No physical-host scaling or persistent disk quota verification",
+    "Log rotation configuration inspected; no separate log-flood measurement",
+    "Ephemeral tmpfs storage consumes container memory"
+  ]
+}

@@ -1,0 +1,183 @@
+{
+  "date": "2026-09-15",
+  "passed": true,
+  "environment": "Single laptop, Docker Desktop linux/arm64 and dedicated rank-dev minikube profile; deterministic local model",
+  "network": {
+    "passed": true,
+    "checks": {
+      "listeningTargetsReachableOutsideSandbox": {
+        "tcp": true,
+        "port": true,
+        "udp": true
+      },
+      "invalidSetupStopsBeforeDaemon": {
+        "missing-network-capability": true,
+        "missing-policy": true
+      },
+      "runtime": {
+        "allowed": true,
+        "otherPort": false,
+        "otherAddress": false,
+        "udp": false,
+        "rootNetworkCapabilitiesDropped": true,
+        "daemonNetworkCapabilitiesDropped": true,
+        "childNetworkCapabilitiesDropped": true,
+        "cannotChangePolicy": true
+      },
+      "ipv4AndIpv6DefaultDenyInstalled": true,
+      "afterLifecycleLoss": {
+        "tcp": true,
+        "port": false,
+        "udp": false
+      },
+      "deniedTrafficAbsentAtTargets": true,
+      "resourcesRemoved": true
+    },
+    "sandboxImage": "sha256:97b2ed428f0b0e24064eac6a9e943f5ea378e2c7c64f48777634d8a0ec716ffa",
+    "serverImage": "sha256:7ad1c044082d8278a9879b542d913f7a2736e4f903fc83daa7bbc97190b4575b"
+  },
+  "storageRegression": {
+    "passed": true,
+    "checks": {
+      "additionalVolumeRejected": true,
+      "isolationOverlayRejected": true,
+      "imageVolumeRejected": true,
+      "readonlyRootWithoutVolumes": true,
+      "swapDisabled": true,
+      "containerLogRotationConfigured": true,
+      "nativeProcessLimits": {
+        "uid": 1000,
+        "denied": [
+          "/var/tmp",
+          "/home/node",
+          "/opt/rank",
+          "/etc",
+          "/root"
+        ],
+        "shared": {
+          "error": "ENOSPC",
+          "recovered": true
+        },
+        "temporary": {
+          "error": "ENOSPC",
+          "recovered": true
+        },
+        "sharedMemory": {
+          "error": "ENOSPC",
+          "recovered": true
+        },
+        "inodeLimitEnforced": true,
+        "usableAfterCleanup": true
+      },
+      "sandboxDeleted": true
+    },
+    "sandboxImage": "sha256:97b2ed428f0b0e24064eac6a9e943f5ea378e2c7c64f48777634d8a0ec716ffa",
+    "serverImage": "sha256:7ad1c044082d8278a9879b542d913f7a2736e4f903fc83daa7bbc97190b4575b"
+  },
+  "protectedLifetimeRegression": {
+    "sandboxImage": "sha256:97b2ed428f0b0e24064eac6a9e943f5ea378e2c7c64f48777634d8a0ec716ffa",
+    "serverImage": "sha256:7ad1c044082d8278a9879b542d913f7a2736e4f903fc83daa7bbc97190b4575b",
+    "facts": {
+      "uid": 1000,
+      "tokenVisible": false,
+      "rootEnvironmentReadable": false,
+      "canSignalRoot": false,
+      "dockerSocketVisible": false
+    },
+    "detachedWorkloadObserved": true,
+    "lifecycleServerKilled": true,
+    "providerTTLSeconds": 90,
+    "protectedLifetimeSeconds": 25,
+    "stoppedAtDeadline": true,
+    "exitCode": 1
+  },
+  "platform": {
+    "report": "platform-verification-1789421781061.json",
+    "startedAt": "2026-09-14T21:35:12.899Z",
+    "completedAt": "2026-09-14T21:36:21.061Z",
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ],
+    "runtime": {
+      "executor": "opensandbox",
+      "image": "sha256:97b2ed428f0b0e24064eac6a9e943f5ea378e2c7c64f48777634d8a0ec716ffa",
+      "egress": {
+        "allow": [
+          {
+            "protocol": "tcp",
+            "cidr": "192.168.49.0/24",
+            "port": 8800
+          }
+        ]
+      },
+      "cleanupPending": false
+    },
+    "images": {
+      "platform": "sha256:f0b0ffda527f41b41c13672b380fc4e770988cf3783ceb078f7b83d3af0f6408",
+      "gateway": "sha256:9328cca895438eadbe166daa875227b911607697ccf1eef187a08a5c87c18f97"
+    }
+  },
+  "labPolicy": {
+    "allow": [
+      {
+        "protocol": "tcp",
+        "cidr": "192.168.49.0/24",
+        "port": 8800
+      }
+    ]
+  },
+  "additionalVerification": {
+    "focusedGoTests": {
+      "command": "GOTOOLCHAIN=go1.26.0 go test ./contract ./internal/sandboxruntime ./internal/executor ./internal/app ./internal/postgres",
+      "passed": true
+    },
+    "realPostgresPlanPersistence": {
+      "command": "go test ./internal/postgres -run TestRuntimePoolAdmissionRetainsUnknownAllocationsAcrossWorkers -race -count=1",
+      "passed": true,
+      "nonemptyEgressPolicy": true
+    },
+    "packagedRemoteSnapshots": {
+      "sqlite": true,
+      "postgresRiverTwoWorkers": true
+    },
+    "realDshAndArtifactFailureCleanup": true
+  },
+  "sourceSha256": {
+    "execution/backend/contract/egress.go": "b535c77b5b37ccaff42a896800e9f5b6e3fc4db75846580ef1b3cf07277bc541",
+    "execution/backend/contract/egress_test.go": "3bdf2e588e278e7a997a08cf89a07ae15801af01bcfdb66d2a32eec1c088e272",
+    "execution/backend/contract/resources.go": "fba65ced512226ee409a45f6b6b21bb2a354ec252fc22252681a0ca357bfcdcb",
+    "execution/backend/internal/executor/opensandbox.go": "6e18e96fe7626464d1d4eaea5a29286cdccb786f1093803ef087f8861f96ec76",
+    "execution/backend/internal/executor/opensandbox_test.go": "c60e3bbbd99e2be2c541bf4ab975e518d3a9c83cbc65b6deaec09e952608ae41",
+    "execution/backend/internal/postgres/runtime_pool_test.go": "ae1d9e1e83a9bc7a223dbeb600e622813317da0f916ad821969a7396c99e05ab",
+    "execution/backend/internal/sandboxruntime/network.go": "9eb110eddb63c5a47e4cd33701f8b8ac2f095836877b6feeab3a6a2ca7d592de",
+    "execution/backend/internal/sandboxruntime/network_linux.go": "bc1ee542e7e93e0ef7ce1a70d0aaddaa1ef68078aa3ed816f5810f830c5a8810",
+    "execution/backend/internal/sandboxruntime/network_other.go": "33f4159ea5c08bbba26cd25ac02908b0628b5e66f5276e5e8c4fd4f5305fbf6f",
+    "execution/backend/cmd/execution-sandbox/main.go": "0769e0590c5021e2efbb1a41c193a3ba21846af7173b14ec32de4adfef949592",
+    "execution/backend/cmd/executiond/main.go": "e72d9dcbf910459fbeaebfe845208786343bc5a975551911c1ee808b6b3451e2",
+    "rank/deploy/k8s/sandbox.Dockerfile": "68554ceacf76bb5299b7b8f73a544c7d4bd93cb0f3740a835e0e453fd979caaf",
+    "rank/deploy/k8s/sandbox-init.sh": "b1933619cb7a74e14c4a09d02ea3cee39f65980f37f9dca295ba62699de3a075",
+    "rank/deploy/k8s/sandbox-lab.py": "dc98a275fa0584a3c50eafe5d1163dc6c8e894fe6227d6e4af2a363f000b5a4f",
+    "rank/deploy/k8s/platform-lab.py": "8a0bea12449b0188ec8b32bebcce88940fd698223f7a3b38c87f5ba9c29e2241",
+    "rank/deploy/k8s/opensandbox-proxy-only.py": "d3180775b6d847d9cecb37395ed3a6f7834084d5ea0a348fe0474874351b6438",
+    "rank/deploy/k8s/verify-sandbox-network.py": "ec74a26edbe50cd214e227ad67dae9b88f3c2ddda5d30f7682c8956286093073",
+    "rank/deploy/k8s/fixtures/network-target.mjs": "c4bc8785c93ca5ce8fc1207bb6ca4559e239829b6968ef9e94cc2571bec34dc4",
+    "rank/deploy/k8s/fixtures/sandbox-network.snapshot.json": "f64699ce3998468e2d5970a771442578485ce8efd6a011f3dfc05d665b501446",
+    "rank/deploy/k8s/verify-sandbox-storage.py": "288cd3117e7acd364a53f3d335a145ecb382ce784d5d06d4415b7fd831580c35",
+    "rank/deploy/k8s/verify-sandbox-lifetime.py": "e232a7ada9c83f68683ba5cc40121de6051f25189eb011b6e10f2b685f68afa8",
+    "rank/deploy/k8s/verify-platform.mjs": "e86a50fbb1edf9834dc25ded69dd6cf8806d7edfcb1b5f4c3700907e22edb240"
+  },
+  "limitations": [
+    "IPv4 TCP/UDP traffic measured; IPv6 filter installation inspected without a reachable external IPv6 target",
+    "IP prefixes and transport ports only; no dynamic domain authorization or TLS-content inspection",
+    "Lab policy permits fixture TCP 8800 across the dedicated Docker subnet, not a production tenant policy",
+    "No incoming tenant isolation or production scoped identity verification",
+    "No physical-host capacity or real model-provider limits measured",
+    "Storage is ephemeral tmpfs charged to container memory; log rotation inspected without a log-flood experiment"
+  ]
+}

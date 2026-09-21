@@ -6,7 +6,7 @@ This tutorial starts AgentKiln from source and verifies the complete local produ
 
 - Node.js `^22.19` or `>=24`
 - pnpm `11.7.0`
-- Go `1.24`
+- Go `1.26.0`
 
 Install dependencies once:
 
@@ -67,7 +67,7 @@ The parent tracks every child. `Ctrl-C`, termination of the parent, or an unexpe
 | `pnpm rank:dev` | Contributors and source debugging | Implemented development path |
 | Individual service commands | Debugging one service or replacing part of the assembly | Supported by the binaries, but intentionally not the quick path |
 | `pnpm rank:package` | Maintainer release packaging | Produces a runtime archive, SHA256, and npm package |
-| Docker Compose | Reproducible server installation | Deployment option to package next |
+| [Local Kubernetes experiment](../deploy/k8s/README.md) | Verify the packaged Rank platform, DSH workers and S3 artifacts | Deterministic public clients, browser trial and Pod-replacement recovery; production isolation/capacity remains separate |
 | macOS/Windows desktop bundle | Non-technical local users | Distribution option after the server lifecycle and upgrades are stable |
 
 The npm package is intentionally a zero-dependency thin launcher. Platform binaries, DSH, and static Web assets live in versioned GitHub Release archives, so `npx` does not resolve the full Harness dependency graph on every clean machine. Upgrading the launcher or runtime never rewrites `~/.agentkiln` data.

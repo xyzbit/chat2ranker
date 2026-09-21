@@ -42,3 +42,6 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 rank/var/
+
+.playwright-cli/
+**/__pycache__/

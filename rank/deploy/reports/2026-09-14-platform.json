@@ -1,0 +1,130 @@
+{
+  "startedAt": "2026-09-14T14:58:15.956Z",
+  "checks": [
+    "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+    "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+    "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+    "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+    "Configured Rank control host runs a separate persistent native conversation",
+    "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+    "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+  ],
+  "news": {
+    "id": "resp_01a0a06d-0c9c-71db-84d7-5c6e53c731c4",
+    "text": "今日热点（本地测试源）：\n1. 本地集群完成端点调用验证。[1]\n2. 多轮消息保留角色与工具关联。[2]",
+    "status": "completed",
+    "deployment": {
+      "id": "deploy_01a0a06d-0c7f-7d1d-b6cc-4f1b85ae46d7",
+      "name": "cluster-1789397896195",
+      "requested_reference": "cluster-1789397896195",
+      "resolution_kind": "alias",
+      "release_revision_id": "rel_01a0a06d-0c87-7ab4-b7af-53b3c7831c93",
+      "agent_version_id": "agent-002844f763a73cdb9cd4d93e49436c16-v1"
+    },
+    "usage": {
+      "input_tokens": 12,
+      "input_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens": 3,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 15
+    },
+    "cost": {
+      "amount": 0,
+      "currency": "USD",
+      "known": false
+    },
+    "elapsedMs": 1290,
+    "collectedAt": "2026-09-14T14:58:16.339Z",
+    "since": "2026-09-13T14:58:16.339Z",
+    "sources": [
+      {
+        "number": 1,
+        "title": "Rank local acceptance 1",
+        "points": 9,
+        "comments": 1,
+        "submittedAt": "2026-09-14T14:57:16.339Z",
+        "discussion": "https://news.ycombinator.com/item?id=1",
+        "url": "https://example.test/news/1"
+      },
+      {
+        "number": 2,
+        "title": "Rank local acceptance 2",
+        "points": 8,
+        "comments": 1,
+        "submittedAt": "2026-09-14T14:57:16.339Z",
+        "discussion": "https://news.ycombinator.com/item?id=2",
+        "url": "https://example.test/news/2"
+      }
+    ]
+  },
+  "chat": {
+    "first": "resp_01a0a06d-11a0-71c6-b124-0b84646625ac",
+    "second": "resp_01a0a06d-14a8-7479-ac27-53f9e116cc35",
+    "text": "小林，你喜欢科技新闻，每天有10分钟：先读要闻，再选一条深入阅读。",
+    "agentVersionId": "agent-002844f763a73cdb9cd4d93e49436c16-v1",
+    "afterRestart": "resp_01a0a06d-2d27-7323-9c2f-a6cc44dfbfd7"
+  },
+  "executionId": "exec-a0014831c3ca3bee00019e33bc71ca8b",
+  "artifact": {
+    "path": "exec-a0014831c3ca3bee00019e33bc71ca8b/sha256/cd1b579b20a8d4c11eabbde9e6140f02e1b54f82d1674251531cbd9f252ae41d/stdout.txt",
+    "sha256": "cd1b579b20a8d4c11eabbde9e6140f02e1b54f82d1674251531cbd9f252ae41d"
+  },
+  "trial": {
+    "conversationId": "conv_01a0a06d-18d3-7387-8221-935053176ea4",
+    "responseId": "resp_01a0a06d-18d3-738e-99db-bc082252fedd",
+    "title": "Remember Ada"
+  },
+  "control": {
+    "experimentId": "exp-d81a44ab9bfef47f076d21a95cdbcded",
+    "turnId": "a236f3ee-0b25-4717-8b48-f5a0dd733bfd",
+    "originalEventCount": 23,
+    "resumedEventCount": 24
+  },
+  "recoveredQueuedResponse": {
+    "responseId": "resp_01a0a06d-34fb-7936-9a10-669c6f44e7ec",
+    "executionId": "exec-1b4dbd01cb5064aa7c8015ec39d41099",
+    "attempt": 1
+  },
+  "images": {
+    "images": {
+      "platform": "rank-platform-lab:2bbfe02fd3a9ed37",
+      "gateway": "rank-gateway-lab:2bbfe02fd3a9ed37"
+    },
+    "arch": "arm64",
+    "digests": {
+      "platform": "sha256:fc94d797a7f14a49ff769e0f5d2d28eec475d8f8e951fb97b19febd1bad2126b",
+      "gateway": "sha256:8c01f1630abd82ebf126134ea3a9cc636132208ad656f7a5551cb9082c129b8d"
+    }
+  },
+  "completedAt": "2026-09-14T14:58:29.603Z",
+  "browser": {
+    "engine": "Chrome via Playwright CLI",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "checks": [
+      "Agent list and exact-version configuration load through the authenticated gateway",
+      "Direct trial sends two Chinese turns and retains both after page reload",
+      "Agent publication link resolves to the already-published endpoint",
+      "Integration drawer shows endpoint-specific Base URL, model, key selector, examples and docs link",
+      "Settings show verified model connections and control/Judge bindings",
+      "Product documentation navigation loads"
+    ],
+    "conversationId": "conv_01a0a067-98ca-751a-96ab-993a20c953c2",
+    "screenshots": [
+      {
+        "localPath": "output/playwright/platform-lab/chat-reloaded.png",
+        "sha256": "0158d241fe9cba3a8c908e6fe72c1d0aad42bfa5ef5eec6cb7c5bdde50d673d4"
+      },
+      {
+        "localPath": "output/playwright/platform-lab/integration.png",
+        "sha256": "79015aa2c9556a535274e3b969bf891cf06bd422fb21c78fa7e0f5cd61df654e"
+      }
+    ]
+  }
+}

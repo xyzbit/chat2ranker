@@ -19,11 +19,13 @@ type AgentEvaluationSummary struct {
 // ResponseListFilter restricts operator history to a tenant, optional deployment
 // and status. Before is an opaque Response identifier for descending keyset pagination.
 type ResponseListFilter struct {
-	TenantID     string
-	DeploymentID DeploymentID
-	Status       string
-	Before       ResponseID
-	Limit        int
+	TenantID       string
+	DeploymentID   DeploymentID
+	Status         string
+	Query          string
+	ConversationID ConversationID
+	Before         ResponseID
+	Limit          int
 }
 
 // ResponsePage excludes inputs, outputs, and events from the list projection.

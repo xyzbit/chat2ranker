@@ -1,0 +1,38 @@
+[
+  {
+    "name": "tool-loss",
+    "status": "failed",
+    "attempt": 1,
+    "unknownOutcome": true,
+    "cleanupPending": false,
+    "ownerExitCode": 137,
+    "runningEvents": 1,
+    "effects": 1,
+    "closedEffects": 1,
+    "deniedWrites": 1
+  },
+  {
+    "name": "tool-cancel",
+    "status": "failed",
+    "attempt": 1,
+    "unknownOutcome": true,
+    "cleanupPending": false,
+    "ownerExitCode": 137,
+    "runningEvents": 1,
+    "effects": 1,
+    "closedEffects": 1,
+    "deniedWrites": 1
+  },
+  {
+    "name": "completed",
+    "status": "completed",
+    "attempt": 1,
+    "unknownOutcome": false,
+    "cleanupPending": false,
+    "ownerExitCode": 137,
+    "runningEvents": 1,
+    "effects": 0,
+    "closedEffects": 0,
+    "deniedWrites": 0
+  }
+]

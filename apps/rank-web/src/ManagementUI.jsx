@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight } from "@phosphor-icons/react";
 
 /** Shared management-page presentation; data and actions remain owned by callers. */
 export function PageHeading({ title, hint, children }) {
-  return <header className="management-heading"><div><h1>{title}</h1>{hint && <p>{hint}</p>}</div><div className="management-actions">{children}</div></header>;
+  return <header className="management-heading"><div>{title && <h1>{title}</h1>}{hint && <p>{hint}</p>}</div><div className="management-actions">{children}</div></header>;
 }
 
 export function ErrorNotice({ error }) {

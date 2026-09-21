@@ -1,0 +1,90 @@
+{
+  "verifiedAt": "2026-09-14T20:33:09.197000+00:00",
+  "images": {
+    "platform": "sha256:22f1022b2d37c0e3158a226c6503e818e005e3a44560d8d0ab6af1e332713540",
+    "gateway": "sha256:9328cca895438eadbe166daa875227b911607697ccf1eef187a08a5c87c18f97"
+  },
+  "tags": {
+    "platform": "rank-platform-lab:1390f12176a7e501",
+    "gateway": "rank-gateway-lab:1390f12176a7e501"
+  },
+  "databaseTimeoutSeconds": 3,
+  "migrationTimeoutSeconds": 45,
+  "outageObservations": [
+    {
+      "privateReport": "fault-cee607a6529349a6bbcfc2d47909dea3-dependencies.json",
+      "imageTag": "rank-platform-lab:8b560a12473360ab",
+      "status": "http_503",
+      "elapsedSeconds": 3.007
+    },
+    {
+      "privateReport": "fault-3df641fd5b8641d6b81e9783af1329b9-dependencies.json",
+      "imageTag": "rank-platform-lab:1390f12176a7e501",
+      "status": "http_500",
+      "elapsedSeconds": 0.003
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "database",
+      "status": "failed",
+      "attempt": 1,
+      "unknownOutcome": true,
+      "cleanupPending": false,
+      "effects": 1,
+      "runningEvents": 1,
+      "evidenceRetained": false,
+      "boundedDependencyError": true
+    },
+    {
+      "name": "upload",
+      "status": "failed",
+      "attempt": 1,
+      "unknownOutcome": false,
+      "cleanupPending": false,
+      "effects": 1,
+      "runningEvents": 1,
+      "evidenceRetained": true
+    }
+  ],
+  "cleanupComplete": true,
+  "platformRegression": {
+    "privateReport": "platform-verification-1789417897949.json",
+    "passed": true,
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ]
+  },
+  "validation": {
+    "executionGoPostgres": "passed",
+    "rankGoSQLite": "passed",
+    "rankGoPostgresRace": "passed",
+    "pgtimeoutRace": "passed",
+    "lint": "passed",
+    "translationPairs": 1005,
+    "docSyncRemainingFailure": "pre-existing root AGENTS.md budget: 2398 words exceeds 1950"
+  },
+  "sourceSHA256": {
+    "execution/backend/pgtimeout/timeout.go": "2f17d45100c77c4a666b15c0bda75c8d834afd8f89f41df4bf81be474cca704c",
+    "execution/backend/pgtimeout/timeout_test.go": "950d9dc0899eed63510b1f25adeea72945450cf5d16b1097a771f043dcdc3a58",
+    "execution/backend/internal/postgres/store.go": "ffb693ca9c54eb08c1f5b68a1484741abf871bc02e999c57d09d40f2e57b1452",
+    "execution/backend/internal/httpapi/handler.go": "ef2087ba0ab0c116ce6443ede7aaa03a599a5d0542a81e053acc42c5cd2f68b7",
+    "execution/backend/cmd/executiond/main.go": "e52f6668112e823e775ac9d8e67a86c5f8d57c61c8aaf32370c8e5f4f771ae88",
+    "rank/backend/internal/sqlstore/postgres.go": "23b40f7a123b287fec4d54efe12362cafe65a9f03497dbd3ac826cf93216a369",
+    "rank/backend/internal/sqlstore/store.go": "b453c32d29bf84f4184cec5ab549111d1f457ada79793f289cb1884f0d9fece4",
+    "rank/backend/internal/domain/repository.go": "c572b55c6926e60a2adbb3eb3980cb44d3cebe4a6acf9b442649bf7f6b7a1ffc",
+    "rank/backend/internal/app/serving.go": "0ec3dd4f727da26ea57ce26cafb854d397c348ec44da858995c56df323bb74b9",
+    "rank/backend/internal/httpapi/serving.go": "20ab21521e22c57d453067c62163d1a19c4aeadeb8f11644de50681c603d0e70",
+    "rank/backend/internal/httpapi/credential_deadline_test.go": "d32d2d31aaabf4d72f8f747db8ea12e3467f8dcfbd4ae7e53626d40c3a2ad189",
+    "rank/deploy/k8s/verify-dependencies.py": "9f89688b9e8d72f997f93ccd2ed817486f2c38d18f61900a677c2ffb1772a5bd",
+    "rank/deploy/k8s/fixtures/dependencies.snapshot.json": "0af10db2c7da214cd48767b3e01dd7e1f816ef9bf375682d6e85a48e47391c64",
+    "rank/deploy/k8s/base/platform.yaml": "576cc0eefa695cc3c74ec075b2bbd907491d0bf5cdc15948e9b6c454106d80e0",
+    "rank/deploy/k8s/base/execution.yaml": "46ba304825bfd4d56e9e84eb6dfc3495e7250c54588a64d8ae2a76adee5a36db"
+  }
+}

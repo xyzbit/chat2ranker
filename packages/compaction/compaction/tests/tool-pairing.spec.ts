@@ -55,6 +55,23 @@ function closedToolStep(): Session {
 }
 
 describe('tool-pairing boundaries', () => {
+  it('keeps imported calls paired with imported or current input tool results', () => {
+    for (const resultType of ['history/message', 'user/message'] as const) {
+      const session = Session.create(SessionId(resultType))
+      const call = session.append('history/message', { message: createMessage({
+        role: 'assistant', source: { kind: 'plugin', plugin: 'import' },
+        content: [{ type: 'tool-call', id: CallId('external'), name: 'lookup', arguments: '{}' }],
+      }) }, SURFACE)
+      expect(toolPairingBalancedAfter(session, call.seq)).toBe(false)
+      const message = createToolResultMessage({ callId: CallId('external'), content: [{ type: 'text', text: 'done' }], isError: false })
+      const result = resultType === 'history/message'
+        ? session.append('history/message', { message }, SURFACE)
+        : session.append('user/message', message, SURFACE)
+      expect(toolPairingBalancedBefore(session, result.seq)).toBe(false)
+      expect(toolPairingBalancedAfter(session, result.seq)).toBe(true)
+    }
+  })
+
   it('classifies closed and open single-call steps', () => {
     const closed = closedToolStep()
     expect(before(closed, 'user/message')).toBe(true)

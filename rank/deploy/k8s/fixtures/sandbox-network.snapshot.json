@@ -1,0 +1,18 @@
+{
+  "listeningTargetsReachableOutsideSandbox": {"tcp": true, "port": true, "udp": true},
+  "invalidSetupStopsBeforeDaemon": {"missing-network-capability": true, "missing-policy": true},
+  "runtime": {
+    "allowed": true,
+    "otherPort": false,
+    "otherAddress": false,
+    "udp": false,
+    "rootNetworkCapabilitiesDropped": true,
+    "daemonNetworkCapabilitiesDropped": true,
+    "childNetworkCapabilitiesDropped": true,
+    "cannotChangePolicy": true
+  },
+  "ipv4AndIpv6DefaultDenyInstalled": true,
+  "afterLifecycleLoss": {"tcp": true, "port": false, "udp": false},
+  "deniedTrafficAbsentAtTargets": true,
+  "resourcesRemoved": true
+}

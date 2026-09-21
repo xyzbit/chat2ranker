@@ -1,0 +1,131 @@
+{
+  "images": {
+    "arch": "arm64",
+    "images": {
+      "execution": "rank-execution-lab:7e423a6b8bd50681",
+      "objects": "rank-object-lab:92ddf30de78b2113",
+      "postgres": "rank-postgres-lab:b3968e348b48f119"
+    },
+    "postgresSource": "postgres@sha256:b3968e348b48f1198cc6de6611d055dbad91cd561b7990c406c3fc28d7095b21",
+    "revision": "c078fbd287e6cfe3de6a220ffa293fe6347a4e01",
+    "digests": {
+      "execution": "sha256:bcac3a0ba33c0b751930bebee7bf876aaabc8de08497dc7b309a9d2f2c7e9037",
+      "objects": "sha256:0371de08621980bb63c930570038b0aac417d20129e9b74aef85308402315fcc",
+      "postgres": "sha256:b3968e348b48f1198cc6de6611d055dbad91cd561b7990c406c3fc28d7095b21"
+    }
+  },
+  "checks": {
+    "queueIdempotencyReplay": {
+      "executionId": "exec-4a5ec03ede02fdc61eb7399f48ac65fb",
+      "events": 5
+    },
+    "runningCancellation": "exec-4a8ecd5ea9a9d1d9fc0a3c04bdc4fa0e",
+    "podReplacementPersistence": "exec-4a5ec03ede02fdc61eb7399f48ac65fb",
+    "ownerLossWithoutReplay": {
+      "executionId": "exec-c5fd317af0559fd8862fda9ca7642c2d",
+      "status": "failed",
+      "error": "execution_outcome_unknown: previous delivery lost its owner; invocation was not replayed"
+    },
+    "rollingAcceptedWork": 8
+  },
+  "loads": [
+    {
+      "workers": 1,
+      "requests": 24,
+      "seconds": 10.812,
+      "owners": [
+        "execution-worker-5b6489c97b-4lljs-1"
+      ],
+      "peakConcurrent": 1,
+      "queueP95Seconds": 9.855
+    },
+    {
+      "workers": 2,
+      "requests": 24,
+      "seconds": 3.875,
+      "owners": [
+        "execution-worker-5b6489c97b-4lljs-1",
+        "execution-worker-5b6489c97b-sfkfc-1"
+      ],
+      "peakConcurrent": 2,
+      "queueP95Seconds": 3.414
+    }
+  ],
+  "startedAt": "2026-09-14T09:28:26.078596+00:00",
+  "nodes": [
+    {
+      "name": "rank-dev",
+      "runtime": {
+        "architecture": "arm64",
+        "containerRuntimeVersion": "containerd://2.3.4",
+        "kernelVersion": "6.10.14-linuxkit",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.37.0",
+        "operatingSystem": "linux",
+        "osImage": "Debian GNU/Linux 12 (bookworm)",
+        "runningInUserNamespace": false,
+        "swap": {
+          "capacity": 1073737728
+        }
+      },
+      "allocatable": {
+        "cpu": "8",
+        "ephemeral-storage": "1081100128256",
+        "hugepages-1Gi": "0",
+        "hugepages-2Mi": "0",
+        "hugepages-32Mi": "0",
+        "hugepages-64Ki": "0",
+        "memory": "8025700Ki",
+        "pods": "110"
+      }
+    }
+  ],
+  "workerConfig": {
+    "image": "rank-execution-lab:7e423a6b8bd50681",
+    "args": [
+      "-role=worker",
+      "-artifacts=/state/artifacts",
+      "-sandboxes=/state/sandboxes",
+      "-s3-tls=false",
+      "-worker-timeout=15s",
+      "-cleanup-grace=2s",
+      "-persistence-timeout=3s",
+      "-rescue-after=25s",
+      "-shutdown-grace=15s",
+      "-online-slots=1",
+      "-evaluation-slots=1",
+      "-max-model-concurrent=4",
+      "-max-tenant-concurrent=4",
+      "-max-queued=50"
+    ],
+    "resources": {
+      "limits": {
+        "cpu": "1",
+        "memory": "512Mi"
+      },
+      "requests": {
+        "cpu": "100m",
+        "memory": "192Mi"
+      }
+    }
+  },
+  "passed": true,
+  "finishedAt": "2026-09-14T09:29:34.150889+00:00",
+  "minikube": {
+    "version": "1.39.0",
+    "driver": "docker",
+    "dockerCPUQuota": 4,
+    "dockerMemoryBytes": 4294967296,
+    "cni": "kindest/kindnetd:v20260820-69b56db7",
+    "cniMirrorDigest": "sha256:526969f0a1a7a788a7a96f53a4ad3b51607bde7bb2841edf52a02916e8d52650"
+  },
+  "clusterRestart": {
+    "checks": {
+      "clusterRestartPersistence": "exec-4a5ec03ede02fdc61eb7399f48ac65fb"
+    },
+    "sourceReport": "k8s-d7f5c26cfb2d445aa3a3628a350185f2-report.json",
+    "startedAt": "2026-09-14T09:34:30.869413+00:00",
+    "finishedAt": "2026-09-14T09:34:31.171659+00:00",
+    "passed": true
+  }
+}

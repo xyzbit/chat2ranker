@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,7 +15,11 @@ import (
 	"github.com/xyzbit/agentkiln/execution/backend/internal/app"
 )
 
-type Options struct{ ControlToken string }
+type Options struct {
+	ControlToken  string
+	ServiceToken  string
+	CapacityToken string
+}
 type Handler struct {
 	service      *app.Service
 	controlToken string
@@ -30,9 +36,12 @@ func New(service *app.Service, options ...Options) http.Handler {
 	h := &Handler{service: service, controlToken: configured.ControlToken}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", h.health)
+	mux.HandleFunc("GET /v1/capacity", h.capacity)
 	mux.HandleFunc("GET /v1/runtimes/{harness}", h.probe)
 	mux.HandleFunc("GET /v1/model-catalog", h.listModelCatalog)
 	mux.HandleFunc("GET /v1/model-connections", h.listModelConnections)
+	mux.HandleFunc("POST /v1/local-model-connections/discover", h.discoverLocalModels)
+	mux.HandleFunc("POST /v1/local-model-connections/{id}/import", h.importLocalModel)
 	mux.HandleFunc("POST /v1/model-connections", h.createModelConnection)
 	mux.HandleFunc("GET /v1/model-connections/{id}", h.getModelConnection)
 	mux.HandleFunc("PATCH /v1/model-connections/{id}", h.updateModelConnection)
@@ -47,7 +56,14 @@ func New(service *app.Service, options ...Options) http.Handler {
 	mux.HandleFunc("GET /v1/executions/{id}/events", h.events)
 	mux.HandleFunc("POST /v1/executions/{id}/cancel", h.cancel)
 	mux.HandleFunc("GET /v1/executions/{id}/artifacts", h.artifact)
-	return recoverMiddleware(mux)
+	return recoverMiddleware(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		capacityRead := request.Method == http.MethodGet && request.URL.Path == "/v1/capacity" && configured.CapacityToken != "" && subtle.ConstantTimeCompare([]byte(request.Header.Get("Authorization")), []byte("Bearer "+configured.CapacityToken)) == 1
+		if !capacityRead && configured.ServiceToken != "" && request.URL.Path != "/v1/health" && subtle.ConstantTimeCompare([]byte(request.Header.Get("Authorization")), []byte("Bearer "+configured.ServiceToken)) != 1 {
+			writeJSON(response, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "unauthorized", "message": "invalid execution service token"}})
+			return
+		}
+		mux.ServeHTTP(response, request)
+	}))
 }
 
 func (h *Handler) listSystemModelBindings(response http.ResponseWriter, request *http.Request) {
@@ -82,6 +98,23 @@ func (h *Handler) listModelCatalog(response http.ResponseWriter, _ *http.Request
 
 func (h *Handler) listModelConnections(response http.ResponseWriter, request *http.Request) {
 	value, err := h.service.ListModelConnections(request.Context())
+	writeValue(response, value, err, 200)
+}
+
+func (h *Handler) discoverLocalModels(response http.ResponseWriter, request *http.Request) {
+	value, err := h.service.DiscoverLocalModels(request.Context())
+	writeValue(response, value, err, 200)
+}
+
+func (h *Handler) importLocalModel(response http.ResponseWriter, request *http.Request) {
+	var input struct {
+		Model string `json:"model"`
+	}
+	if err := decode(request, &input); err != nil {
+		writeError(response, err)
+		return
+	}
+	value, err := h.service.ImportLocalModel(request.Context(), request.PathValue("id"), input.Model)
 	writeValue(response, value, err, 200)
 }
 func (h *Handler) getModelConnection(response http.ResponseWriter, request *http.Request) {
@@ -128,6 +161,12 @@ func writeValue(response http.ResponseWriter, value any, err error, status int) 
 
 func (h *Handler) health(response http.ResponseWriter, _ *http.Request) {
 	writeJSON(response, 200, map[string]any{"ok": true, "service": "executiond", "storage": "repository"})
+}
+
+func (h *Handler) capacity(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Cache-Control", "no-store")
+	value, err := h.service.Capacity(request.Context())
+	writeValue(response, value, err, http.StatusOK)
 }
 
 func (h *Handler) probe(response http.ResponseWriter, request *http.Request) {
@@ -245,6 +284,11 @@ func writeError(response http.ResponseWriter, err error) {
 		writeJSON(response, problem.Status, map[string]any{"error": map[string]any{"code": problem.Code, "message": problem.Message}})
 		return
 	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		writeJSON(response, 503, map[string]any{"error": map[string]any{"code": "dependency_timeout", "message": "A service dependency timed out; check the existing request before retrying"}})
+		return
+	}
+
 	writeJSON(response, 500, map[string]any{"error": map[string]any{"code": "internal_error", "message": err.Error()}})
 }
 

@@ -4,7 +4,7 @@
   outline-offset: var(--control-focus-offset);
 }
 .composer textarea:focus-visible { outline: none; }
-:where(.management-page, .form-fields, .connection-fields, .advanced-fields, .price-fields, .release-dialog-body, .system-setup) :is(label > input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [role="combobox"]), label > textarea), input.management-search, .manual-model > input {
+:where(.management-page, .credential-form, .form-fields, .connection-fields, .advanced-fields, .price-fields, .release-dialog-body, .release-policy-editor, .system-setup) :is(label > input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [role="combobox"]), label > textarea), input.management-search {
   min-height: var(--control-height);
   padding: 8px var(--control-padding);
   border: 1px solid var(--line-strong);
@@ -46,7 +46,7 @@ label .ui-select { width: 100%; }
 .ui-select > svg { flex-shrink: 0; color: var(--muted); }
 button.ui-select:hover:not(:disabled), button.ui-select[data-state="open"] { border-color: var(--muted); background: var(--surface-subtle); }
 button.ui-select:disabled { opacity: .48; cursor: not-allowed; }
-.ui-select-menu, .model-combobox-menu {
+.ui-select-menu {
   border: 1px solid var(--line);
   border-radius: var(--menu-radius);
   background: var(--surface);
@@ -83,6 +83,17 @@ button.ui-select:disabled { opacity: .48; cursor: not-allowed; }
 .ui-select-option[data-disabled] { color: var(--muted); opacity: .55; cursor: not-allowed; }
 .ui-select-option:focus { outline: none; }
 .ui-select-scroll { display: grid; height: 24px; place-items: center; color: var(--muted); }
+.model-field-control { position: relative; width: 100%; min-width: 0; }
+.model-field-control > input { display: block; width: 100%; min-width: 0; min-height: var(--control-height); padding: 8px 38px 8px var(--control-padding); border: 1px solid var(--line-strong); border-radius: var(--control-radius); background: var(--surface); color: var(--text); font: inherit; font-size: var(--control-font-size); font-weight: 400; line-height: 20px; }
+.model-field-control > input:disabled { opacity: .48; }
+.model-field-control > button.model-field-toggle { position: absolute; inset: 1px 1px 1px auto; width: 34px; min-height: 0; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--muted); cursor: pointer; }
+.model-field-control > button.model-field-toggle:hover { background: var(--surface-subtle); }
+.model-field-menu[popover] { position: fixed; inset: auto; margin: 0; padding: var(--menu-padding); overflow-y: auto; border: 1px solid var(--line); border-radius: var(--menu-radius); background: var(--surface); color: var(--text); box-shadow: var(--menu-shadow); }
+.model-field-menu[popover]:not(:popover-open) { display: none; }
+.model-field-menu > button[role="option"] { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: var(--menu-option-height); padding: 8px var(--control-padding); border: 0; border-radius: var(--menu-option-radius); background: transparent; text-align: left; font-size: var(--control-font-size); font-weight: 400; cursor: pointer; }
+.model-field-menu > button[role="option"] span { min-width: 0; overflow-wrap: anywhere; }
+.model-field-menu > button[role="option"]:hover, .model-field-menu > button.keyboard-active { background: var(--surface-subtle); }
+.model-field-menu > button[aria-selected="true"] { color: var(--accent); }
 @media (forced-colors: active) {
   .ui-select-option[data-highlighted] { outline: 1px solid Highlight; outline-offset: -1px; }
 }

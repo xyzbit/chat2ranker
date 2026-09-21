@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -17,6 +18,16 @@ const executionApiURL = (process.env.RANK_EXECUTION_URL || "http://127.0.0.1:879
 const controlToken = process.env.RANK_CONTROL_TOKEN || "rank-local-control-token";
 const address = process.env.RANK_CONTROL_ADDR || "127.0.0.1";
 const port = Number(process.env.RANK_CONTROL_PORT || 8788);
+const authTimeoutMs = Number(process.env.RANK_AUTH_TIMEOUT_MS || 3000);
+if (!Number.isSafeInteger(authTimeoutMs) || authTimeoutMs < 1 || authTimeoutMs > 0xffffffff) throw new Error("RANK_AUTH_TIMEOUT_MS must be a positive integer");
+const managementOrigin = process.env.RANK_MANAGEMENT_ORIGIN || "";
+if (managementOrigin && (!/^https?:\/\//.test(managementOrigin) || new URL(managementOrigin).origin !== managementOrigin)) throw new Error("RANK_MANAGEMENT_ORIGIN must be an HTTP(S) origin");
+const loopback = address === "::1" || address === "localhost" || (isIP(address) === 4 && address.startsWith("127."));
+if (!loopback) {
+  if (!process.env.RANK_CONTROL_TOKEN || controlToken === "rank-local-control-token" || controlToken.length < 24 || (process.env.EXECUTION_SERVICE_TOKEN || "").length < 24) throw new Error("Non-loopback control host requires explicit private service credentials");
+  const health = await fetch(rankApiURL + "/api/health", { signal: AbortSignal.timeout(authTimeoutMs) });
+  if (!health.ok || !(await health.json()).managementAuthentication) throw new Error("Non-loopback control host requires AgentKiln management authentication");
+}
 const dshHome = resolve(process.env.RANK_DSH_HOME || resolve(projectRoot, "rank/var/dsh-control"));
 let demo = true;
 let controlRuntime = null;
@@ -35,7 +46,7 @@ function dshAPI(protocol) {
 async function resolveControlRuntime() {
   let response;
   try {
-    response = await fetch(`${executionApiURL}/v1/internal/system-model-bindings/control/runtime`, { headers: { "x-rank-control-token": controlToken } });
+    response = await fetch(`${executionApiURL}/v1/internal/system-model-bindings/control/runtime`, { headers: { "x-rank-control-token": controlToken, ...(process.env.EXECUTION_SERVICE_TOKEN ? { authorization: `Bearer ${process.env.EXECUTION_SERVICE_TOKEN}` } : {}) } });
   } catch {
     return null;
   }
@@ -66,7 +77,7 @@ async function bootHarness(runtime) {
     ...profile.layers.flatMap((layer) => layer.patches),
     ...profile.patches,
     { id: "agent-default-model", config: { provider: demo ? "rank-demo" : "rank-control", model: demo ? "rank-demo" : runtime.binding.model } },
-    { id: "system-prompt", config: { persona: `You are the AgentKiln experiment control agent. Use AgentKiln tools to list, create, and select immutable dataset and Agent versions. Use rank_add_dataset_cases for case additions and rank_create_agent_version for Agent configuration changes; both create a new version and never mutate the base. Use rank_create_model_connection and rank_update_model_connection when the user provides non-secret Provider, endpoint, model, or price information. If the user provides all required information, call the matching tool immediately. If only one or two required values are missing, ask only for those values in conversation; do not open or describe a large form. Prefer A2UI or secure UI only for browsing several candidates, reviewing many structured fields, bulk editing, or entering secrets. Never expose or ask the user to repeat internal IDs or JSON payloads. Use existing verified modelConnectionId values when configuring an Agent, but never ask for, receive, or handle API keys in conversation; secret entry stays in the secure UI. When the user asks to view experiment data, results, performance, comparisons, or previous runs, always call rank_show_experiment_results and treat the answer as the current experiment's overall comparison across all Runs and Agent versions. A multi-Agent comparison is supported: one RunGroup creates one independent child Run per selected Agent version on the same dataset and repeat policy. Never claim that multi-Agent comparison is unsupported or that several Agents share one Run. When the user asks to run or evaluate, call rank_prepare_run with any named Agent version IDs and repeat count so the UI can present that exact confirmation card. When the user asks to publish or release the selected Agent, call rank_prepare_release so the UI can compare the currently routed version with the candidate and require explicit confirmation. You may use browser, web, and file tools to prepare cases. Keep replies concise. Never claim that a run or release started unless the user explicitly used its confirmation action. ${messageProtocol}` } },
+    { id: "system-prompt", config: { persona: `You are the AgentKiln experiment control agent. Use AgentKiln tools to list, create, and select immutable dataset and Agent versions. Use rank_add_dataset_cases for case additions and rank_create_agent_version for Agent configuration changes; both create a new version and never mutate the base. Use rank_create_model_connection and rank_update_model_connection when the user provides non-secret Provider, endpoint, model, or price information. If the user provides all required information, call the matching tool immediately. If only one or two required values are missing, ask only for those values in conversation; do not open or describe a large form. Prefer A2UI or secure UI only for browsing several candidates, reviewing many structured fields, bulk editing, or entering secrets. Never expose or ask the user to repeat internal IDs or JSON payloads. Use existing verified modelConnectionId values when configuring an Agent, but never ask for, receive, or handle API keys in conversation; secret entry stays in the secure UI. When the user asks to view experiment data, results, performance, comparisons, or previous runs, always call rank_show_experiment_results and treat the answer as the current experiment's overall comparison across all Runs and Agent versions. A multi-Agent comparison is supported: one RunGroup creates one independent child Run per selected Agent version on the same dataset and repeat policy. Never claim that multi-Agent comparison is unsupported or that several Agents share one Run. When the user asks to run or evaluate, call rank_prepare_run with any named Agent version IDs and repeat count so the UI can present that exact confirmation card. Use rank_create_deployment to create serving targets directly in conversation when a deployment name and Agent are known. Use rank_set_evaluation_defaults to set optional Agent-family development/regression datasets; datasets are generic and can be replaced per evaluation or release. Use rank_release_status to check durable regression and publishing progress. When the user asks to publish or release the selected Agent, create a deployment first if needed (ask only for its name if missing), then call rank_prepare_release so the UI can compare the currently routed version with the candidate and require explicit confirmation. You may use browser, web, and file tools to prepare cases. Keep replies concise. Never claim that a run or release started unless the user explicitly used its confirmation action. ${messageProtocol}` } },
     { id: "sandbox-policy", config: { mode: "read-only", workspaceRoot: projectRoot } },
     { id: "skill-filesystem", config: { customSkillDirs: [resolve(projectRoot, "rank/assets/skills")] } },
     { insert: [{
@@ -83,7 +94,7 @@ const records = new Map();
 const turns = new Map();
 
 async function rankRequest(path, options = {}) {
-  const response = await fetch(rankApiURL + path, options);
+  const response = await fetch(rankApiURL + path, { ...options, headers: { ...options.headers, "x-rank-control-token": controlToken } });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error?.message || `rankd ${response.status}`);
   return payload;
@@ -323,10 +334,27 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === "POST" && request.url === "/control/v1/reload") {
-      if (request.headers["x-rank-control-token"] !== controlToken) return json(response, 401, { error: { code: "unauthorized", message: "控制令牌无效" } });
+      const supplied = Buffer.from(String(request.headers["x-rank-control-token"] || ""));
+      const expected = Buffer.from(controlToken);
+      if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return json(response, 401, { error: { code: "unauthorized", message: "控制令牌无效" } });
       json(response, 202, { ok: true, reloading: true });
       reloadWhenIdle();
       return;
+    }
+    if (request.method === "POST" && (request.headers.origin || request.headers.cookie)) {
+      const expectedOrigin = managementOrigin || `http://${request.headers.host}`;
+      if (request.headers.origin !== expectedOrigin || request.headers["sec-fetch-site"] === "cross-site") return json(response, 403, { error: { code: "origin_denied", message: "Management mutations require the same origin" } });
+    }
+    let authorization;
+    try {
+      authorization = await fetch(rankApiURL + "/api/identity", { headers: { authorization: request.headers.authorization || "", cookie: request.headers.cookie || "" }, signal: AbortSignal.timeout(authTimeoutMs) });
+    } catch {
+      return json(response, 503, { error: { code: "management_auth_unavailable", message: "Management authentication is unavailable" } });
+    }
+    await authorization.body?.cancel();
+    if (!authorization.ok) {
+      const status = [401, 403].includes(authorization.status) ? authorization.status : 503;
+      return json(response, status, { error: { code: status === 503 ? "management_auth_unavailable" : "management_unauthorized", message: "Management authorization required" } });
     }
     const messageMatch = request.url?.match(/^\/control\/v1\/experiments\/([^/]+)\/messages$/);
     if (request.method === "POST" && messageMatch) {

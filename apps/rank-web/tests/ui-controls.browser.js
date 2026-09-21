@@ -51,10 +51,10 @@ async (page) => {
     check(await dialog.count() === 0, "Second Escape must dismiss parent dialog");
 
     await page.goto(`${origin}/#/deployments`);
+    await page.locator(".deployment-list-row").first().click();
     await page.getByRole("button", { name: "发布新版本", exact: true }).click();
-    const route = dialog.getByRole("combobox", { name: "环境", exact: true });
-    await select(route, "production");
-    await route.click();
+    const version = dialog.getByRole("combobox", { name: "目标版本", exact: true });
+    await version.click();
     await page.screenshot({ path: `output/playwright/shared-release-${width}.png` });
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");

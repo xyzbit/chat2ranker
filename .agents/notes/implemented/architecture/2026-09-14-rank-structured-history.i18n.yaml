@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-14-rank-structured-history.md
+2026-09-14-rank-structured-history.md: b3c0d5b11aff666bf071d834359820ca9db5354f
+2026-09-14-rank-structured-history.zh.md: 5c79ef214abb888cf6c0d3378eef8fe53e173089

@@ -50,11 +50,13 @@ const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harn
 /** Directories whose packages this repository publishes: one release member each. */
 const releaseMemberDirectory = /^(?:packages\/[^/]+\/[^/]+|apps\/[^/]+|vendor\/[^/]+)$/
 /** Product-only assemblies that are workspace members but are not npm release artifacts. */
-const privateAssemblyDirectories = new Set(['apps/rank-web'])
+const privateAssemblyDirectories = new Set(['apps/rank-web', 'apps/rank-runtime', 'apps/execution-runtime'])
 
 const localArtifactDirs = new Set(['node_modules'])
 const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh': ['lib/*.js', 'config'],
+  '@deepseek-ai/dsh-rank-runtime': ['README.md'],
+  '@deepseek-ai/dsh-execution-runtime': ['history-runner.mjs', 'history-input.mjs', 'model-budget.mjs'],
   // The Web build emits sourcemaps for browser debugging; publishing them is
   // what the payload policy forbids, so the bundle ships without them.
   '@deepseek-ai/dsh-web-frontend': ['dist', '!dist/**/*.map'],

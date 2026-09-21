@@ -21,9 +21,14 @@ type EventSink func(ExecutorEvent) error
 
 // Executor runs one immutable harness invocation. The local adapter is a
 // best-effort development implementation; durable adapters may map this port
-// to a container, Kubernetes Job, or remote sandbox.
+// to a container, Kubernetes Job, or remote sandbox. Run returns only after
+// confirming shutdown, or returns an error wrapping ErrRuntimeStopUnconfirmed.
+// That error retains the execution's persistent capacity reservation.
 type Executor interface {
 	Name() string
 	Probe(context.Context, string) contract.Availability
-	Run(context.Context, string, contract.Spec, EventSink) (contract.Result, error)
+	Run(context.Context, contract.Execution, EventSink) (contract.Result, error)
+	// Cleanup confirms release of a terminal attempt without starting commands.
+	// Missing evidence returns ErrRuntimeStopUnconfirmed and retains capacity.
+	Cleanup(context.Context, contract.Execution) error
 }

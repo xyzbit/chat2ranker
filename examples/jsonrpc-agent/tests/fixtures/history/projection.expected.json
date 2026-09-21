@@ -1,0 +1,30 @@
+{
+  "sdkResult": {
+    "answer": "Ada",
+    "imported": [
+      {
+        "role": "user",
+        "text": "Remember Ada"
+      },
+      {
+        "role": "assistant",
+        "text": "Remembered Ada"
+      }
+    ],
+    "nativeAnswers": 1
+  },
+  "modelMessages": [
+    {
+      "role": "user",
+      "content": "Remember Ada"
+    },
+    {
+      "role": "assistant",
+      "content": "Remembered Ada"
+    },
+    {
+      "role": "user",
+      "content": "Who did I mention?"
+    }
+  ]
+}

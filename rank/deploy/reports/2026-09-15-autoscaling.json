@@ -1,0 +1,231 @@
+{
+  "date": "2026-09-15",
+  "startedAt": "2026-09-14T17:46:03.399180+00:00",
+  "endedAt": "2026-09-14T17:50:35.307552+00:00",
+  "sourceEvidence": {
+    "successfulRun": "capacity-51f0058f3e5b41589069e1131cddcffe.json",
+    "failedRun": "capacity-bff2c36a577b4ca083b28923e51e88a0.json"
+  },
+  "topology": {
+    "architecture": "arm64",
+    "nodeCount": 1,
+    "minikubeDriver": "docker",
+    "profileRequested": {
+      "cpu": 4,
+      "memoryMiB": 4096
+    },
+    "nodeReportedAllocatable": {
+      "cpu": "8",
+      "ephemeral-storage": "1081100128256",
+      "hugepages-1Gi": "0",
+      "hugepages-2Mi": "0",
+      "hugepages-32Mi": "0",
+      "hugepages-64Ki": "0",
+      "memory": "8025700Ki",
+      "pods": "110"
+    },
+    "sandboxPlacement": "separate Docker containers on the same laptop, outside Kubernetes scheduling",
+    "provider": "deterministic model with 10-second response delay; real DSH process"
+  },
+  "images": {
+    "tags": {
+      "platform": "rank-platform-lab:fb03a928feb5e3d9",
+      "gateway": "rank-gateway-lab:fb03a928feb5e3d9"
+    },
+    "digests": {
+      "platform": "sha256:2b5c86f082a1d80237e44f7c0b315a152e502401c9ab592784bfb517569f4f87",
+      "gateway": "sha256:8c01f1630abd82ebf126134ea3a9cc636132208ad656f7a5551cb9082c129b8d"
+    },
+    "sandboxRuntime": "sha256:56cd7d12c4aa4c29c207626a8a26fa6441208378d63b4d61b8ffed005b380331",
+    "sandboxServer": {
+      "version": "0.2.3",
+      "patchSha256": "004dbdb3b8831e452ca43dc54cd7d07cf7f04c503f84f7f6c3800d84858e28d2",
+      "images": {
+        "rank-opensandbox-upstream": "sha256:a16bd71c1a8ffabfbcfb620c7186658a9f3c2602c22bd586f1a3889681f7c8f2",
+        "rank-opensandbox-server": "sha256:d7052d2ac361e67bd8a1b322f3ea6b0f568c82af140efbb1f62488b758f4cfd3"
+      }
+    },
+    "kedaContainerImageIDs": [
+      "sha256:e7c34d878b0fbab6b0da5f7588d91e144363c57644bb2b56dc4296c26b10ba46",
+      "sha256:907d06b879a00c486dfb8671bd240b0a4f81d3d3f9fdce92d0db2e0382d0d8e2",
+      "sha256:50ac16b2af356c30bb4b1179dcc304db31fb148859f52f4df1fd78d78d89fe0f"
+    ]
+  },
+  "scaler": {
+    "kedaVersion": "2.20.2",
+    "minReplicas": 1,
+    "maxReplicas": 3,
+    "scaleUpPodsPer15Seconds": 1,
+    "scaleDownPodsPer30Seconds": 1,
+    "scaleDownStabilizationSeconds": 45,
+    "targetPerQueue": 1
+  },
+  "workerConfig": {
+    "image": "rank-platform-lab:fb03a928feb5e3d9",
+    "args": [
+      "-role=worker",
+      "-artifacts=/state/artifacts",
+      "-sandboxes=/state/sandboxes",
+      "-s3-tls=false",
+      "-executor=opensandbox",
+      "-sandbox-scope=rank-dev",
+      "-sandbox-image=sha256:56cd7d12c4aa4c29c207626a8a26fa6441208378d63b4d61b8ffed005b380331",
+      "-worker-timeout=60s",
+      "-cleanup-grace=2s",
+      "-persistence-timeout=3s",
+      "-rescue-after=75s",
+      "-shutdown-grace=15s",
+      "-online-slots=1",
+      "-evaluation-slots=1",
+      "-max-model-concurrent=4",
+      "-max-tenant-concurrent=4",
+      "-max-queued=50"
+    ],
+    "resources": {
+      "limits": {
+        "cpu": "1",
+        "memory": "768Mi"
+      },
+      "requests": {
+        "cpu": "100m",
+        "memory": "192Mi"
+      }
+    }
+  },
+  "checks": {
+    "privateSandboxPorts": true,
+    "growthAndDrain": true,
+    "quotaExclusionAndCancellation": true,
+    "runtimeCleanup": true
+  },
+  "phases": {
+    "initial": {
+      "samples": 30,
+      "firstAt": "2026-09-14T17:46:15.291387+00:00",
+      "lastAt": "2026-09-14T17:46:49.950009+00:00",
+      "desiredReplicas": [
+        1,
+        2
+      ],
+      "readyReplicas": [
+        1,
+        2
+      ],
+      "maxOnlineDemand": 0,
+      "maxQuotaBlocked": 0
+    },
+    "load": {
+      "samples": 114,
+      "firstAt": "2026-09-14T17:46:50.066720+00:00",
+      "lastAt": "2026-09-14T17:48:57.638608+00:00",
+      "desiredReplicas": [
+        1,
+        2,
+        3
+      ],
+      "readyReplicas": [
+        1,
+        2,
+        3
+      ],
+      "maxOnlineDemand": 4,
+      "maxQuotaBlocked": 12
+    },
+    "drain": {
+      "samples": 44,
+      "firstAt": "2026-09-14T17:48:58.768642+00:00",
+      "lastAt": "2026-09-14T17:49:50.277733+00:00",
+      "desiredReplicas": [
+        1,
+        2,
+        3
+      ],
+      "readyReplicas": [
+        1,
+        2,
+        3
+      ],
+      "maxOnlineDemand": 0,
+      "maxQuotaBlocked": 0
+    },
+    "quota": {
+      "samples": 37,
+      "firstAt": "2026-09-14T17:49:51.600924+00:00",
+      "lastAt": "2026-09-14T17:50:30.755714+00:00",
+      "desiredReplicas": [
+        1
+      ],
+      "readyReplicas": [
+        1
+      ],
+      "maxOnlineDemand": 1,
+      "maxQuotaBlocked": 7
+    }
+  },
+  "load": {
+    "submitted": 16,
+    "outcomes": {
+      "completed": 16
+    },
+    "allAttemptOne": true,
+    "queueWaitSeconds": {
+      "p50": 53.296561,
+      "p95": 107.752339,
+      "max": 107.752339
+    }
+  },
+  "quota": {
+    "maxModelConcurrent": 1,
+    "submitted": 8,
+    "outcomes": {
+      "completed": 2,
+      "cancelled": 6
+    },
+    "measurement": "40-second observation; cancellation follows"
+  },
+  "firstRunFailure": {
+    "outcomes": {
+      "completed": 14,
+      "failed": 2
+    },
+    "failure": "TimeoutError",
+    "cause": "OpenSandbox 0.2.3 allocator probes server container namespace instead of Docker host; two host-port bind collisions",
+    "fix": "version-checked lab server patch disables host-port publication and resolves private proxy targets",
+    "operatorRepair": "exact Docker create/destroy labels supplied missing runtime handles; ordinary reconciler confirmed absence; failed outcomes retained without replay",
+    "cleanupPendingAfterRepair": 0
+  },
+  "restoredState": {
+    "apiReady": 1,
+    "workerDesired": 2,
+    "workerReady": 2,
+    "maxModelConcurrent": 4,
+    "labScaledObjectRemoved": true,
+    "labHPARemoved": true,
+    "ownedRuntimeContainersRemaining": 0,
+    "temporaryModelContainersRemaining": 0,
+    "cleanupErrors": []
+  },
+  "limitations": [
+    "single laptop; not physical-host scaling or high availability",
+    "KEDA scales worker control processes; remote Docker sandbox capacity is separately bounded",
+    "online burst only; no measured evaluation scaling workload in this run",
+    "application concurrent quota only; no provider RPM/TPM throttling detection",
+    "controlled model response time; no paid model, quality or production latency claim",
+    "idle drain and finite cancellations; not arbitrary active owner-loss coverage",
+    "production authentication and disk/egress isolation remain unverified"
+  ],
+  "platformRegressionAfterServerPatch": {
+    "startedAt": "2026-09-14T17:55:52.744Z",
+    "completedAt": "2026-09-14T17:56:59.673Z",
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ],
+    "recoveredQueuedAttempt": 1
+  }
+}

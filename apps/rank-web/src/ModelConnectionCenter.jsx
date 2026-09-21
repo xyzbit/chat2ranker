@@ -1,8 +1,8 @@
 import { SelectField } from "./SelectField.jsx";
-import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowClockwise, ArrowLeft, ArrowRight, CaretDown, CheckCircle, CircleNotch, Key, MagnifyingGlass, Plus, Robot, Trash, WarningCircle } from "@phosphor-icons/react";
-import { isManualModel, modelOptions, protocolOptions, providerOptions } from "./model-connections.js";
-import { menuConfig, menuStyle } from "./ui-config.js";
+import { useMemo, useState } from "react";
+import { ArrowClockwise, ArrowLeft, ArrowRight, CheckCircle, CircleNotch, Key, Plus, Robot, Trash, WarningCircle } from "@phosphor-icons/react";
+import { modelOptions, protocolOptions, providerOptions } from "./model-connections.js";
+import { ModelField } from "./ModelField.jsx";
 
 const emptyPrice = { input: "", output: "", cacheRead: "", cacheWrite: "" };
 
@@ -44,86 +44,6 @@ function formatPrice(value) {
   return Number(value).toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
-function ModelPicker({ value, options, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [manual, setManual] = useState(() => !options.length || isManualModel(value, options));
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
-  const trigger = useRef(null);
-  const menu = useRef(null);
-  const listId = useId();
-  const visible = options.filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(query.trim().toLowerCase()));
-  const selected = options.find((item) => item.id === value);
-
-  useLayoutEffect(() => {
-    if (!open) return;
-    const node = menu.current;
-    const place = () => {
-      const rect = trigger.current.getBoundingClientRect();
-      const { gap, viewportPadding, maxHeight, minWidth } = menuConfig;
-      const width = Math.min(Math.max(rect.width, minWidth), innerWidth - viewportPadding * 2);
-      const below = innerHeight - rect.bottom - viewportPadding;
-      const above = rect.top - viewportPadding;
-      const height = Math.min(maxHeight, Math.max(below, above));
-      Object.assign(node.style, {
-        width: `${width}px`,
-        left: `${Math.max(viewportPadding, Math.min(rect.left, innerWidth - width - viewportPadding))}px`,
-        top: below >= height ? `${rect.bottom + gap}px` : "auto",
-        bottom: below >= height ? "auto" : `${innerHeight - rect.top + gap}px`,
-        maxHeight: `${height}px`,
-      });
-    };
-    const toggle = (event) => { if (event.newState === "closed") setOpen(false); };
-    node.addEventListener("toggle", toggle);
-    node.showPopover();
-    place();
-    node.querySelector("input").focus();
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    return () => {
-      node.removeEventListener("toggle", toggle);
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-    };
-  }, [open]);
-
-  function choose(item) {
-    onChange(item.id);
-    setOpen(false);
-    setQuery("");
-    trigger.current.focus();
-  }
-
-  function handleKey(event) {
-    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); trigger.current.focus(); }
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      const next = Math.max(0, Math.min(visible.length - 1, active + (event.key === "ArrowDown" ? 1 : -1)));
-      setActive(next);
-      document.getElementById(`${listId}-${next}`)?.scrollIntoView({ block: "nearest" });
-    }
-    if (event.key === "Enter" && visible[active]) { event.preventDefault(); choose(visible[active]); }
-  }
-
-  if (manual) return <div className="manual-model">
-    <input required autoFocus value={value} onChange={(event) => onChange(event.target.value)} placeholder="输入模型 ID" />
-    {options.length > 0 && <button type="button" onClick={() => { onChange(options[0].id); setManual(false); }}>返回模型列表</button>}
-    <small>保存时会用该模型发起最小请求验证。</small>
-  </div>;
-
-  return <div className="model-combobox" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
-    <button ref={trigger} type="button" className="model-combobox-trigger" aria-label="选择模型" aria-haspopup="listbox" aria-controls={open ? listId : undefined} aria-expanded={open} onClick={() => { setActive(0); setOpen((current) => !current); }}>
-      <span><strong>{selected?.name || value}</strong><small>{selected?.id || value}</small></span><CaretDown size={14} />
-    </button>
-    {open && <div ref={menu} popover="auto" className="model-combobox-menu" style={menuStyle}>
-      <label><MagnifyingGlass size={14} /><input role="combobox" aria-label="搜索模型" aria-expanded="true" aria-controls={listId} aria-activedescendant={visible[active] ? `${listId}-${active}` : undefined} value={query} onKeyDown={handleKey} onChange={(event) => { setQuery(event.target.value); setActive(0); }} placeholder="搜索模型" /></label>
-      <div id={listId} role="listbox" aria-label="模型">{visible.map((item, index) => <button id={`${listId}-${index}`} tabIndex={-1} className={index === active ? "keyboard-active" : ""} type="button" role="option" aria-selected={item.id === value} key={item.id} onClick={() => choose(item)}>
-        <span><strong>{item.name}</strong><small>{item.id}</small></span><em>{item.source === "official" ? "官方目录" : "连接发现"}</em>
-      </button>)}{!visible.length && <p>没有匹配模型</p>}</div>
-      <button type="button" className="manual-model-action" onClick={() => { setManual(true); setOpen(false); }}><Plus size={14} />使用其他模型 ID</button>
-    </div>}
-  </div>;
-}
 
 export function ModelConnectionCenter({ connections, catalog, systemModels = [], onBind, onSave, onSync, onDelete, onUse }) {
   const [draft, setDraft] = useState(null);
@@ -202,7 +122,7 @@ export function ModelConnectionCenter({ connections, catalog, systemModels = [],
         <label><span>名称</span><input required value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="团队 DeepSeek" /></label>
         <label className="wide"><span>Base URL</span><input required value={draft.baseUrl} onChange={(event) => update("baseUrl", event.target.value)} placeholder="https://api.example.com/v1" /></label>
         <label><span>API Key</span><input type="password" autoComplete="new-password" value={draft.apiKey} onChange={(event) => update("apiKey", event.target.value)} placeholder={draft.hasCredential ? "留空保留当前凭据" : "安全保存到 executiond"} /></label>
-        <div className="model-field"><span>模型</span><ModelPicker key={`${draft.provider}:${draft.models.join(",")}`} value={draft.defaultModel} options={options} onChange={selectModel} /></div>
+        <div className="model-field"><span>模型</span><ModelField value={draft.defaultModel} options={options} onChange={selectModel} disabled={busy} /></div>
       </div>
 
       <div className={`effective-price ${draft.overridePrice ? "override" : inherited ? "inherited" : "missing"}`}>

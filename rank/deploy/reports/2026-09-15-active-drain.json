@@ -1,0 +1,155 @@
+{
+  "verifiedAt": "2026-09-14T20:46:52.565367+00:00",
+  "images": {
+    "platform": "sha256:22f1022b2d37c0e3158a226c6503e818e005e3a44560d8d0ab6af1e332713540",
+    "gateway": "sha256:9328cca895438eadbe166daa875227b911607697ccf1eef187a08a5c87c18f97"
+  },
+  "workerConfig": {
+    "args": [
+      "-role=worker",
+      "-artifacts=/state/artifacts",
+      "-sandboxes=/state/sandboxes",
+      "-s3-tls=false",
+      "-executor=opensandbox",
+      "-sandbox-pool=rank-dev",
+      "-sandbox-capacity-cpu=2",
+      "-sandbox-capacity-memory=2Gi",
+      "-sandbox-scope=rank-dev",
+      "-sandbox-image=sha256:bbc01a791cc6f461357481aedac85410bc4224c50040eb939cf01b3ab81edaf9",
+      "-database-timeout=3s",
+      "-worker-timeout=60s",
+      "-cleanup-grace=2s",
+      "-persistence-timeout=3s",
+      "-rescue-after=75s",
+      "-shutdown-grace=15s",
+      "-online-slots=1",
+      "-evaluation-slots=1",
+      "-max-model-concurrent=4",
+      "-max-tenant-concurrent=4",
+      "-max-queued=50"
+    ],
+    "podGraceSeconds": 25
+  },
+  "privateReport": "fault-acc3a993c1e748bc9e72d0e8bd1ca44c-active-drain.json",
+  "scenarios": [
+    {
+      "name": "complete-in-grace",
+      "observed": [
+        {
+          "status": "completed",
+          "attempt": 1,
+          "unknownOutcome": false,
+          "cleanupPending": false,
+          "effects": 1,
+          "runningEvents": 1
+        },
+        {
+          "status": "completed",
+          "attempt": 1,
+          "unknownOutcome": false,
+          "cleanupPending": false,
+          "effects": 1,
+          "runningEvents": 1
+        }
+      ],
+      "sentinel": {
+        "status": "completed",
+        "attempt": 1,
+        "unknownOutcome": false,
+        "cleanupPending": false,
+        "effects": 0,
+        "runningEvents": 1
+      },
+      "exitCodes": [
+        0
+      ],
+      "workerExitObservedSeconds": [
+        8.992
+      ],
+      "sentinelQueuedUntilExit": true
+    },
+    {
+      "name": "interrupt-at-grace",
+      "observed": [
+        {
+          "status": "failed",
+          "attempt": 1,
+          "unknownOutcome": true,
+          "cleanupPending": false,
+          "effects": 1,
+          "runningEvents": 1
+        },
+        {
+          "status": "completed",
+          "attempt": 1,
+          "unknownOutcome": false,
+          "cleanupPending": false,
+          "effects": 1,
+          "runningEvents": 1
+        }
+      ],
+      "sentinel": {
+        "status": "completed",
+        "attempt": 1,
+        "unknownOutcome": false,
+        "cleanupPending": false,
+        "effects": 0,
+        "runningEvents": 1
+      },
+      "exitCodes": [
+        0
+      ],
+      "workerExitObservedSeconds": [
+        15.495
+      ],
+      "sentinelQueuedUntilExit": true
+    },
+    {
+      "name": "rolling-update",
+      "observed": [
+        {
+          "status": "completed",
+          "attempt": 1,
+          "unknownOutcome": false,
+          "cleanupPending": false,
+          "effects": 1,
+          "runningEvents": 1
+        },
+        {
+          "status": "completed",
+          "attempt": 1,
+          "unknownOutcome": false,
+          "cleanupPending": false,
+          "effects": 1,
+          "runningEvents": 1
+        }
+      ],
+      "sentinel": {
+        "status": "completed",
+        "attempt": 1,
+        "unknownOutcome": false,
+        "cleanupPending": false,
+        "effects": 0,
+        "runningEvents": 1
+      },
+      "exitCodes": [
+        0,
+        0
+      ],
+      "workerExitObservedSeconds": [
+        7.671,
+        7.828
+      ],
+      "sentinelQueuedUntilExit": null
+    }
+  ],
+  "cleanupComplete": true,
+  "sourceSHA256": {
+    "rank/deploy/k8s/verify-active-drain.py": "42d341b1abd726e0ed76aea96498b802386760674fc66a95e7efded47c7f55b3",
+    "rank/deploy/k8s/fixtures/fault-model.mjs": "4a0026a34a653f4380793be924c5c6a08486d2c45f7aa8f5f08e46e2b8759c13",
+    "rank/deploy/k8s/fixtures/active-drain.snapshot.json": "ffcaff0fc17e57ceeefa5c192cdb417e6f366e94932b93f19eef985a0f7d6681",
+    "execution/backend/cmd/executiond/main.go": "e52f6668112e823e775ac9d8e67a86c5f8d57c61c8aaf32370c8e5f4f771ae88",
+    "execution/backend/internal/dispatch/river.go": "f09afd5b8bf8115f81ddd3b729509fc17d9d0bad0b71e6c2976d3293bb496bdf",
+    "execution/backend/internal/app/service.go": "fcab9be838fc99f4342deac3785dee36214c8b29c502bf49020460341f39565f"
+  }
+}

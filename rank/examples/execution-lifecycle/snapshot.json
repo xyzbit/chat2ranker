@@ -1,0 +1,101 @@
+{
+  "failedResult": {
+    "status": "failed",
+    "output": "{\"status\":\"ok\"}",
+    "usage": {
+      "inputTokens": 70,
+      "outputTokens": 30
+    },
+    "costKnown": true,
+    "schemaFailureIdentified": true,
+    "failureArtifactReadable": true,
+    "replayAttempt": 1,
+    "cleanupPending": false
+  },
+  "complete": {
+    "status": "completed",
+    "attempt": 1,
+    "output": "fixture started\nfixture completed",
+    "costKnown": false
+  },
+  "lifecycle": [
+    {
+      "type": "execution.queued",
+      "status": "queued",
+      "attempt": 0
+    },
+    {
+      "type": "execution.running",
+      "status": "running",
+      "attempt": 1
+    },
+    {
+      "type": "execution.completed",
+      "status": "completed",
+      "attempt": 1
+    }
+  ],
+  "stream": "fixture started\nfixture completed\n",
+  "artifact": "fixture started\nfixture completed\n",
+  "artifactEncoding": "utf-8",
+  "queueExpiry": {
+    "status": "failed",
+    "attempt": 0,
+    "error": "execution_queue_expired: queue wait limit exceeded before runtime start",
+    "events": [
+      {
+        "type": "execution.queued",
+        "status": "queued",
+        "attempt": 0
+      },
+      {
+        "type": "execution.failed",
+        "status": "failed",
+        "attempt": 0
+      }
+    ]
+  },
+  "queuedCancellation": {
+    "status": "cancelled",
+    "attempt": 0
+  },
+  "runningCancellation": {
+    "status": "cancelled",
+    "attempt": 1
+  },
+  "runtimeCleanup": {
+    "running": true,
+    "completed": false,
+    "cancelled": false
+  },
+  "replayFromSequence": 2,
+  "capacity": {
+    "executor": "local-process",
+    "online": {
+      "slotsPerWorker": 1,
+      "active": 0,
+      "ready": 0,
+      "resourceBlocked": 0,
+      "quotaBlocked": 0,
+      "capabilityBlocked": 0,
+      "expired": 0,
+      "deliveryBlocked": 0,
+      "cleanupPending": 0,
+      "demand": 0,
+      "oldestReadyWaitSeconds": 0
+    },
+    "evaluation": {
+      "slotsPerWorker": 0,
+      "active": 0,
+      "ready": 0,
+      "resourceBlocked": 0,
+      "quotaBlocked": 0,
+      "capabilityBlocked": 1,
+      "expired": 0,
+      "deliveryBlocked": 0,
+      "cleanupPending": 0,
+      "demand": 0,
+      "oldestReadyWaitSeconds": 0
+    }
+  }
+}

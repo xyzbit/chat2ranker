@@ -1,0 +1,6 @@
+- id: base
+  name: '@deepseek-ai/cordis-plugin-include'
+  config:
+    path: ../../../minimal.cordis.yml
+- id: sdk-history-fixture
+  name: ./import.mjs

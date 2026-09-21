@@ -1,0 +1,101 @@
+{
+  "date": "2026-09-15",
+  "passed": true,
+  "environment": "Single laptop, minikube rank-dev, PostgreSQL/River, S3-compatible SeaweedFS and OpenSandbox with deterministic model fixtures",
+  "platform": {
+    "startedAt": "2026-09-14T23:18:04.144Z",
+    "completedAt": "2026-09-14T23:21:25.458Z",
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Independent operator identities, live credential revocation, scoped control service and tenant/endpoint public permissions hold through the gateway",
+      "Known worker failure retains output, usage and S3 result evidence after cleanup; idempotent replay stays on attempt one",
+      "Frozen model budget stops repeated 429 calls after one provider request and survives idempotent replay",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ],
+    "access": {
+      "unauthenticatedManagement": 401,
+      "operatorIdentity": true,
+      "authoritativeReleaseActor": true,
+      "credentialsCannotCrossPlanes": true,
+      "crossTenantGrant": 400,
+      "crossTenantAndEndpointAccess": 404,
+      "missingScope": 403,
+      "revokedServingKey": 401,
+      "replacementRetainsHistory": true,
+      "operatorRotation": true,
+      "serviceScope": {
+        "bootstrap": 200,
+        "credentials": 403,
+        "control": 401
+      }
+    },
+    "modelBudget": {
+      "limit": 1,
+      "providerRequests": 1,
+      "status": "failed",
+      "replayAttempt": 1,
+      "cleanupPending": false
+    },
+    "runtime": {
+      "executor": "opensandbox",
+      "image": "sha256:82a9a89775f48546384a1590ef901d2bcb9b3dbb49d0d285877872cf66d89db0",
+      "egress": {
+        "allow": [
+          {
+            "protocol": "tcp",
+            "cidr": "192.168.49.0/24",
+            "port": 8800
+          }
+        ]
+      },
+      "cleanupPending": false
+    }
+  },
+  "images": {
+    "platform": "sha256:3136d409157d683c9c353cedc2e6967369e4c0885613f7a3bd71cc206c2778b5",
+    "gateway": "sha256:8077a75ee0820aaf7f8cabbed83bacd526518dfce942420268adb683e82e7774"
+  },
+  "verification": {
+    "accessHTTPAndConfigGoTests": true,
+    "packagedAccessSnapshot": true,
+    "controlHostTests": 3,
+    "lint": true,
+    "docSync": {
+      "passed": 27,
+      "failed": 1,
+      "failure": "Pre-existing AGENTS.md word budget: 2398 > 1950"
+    },
+    "authenticatedDevelopmentSecretsRefused": true
+  },
+  "sourceSha256": {
+    "rank/backend/internal/access/file.go": "7b85342808efc9c23648320280bde5f46e0d5f73b9d93729e64aa7e24420f2a0",
+    "rank/backend/internal/access/file_test.go": "6d4cbd22e48219cda63866f6ee389bd28439872413f9b664f9eb529fae34a045",
+    "rank/backend/internal/httpapi/access.go": "a68a7a4a3ca9f22439e73f5bfa955a05924c31cf6a6f07515b778627930b033d",
+    "rank/backend/internal/httpapi/access_test.go": "b565577122d0eaaf8c4fecd53f82daacb035d558b0180d321b815a917c8b5ad8",
+    "rank/backend/internal/httpapi/handler.go": "3f330bbf068c622d619b003154f239746a24d10acf502a370d4a704160783d19",
+    "rank/backend/internal/httpapi/serving.go": "afead31008645d31775479555be618a87800262613fb4c377022cb3af0d9ae79",
+    "rank/backend/internal/httpapi/release_task.go": "4d7526c2201b8d6370ba8d963c589f3aac057cdbfa47871baa8553cb21842d1f",
+    "rank/backend/cmd/rankd/main.go": "ab9cac5271e64a5a47f0b79bcbca20b9e4660b48a6923419bafaa0c4cd9efe04",
+    "apps/rank-web/control-host/src/main.mjs": "6b32cc98d90eb8de613c1c4490b4e1f60f23f4a8d7ece0962941c4f3ee509d13",
+    "apps/rank-web/control-host/plugins/rank-control.mjs": "7c7c07147ebf91dabd563b4f3f4450bd58097dfa476bbbc87e38cc66dc4b3831",
+    "apps/rank-web/tests/control-host.test.mjs": "45c7a2a4c9c40238f58b349e51911db14bad274e7b6d530ac2b88d8db4d0915f",
+    "rank/examples/access-control/scenario.mjs": "47505cfdcd7d28770e34ea5dbf39fabe3e8effa61495377bfa26f48abb50f501",
+    "rank/examples/access-control/verify.mjs": "9dfc3f8562dd0ca7bd7125dbcfb831f5d6802e7f0f0a52f7f25927cd6552c0c9",
+    "rank/examples/access-control/snapshot.json": "a58d48e5fd003e2be11b1775d0e3c3b9625324fcc0b90f0a5c84f5a5cb72e81a",
+    "rank/deploy/k8s/gateway.conf": "ac508fd4e1c69c5f1e3cdcfd2a858ee723b66fe68f812fa58bef5ffe8783e4ec",
+    "rank/deploy/k8s/base/platform.yaml": "32f160fb1eb61d0b59d9c873ccd76bb613fe0209600f4d671d2ba3e69b1bfabc",
+    "rank/deploy/k8s/platform-lab.py": "166e5e44d3ac31d4ada5bc695fb72a886bd5f5aa4ad77e6f16672d6150c45f6b",
+    "rank/deploy/k8s/verify-platform.mjs": "8382f50ca2b1c5a0decf2543ba8b9896ac23d00b360901e0b77d5d5f21cee589"
+  },
+  "limitations": [
+    "Operators administer one shared workspace; no team-isolated Agent/Dataset/model-connection ownership",
+    "No enterprise SSO, complete audit, internal service-token overlap rotation or production TLS acceptance",
+    "Credential revocation applies after file projection and on subsequent authorization; it does not cancel accepted work or open streams",
+    "No real provider quota, physical multi-host capacity or high-availability acceptance"
+  ]
+}

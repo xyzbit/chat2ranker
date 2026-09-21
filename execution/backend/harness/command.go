@@ -38,14 +38,17 @@ func NewCommand(config CommandConfig) Adapter { return &commandAdapter{config: c
 func (adapter *commandAdapter) ID() string { return adapter.config.ID }
 
 func (adapter *commandAdapter) Probe(context.Context) contract.Availability {
-	availability := contract.Availability{Label: adapter.config.Label}
+	availability := contract.Availability{Label: adapter.config.Label, StructuredHistory: strings.Contains(strings.Join(adapter.config.Argv, "\n"), "{input}")}
 	if adapter.config.MissingReason != "" {
 		availability.Reason = adapter.config.MissingReason
 		return availability
 	}
-	availability.Installed = true
-	if adapter.config.RequiredEnvironment != "" && strings.TrimSpace(os.Getenv(adapter.config.RequiredEnvironment)) == "" {
-		availability.Reason = "未配置 " + adapter.config.RequiredEnvironment
+	if len(adapter.config.Argv) == 0 {
+		availability.Reason = "Harness 命令未配置"
+		return availability
+	}
+	if _, err := exec.LookPath(adapter.config.Argv[0]); err != nil {
+		availability.Reason = "Harness 可执行文件不存在：" + adapter.config.Argv[0]
 		return availability
 	}
 	if adapter.config.RequiredFile != "" {
@@ -54,12 +57,22 @@ func (adapter *commandAdapter) Probe(context.Context) contract.Availability {
 			return availability
 		}
 	}
-	availability.Available = len(adapter.config.Argv) > 0
+	availability.Installed = true
+	if adapter.config.RequiredEnvironment != "" && strings.TrimSpace(os.Getenv(adapter.config.RequiredEnvironment)) == "" {
+		availability.Reason = "未配置 " + adapter.config.RequiredEnvironment
+		return availability
+	}
+	availability.Available = true
 	availability.Configured = availability.Available
 	return availability
 }
 
 func (adapter *commandAdapter) Run(ctx context.Context, invocation Invocation) (contract.Result, error) {
+	if strings.Contains(strings.Join(adapter.config.Argv, "\n"), "{input}") {
+		if err := writeJSON(filepath.Join(invocation.HarnessHome, "input.json"), invocation.Spec); err != nil {
+			return contract.Result{}, err
+		}
+	}
 	argv := expandArgv(adapter.config.Argv, invocation)
 	stdout, stderr := newLimitedBuffer(retainedOutputBytes), newLimitedBuffer(retainedOutputBytes)
 	command := exec.Command(argv[0], argv[1:]...)
@@ -135,7 +148,7 @@ func expandArgv(template []string, invocation Invocation) []string {
 	skills, _ := json.Marshal(invocation.Spec.Skills)
 	result := make([]string, len(template))
 	for index, value := range template {
-		result[index] = strings.NewReplacer("{prompt}", prompt, "{workspace}", invocation.Workspace, "{harnessHome}", invocation.HarnessHome, "{model}", invocation.Spec.Model, "{preset}", preset, "{systemPrompt}", invocation.Spec.SystemPrompt, "{toolsJson}", string(tools), "{skillsJson}", string(skills)).Replace(value)
+		result[index] = strings.NewReplacer("{input}", filepath.Join(invocation.HarnessHome, "input.json"), "{prompt}", prompt, "{workspace}", invocation.Workspace, "{harnessHome}", invocation.HarnessHome, "{model}", invocation.Spec.Model, "{preset}", preset, "{systemPrompt}", invocation.Spec.SystemPrompt, "{toolsJson}", string(tools), "{skillsJson}", string(skills)).Replace(value)
 	}
 	return result
 }
@@ -159,7 +172,9 @@ func effectivePrompt(spec contract.Spec) string {
 			}
 			sections = append(sections, strings.Join(lines, "\n"))
 		}
-		sections = append(sections, "Task:\n"+spec.Prompt)
+		if spec.Prompt != "" {
+			sections = append(sections, "Task:\n"+spec.Prompt)
+		}
 		return strings.Join(sections, "\n\n")
 	}
 	expected, _ := json.Marshal(spec.Expected)
@@ -216,12 +231,9 @@ func (writer streamWriter) Write(value []byte) (int, error) {
 	if err != nil || writer.emit == nil {
 		return written, err
 	}
-	message := strings.TrimSpace(string(value))
+	message := string(value)
 	if message == "" {
 		return written, nil
-	}
-	if len(message) > 8<<10 {
-		message = message[:8<<10] + "…"
 	}
 	if err := writer.emit(ProgressEvent{Type: writer.kind, Message: message, At: time.Now().UTC()}); err != nil {
 		return written, err

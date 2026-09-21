@@ -14,7 +14,8 @@ import (
 	"time"
 
 	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
-	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlstore"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/testdb"
 )
 
 type memoryWebhookSecrets struct{ values map[string][]byte }
@@ -70,7 +71,7 @@ func (sender *fakeWebhookSender) Send(_ context.Context, _ string, body []byte, 
 
 func TestWebhookOutboxSignsRetriesAndRecoversExpiredLease(t *testing.T) {
 	ctx := context.Background()
-	store, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "rank.db"))
+	store, err := testdb.Open(t, filepath.Join(t.TempDir(), "rank.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +164,7 @@ func TestWebhookOutboxSignsRetriesAndRecoversExpiredLease(t *testing.T) {
 	}
 }
 
-func admitWebhookTestResponse(t *testing.T, store *sqlite.Store, credential domain.APICredential, deployment domain.Deployment, id string, now time.Time) domain.ServingResponse {
+func admitWebhookTestResponse(t *testing.T, store *sqlstore.Store, credential domain.APICredential, deployment domain.Deployment, id string, now time.Time) domain.ServingResponse {
 	t.Helper()
 	response := domain.ServingResponse{
 		ID: domain.ResponseID(id), TenantID: deployment.TenantID, CredentialID: credential.ID, DeploymentID: deployment.ID,

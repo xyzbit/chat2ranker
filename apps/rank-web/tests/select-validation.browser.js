@@ -1,6 +1,7 @@
 /** Browser-only bootstrap variants verify empty required values and long option lists. */
 async (page) => {
   const check = (v, message) => { if (!v) throw new Error(message); };
+  await page.evaluate(() => localStorage.setItem("rank.modelSetupDismissed", "true"));
   await page.route("**/api/bootstrap", async route => {
     const response = await route.fetch();
     const json = await response.json();
@@ -19,10 +20,10 @@ async (page) => {
     await page.locator('.ui-select-option:not([data-disabled])').first().click();
     await page.waitForFunction(() => !document.querySelector(".ui-select-menu"));
     check(await field.locator("select").evaluate(e => e.checkValidity()), "Selected connection must satisfy required validation");
-    check(await field.getByRole("textbox", { name: "模型", exact: true }).inputValue() !== "", "Connection choice must populate model draft");
-    await page.goto("http://127.0.0.1:4173/#/deployments");
+    check(await field.getByRole("combobox", { name: "模型", exact: true }).inputValue() !== "", "Connection choice must populate model draft");
+    await page.goto("http://127.0.0.1:4173/#/responses");
     await page.setViewportSize({width:390,height:844});
-    await page.locator(".deployment-switcher").click();
+    await page.getByRole("combobox", { name: "部署", exact: true }).click();
     await page.keyboard.press("End");
     await page.waitForFunction(() => document.activeElement === [...document.querySelectorAll('.ui-select-option')].at(-1));
     const menu = await page.locator(".ui-select-menu").boundingBox();

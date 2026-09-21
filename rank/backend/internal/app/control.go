@@ -15,16 +15,23 @@ import (
 )
 
 const (
-	ControlSelectDataset      = "select_dataset"
-	ControlSelectAgent        = "select_agent"
-	ControlCreateDataset      = "create_dataset"
-	ControlAddDatasetCases    = "add_dataset_cases"
-	ControlCreateAgent        = "create_agent"
-	ControlCreateAgentVersion = "create_agent_version"
-	ControlPrepareRun         = "prepare_run"
-	ControlPrepareRelease     = "prepare_release"
-	ControlShowResults        = "show_experiment_results"
-	ControlStartRun           = "start_run"
+	ControlSelectDataset         = "select_dataset"
+	ControlSelectAgent           = "select_agent"
+	ControlCreateDataset         = "create_dataset"
+	ControlAddDatasetCases       = "add_dataset_cases"
+	ControlCreateDatasetVersion  = "create_dataset_version"
+	ControlCreateAgent           = "create_agent"
+	ControlCreateAgentVersion    = "create_agent_version"
+	ControlPrepareRun            = "prepare_run"
+	ControlPrepareRelease        = "prepare_release"
+	ControlOpenTrial             = "open_trial"
+	ControlOpenConfiguration     = "open_configuration"
+	ControlCreateDeployment      = "create_deployment"
+	ControlSetReleasePolicy      = "set_release_policy"
+	ControlSetEvaluationDefaults = "set_evaluation_defaults"
+	ControlReleaseStatus         = "release_status"
+	ControlShowResults           = "show_experiment_results"
+	ControlStartRun              = "start_run"
 )
 
 type ControlCommandInput struct {
@@ -77,7 +84,7 @@ func (s *Service) BindControlSession(ctx context.Context, experimentID, sessionI
 	if sessionID == "" {
 		return domain.ExperimentView{}, problem(400, "empty_control_session", "Control Session ID 不能为空")
 	}
-	err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	err := s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		return repo.BindControlSession(ctx, experimentID, sessionID, s.now().UTC())
 	})
 	if err != nil {
@@ -95,7 +102,7 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 		return domain.ControlCommand{}, problem(400, "invalid_control_command", "实验、Session 和幂等键不能为空")
 	}
 	switch input.Type {
-	case ControlSelectDataset, ControlSelectAgent, ControlCreateDataset, ControlAddDatasetCases, ControlCreateAgent, ControlCreateAgentVersion, ControlPrepareRun, ControlPrepareRelease, ControlShowResults, ControlStartRun:
+	case ControlSelectDataset, ControlSelectAgent, ControlCreateDataset, ControlAddDatasetCases, ControlCreateDatasetVersion, ControlCreateAgent, ControlCreateAgentVersion, ControlPrepareRun, ControlPrepareRelease, ControlOpenTrial, ControlOpenConfiguration, ControlShowResults, ControlStartRun, ControlCreateDeployment, ControlSetReleasePolicy, ControlSetEvaluationDefaults, ControlReleaseStatus:
 	default:
 		return domain.ControlCommand{}, problem(400, "unknown_control_command", "不支持的实验命令")
 	}
@@ -103,8 +110,33 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 	if err != nil {
 		return domain.ControlCommand{}, err
 	}
+	var preparedAgent CreateAgentInput
+	var agentFamilyID string
+	if input.Type == ControlCreateAgent || input.Type == ControlCreateAgentVersion {
+		existing, loadErr := s.repo.GetControlCommandByIdempotencyKey(ctx, input.ExperimentID, input.IdempotencyKey)
+		if loadErr == nil {
+			if existing.Type != input.Type || existing.ControlSessionID != input.ControlSessionID || !bytes.Equal(existing.Payload, payload) {
+				return domain.ControlCommand{}, problem(409, "idempotency_conflict", "同一幂等键已用于不同命令")
+			}
+			return existing, nil
+		}
+		if !errors.Is(loadErr, domain.ErrNotFound) {
+			return domain.ControlCommand{}, loadErr
+		}
+		experiment, loadErr := s.repo.GetExperiment(ctx, input.ExperimentID)
+		if loadErr != nil {
+			return domain.ControlCommand{}, loadErr
+		}
+		if experiment.ControlSessionID != input.ControlSessionID {
+			return domain.ControlCommand{}, problem(409, "control_session_mismatch", "Control Session 与实验绑定不一致")
+		}
+		preparedAgent, agentFamilyID, err = s.prepareControlAgent(ctx, input.Type, payload)
+		if err != nil {
+			return domain.ControlCommand{}, err
+		}
+	}
 	var created domain.ControlCommand
-	err = s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	err = s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		existing, existingErr := repo.GetControlCommandByIdempotencyKey(ctx, input.ExperimentID, input.IdempotencyKey)
 		if existingErr == nil {
 			if existing.Type != input.Type || existing.ControlSessionID != input.ControlSessionID || !bytes.Equal(existing.Payload, payload) {
@@ -157,6 +189,9 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 				return mapNotFound(getErr, "agent_not_found", "Agent 版本不存在")
 			}
 			experiment.AgentVersionID = agent.ID
+			if err := applyDevelopmentDefault(ctx, repo, &experiment, agent); err != nil {
+				return err
+			}
 			experiment.UpdatedAt = now
 			if err := repo.UpdateExperimentControl(ctx, experiment); err != nil {
 				return err
@@ -190,10 +225,13 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 			result["datasetVersionId"] = dataset.ID
 			result["label"] = fmt.Sprintf("%s v%d", dataset.Name, dataset.Version)
 			result["caseCount"] = len(dataset.Cases)
-		case ControlAddDatasetCases:
+		case ControlAddDatasetCases, ControlCreateDatasetVersion:
 			var value struct {
-				BaseDatasetVersionID string        `json:"baseDatasetVersionId"`
-				Cases                []domain.Case `json:"cases"`
+				BaseDatasetVersionID string          `json:"baseDatasetVersionId"`
+				Cases                []domain.Case   `json:"cases"`
+				Description          *string         `json:"description"`
+				Schema               json.RawMessage `json:"schema"`
+				Rubric               json.RawMessage `json:"rubric"`
 			}
 			if err := json.Unmarshal(payload, &value); err != nil || strings.TrimSpace(value.BaseDatasetVersionID) == "" {
 				return problem(400, "invalid_dataset_change", "基础测试集版本和新增用例不能为空")
@@ -202,7 +240,13 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 			if getErr != nil {
 				return mapNotFound(getErr, "dataset_not_found", "基础测试集版本不存在")
 			}
-			cases, normalizeErr := normalizeCases(append(append([]domain.Case{}, base.Cases...), value.Cases...))
+			cases := value.Cases
+			if input.Type == ControlAddDatasetCases {
+				cases = append(append([]domain.Case{}, base.Cases...), value.Cases...)
+			} else if cases == nil {
+				cases = base.Cases
+			}
+			cases, normalizeErr := normalizeCases(cases)
 			if normalizeErr != nil {
 				return normalizeErr
 			}
@@ -212,6 +256,18 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 			}
 			next := versions[0].Version + 1
 			dataset := domain.DatasetVersion{ID: fmt.Sprintf("%s-v%d", base.FamilyID, next), FamilyID: base.FamilyID, Name: base.Name, Version: next, Source: "对话追加", Description: base.Description, Schema: base.Schema, Rubric: base.Rubric, Cases: cases, CreatedAt: now, CaseCount: len(cases)}
+			if input.Type == ControlCreateDatasetVersion {
+				dataset.Source = "对话更新"
+				if value.Description != nil {
+					dataset.Description = strings.TrimSpace(*value.Description)
+				}
+				if len(value.Schema) > 0 {
+					dataset.Schema = value.Schema
+				}
+				if len(value.Rubric) > 0 {
+					dataset.Rubric = value.Rubric
+				}
+			}
 			dataset.Evaluator = evaluatorForDataset(dataset)
 			if err := repo.CreateDatasetVersion(ctx, dataset); err != nil {
 				return err
@@ -220,24 +276,12 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 			if err := repo.UpdateExperimentControl(ctx, experiment); err != nil {
 				return err
 			}
-			result["datasetVersionId"], result["label"], result["caseCount"], result["added"] = dataset.ID, fmt.Sprintf("%s v%d", dataset.Name, dataset.Version), len(cases), len(value.Cases)
+			result["datasetVersionId"], result["label"], result["caseCount"] = dataset.ID, fmt.Sprintf("%s v%d", dataset.Name, dataset.Version), len(cases)
+			if input.Type == ControlAddDatasetCases {
+				result["added"] = len(value.Cases)
+			}
 		case ControlCreateAgent:
-			var value struct {
-				Name              string   `json:"name"`
-				Handle            string   `json:"handle"`
-				RunnerType        string   `json:"runnerType"`
-				Model             string   `json:"model"`
-				ModelConnectionID string   `json:"modelConnectionId"`
-				Preset            string   `json:"preset"`
-				SystemPrompt      string   `json:"systemPrompt"`
-				Description       string   `json:"description"`
-				Tools             []string `json:"tools"`
-				Skills            []string `json:"skills"`
-			}
-			if err := json.Unmarshal(payload, &value); err != nil {
-				return problem(400, "invalid_agent", "Agent 参数无效")
-			}
-			family, agent, buildErr := s.newAgent(CreateAgentInput{Name: value.Name, Handle: value.Handle, RunnerType: value.RunnerType, Model: value.Model, ModelConnectionID: value.ModelConnectionID, Preset: value.Preset, SystemPrompt: value.SystemPrompt, Description: value.Description, Tools: value.Tools, Skills: value.Skills})
+			family, agent, buildErr := s.newAgent(preparedAgent)
 			if buildErr != nil {
 				return buildErr
 			}
@@ -252,54 +296,14 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 			result["agentVersionId"] = agent.ID
 			result["label"] = fmt.Sprintf("%s v%d", agent.Handle, agent.Version)
 		case ControlCreateAgentVersion:
-			var value struct {
-				BaseAgentVersionID string    `json:"baseAgentVersionId"`
-				RunnerType         *string   `json:"runnerType"`
-				Model              *string   `json:"model"`
-				ModelConnectionID  *string   `json:"modelConnectionId"`
-				Preset             *string   `json:"preset"`
-				SystemPrompt       *string   `json:"systemPrompt"`
-				Description        *string   `json:"description"`
-				Tools              *[]string `json:"tools"`
-				Skills             *[]string `json:"skills"`
-			}
-			if err := json.Unmarshal(payload, &value); err != nil || strings.TrimSpace(value.BaseAgentVersionID) == "" {
-				return problem(400, "invalid_agent_change", "基础 Agent 版本不能为空")
-			}
-			base, getErr := repo.GetAgentVersion(ctx, value.BaseAgentVersionID)
-			if getErr != nil {
-				return mapNotFound(getErr, "agent_not_found", "基础 Agent 版本不存在")
-			}
-			input := CreateAgentInput{RunnerType: base.RunnerType, Model: base.Model, ModelConnectionID: base.ModelConnectionID, Preset: base.Preset, SystemPrompt: base.SystemPrompt, Description: base.Description, Tools: base.Tools, Skills: base.Skills}
-			if value.RunnerType != nil {
-				input.RunnerType = *value.RunnerType
-			}
-			if value.Model != nil {
-				input.Model = *value.Model
-			}
-			if value.ModelConnectionID != nil {
-				input.ModelConnectionID = *value.ModelConnectionID
-			}
-			if value.Preset != nil {
-				input.Preset = *value.Preset
-			}
-			if value.SystemPrompt != nil {
-				input.SystemPrompt = *value.SystemPrompt
-			}
-			if value.Description != nil {
-				input.Description = *value.Description
-			}
-			if value.Tools != nil {
-				input.Tools = *value.Tools
-			}
-			if value.Skills != nil {
-				input.Skills = *value.Skills
-			}
-			agent, buildErr := s.createAgentVersion(ctx, repo, base.FamilyID, input)
+			agent, buildErr := s.createAgentVersion(ctx, repo, agentFamilyID, preparedAgent)
 			if buildErr != nil {
 				return buildErr
 			}
 			experiment.AgentVersionID, experiment.UpdatedAt = agent.ID, now
+			if err := applyDevelopmentDefault(ctx, repo, &experiment, agent); err != nil {
+				return err
+			}
 			if err := repo.UpdateExperimentControl(ctx, experiment); err != nil {
 				return err
 			}
@@ -336,20 +340,190 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 			result["agent"] = map[string]any{"id": agent.ID, "handle": agent.Handle, "version": agent.Version, "runnerType": agent.RunnerType}
 			result["trialCount"] = trialCount
 			result["state"] = "confirmation_required"
-		case ControlPrepareRelease:
-			if experiment.AgentVersionID == "" {
-				return problem(409, "experiment_agent_required", "请先选择 Agent 版本")
+		case ControlReleaseStatus:
+			tasks, err := repo.ListReleaseTasks(ctx, "", experiment.ID)
+			if err != nil {
+				return err
 			}
+			result["tasks"] = tasks
+		case ControlCreateDeployment:
 			var value struct {
-				DeploymentID   domain.DeploymentID `json:"deploymentId"`
-				Alias          string              `json:"alias"`
-				AgentVersionID string              `json:"agentVersionId"`
+				Name                   string `json:"name"`
+				AgentFamilyID          string `json:"agentFamilyId"`
+				RequestsPerMinute      *int   `json:"requestsPerMinute"`
+				MaxConcurrentResponses *int   `json:"maxConcurrentResponses"`
+				ExecutionTimeoutMs     *int64 `json:"executionTimeoutMs"`
+			}
+			if err := json.Unmarshal(payload, &value); err != nil {
+				return problem(400, "invalid_deployment", "部署参数无效")
+			}
+			if value.AgentFamilyID == "" {
+				agent, err := repo.GetAgentVersion(ctx, experiment.AgentVersionID)
+				if err != nil {
+					return err
+				}
+				value.AgentFamilyID = agent.FamilyID
+			}
+			policy := domain.DeploymentPolicy{RequestsPerMinute: 60, MaxConcurrentResponses: 4, ExecutionTimeoutMs: 120000}
+			for _, field := range []struct {
+				value  *int
+				target *int
+			}{
+				{value.RequestsPerMinute, &policy.RequestsPerMinute},
+				{value.MaxConcurrentResponses, &policy.MaxConcurrentResponses},
+			} {
+				if field.value != nil {
+					*field.target = *field.value
+				}
+			}
+			if value.ExecutionTimeoutMs != nil {
+				policy.ExecutionTimeoutMs = *value.ExecutionTimeoutMs
+			}
+			deployment, err := s.createDeployment(ctx, repo, CreateDeploymentInput{TenantID: s.tenantID, AgentFamilyID: value.AgentFamilyID, Name: value.Name, Policy: policy})
+			if err != nil {
+				return err
+			}
+			result["deployment"] = deployment
+		case ControlSetReleasePolicy:
+			var value struct {
+				DeploymentID        domain.DeploymentID `json:"deploymentId"`
+				MinPassRate         *int                `json:"minPassRate"`
+				MinValidTrialRate   *int                `json:"minValidTrialRate"`
+				MaxEvidenceAgeHours *int                `json:"maxEvidenceAgeHours"`
+			}
+			if err := json.Unmarshal(payload, &value); err != nil {
+				return problem(400, "invalid_release_policy", "发布门槛参数无效")
+			}
+			policy, err := repo.GetReleasePolicy(ctx, value.DeploymentID)
+			if err != nil {
+				return err
+			}
+			expected := policy.Revision
+			if expected == 0 {
+				policy.MinPassRate, policy.MinValidTrialRate, policy.MaxEvidenceAgeHours = 100, 100, 24
+			}
+			for _, field := range []struct {
+				value  *int
+				target *int
+			}{
+				{value.MinPassRate, &policy.MinPassRate}, {value.MinValidTrialRate, &policy.MinValidTrialRate}, {value.MaxEvidenceAgeHours, &policy.MaxEvidenceAgeHours},
+			} {
+				if field.value != nil {
+					*field.target = *field.value
+				}
+			}
+			policy, err = s.saveReleasePolicy(ctx, repo, value.DeploymentID, policy, expected)
+			if err != nil {
+				return err
+			}
+			result["deploymentId"], result["policy"] = value.DeploymentID, policy
+		case ControlSetEvaluationDefaults:
+			var value struct {
+				AgentFamilyID        string  `json:"agentFamilyId"`
+				DevelopmentDatasetID *string `json:"developmentDatasetId"`
+				RegressionDatasetID  *string `json:"regressionDatasetId"`
+			}
+			if err := json.Unmarshal(payload, &value); err != nil {
+				return problem(400, "invalid_defaults", "默认测试集参数无效")
+			}
+			if value.AgentFamilyID == "" {
+				agent, err := repo.GetAgentVersion(ctx, experiment.AgentVersionID)
+				if err != nil {
+					return err
+				}
+				value.AgentFamilyID = agent.FamilyID
+			}
+			versions, err := repo.ListAgentVersions(ctx, value.AgentFamilyID)
+			if err != nil {
+				return err
+			}
+			if len(versions) == 0 {
+				return domain.ErrNotFound
+			}
+			defaults, err := repo.GetAgentEvaluationDefaults(ctx, value.AgentFamilyID)
+			if err != nil {
+				return err
+			}
+			expected := defaults.Revision
+			for _, field := range []struct {
+				value  *string
+				target *string
+			}{{value.DevelopmentDatasetID, &defaults.DevelopmentDatasetID}, {value.RegressionDatasetID, &defaults.RegressionDatasetID}} {
+				if field.value != nil {
+					if _, err := latestDatasetVersion(ctx, repo, *field.value); err != nil {
+						return err
+					}
+					*field.target = *field.value
+				}
+			}
+			defaults.Revision++
+			if err := repo.SaveAgentEvaluationDefaults(ctx, value.AgentFamilyID, defaults, expected); err != nil {
+				return err
+			}
+			result["defaults"] = defaults
+		case ControlOpenConfiguration:
+			var value struct {
+				Section      string              `json:"section"`
+				DeploymentID domain.DeploymentID `json:"deploymentId,omitempty"`
+				ConnectionID string              `json:"connectionId,omitempty"`
+			}
+			decoder := json.NewDecoder(bytes.NewReader(payload))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&value); err != nil {
+				return problem(400, "invalid_configuration", "配置入口只接受类型与资源引用，请在安全表单中填写密钥")
+			}
+			switch value.Section {
+			case "model_connections", "local_connections", "system_models", "preferences", "api_keys":
+			case "webhooks", "release_policy", "endpoint_integration":
+				if value.DeploymentID == "" {
+					return problem(400, "endpoint_required", "请选择端点")
+				}
+			default:
+				return problem(400, "invalid_configuration_section", "不支持的配置入口")
+			}
+			if value.ConnectionID != "" && value.Section != "model_connections" {
+				return problem(400, "invalid_configuration_reference", "仅模型连接配置接受连接引用")
+			}
+			if value.DeploymentID != "" {
+				deployment, err := repo.GetDeployment(ctx, value.DeploymentID)
+				if err != nil {
+					return mapNotFound(err, "endpoint_not_found", "端点不存在")
+				}
+				result["deploymentId"], result["deploymentName"] = deployment.ID, deployment.Name
+			}
+			result["section"], result["connectionId"] = value.Section, value.ConnectionID
+		case ControlOpenTrial:
+			var value struct {
+				AgentVersionID string `json:"agentVersionId"`
+				Draft          string `json:"draft"`
+			}
+			if err := json.Unmarshal(payload, &value); err != nil {
+				return problem(400, "invalid_trial", "试用参数无效")
+			}
+			if value.AgentVersionID == "" {
+				value.AgentVersionID = experiment.AgentVersionID
+			}
+			agent, err := repo.GetAgentVersion(ctx, value.AgentVersionID)
+			if err != nil {
+				return mapNotFound(err, "agent_not_found", "请选择 Agent 版本")
+			}
+			result["agentVersionId"], result["label"], result["draft"] = agent.ID, fmt.Sprintf("%s · v%d", agent.Name, agent.Version), value.Draft
+		case ControlPrepareRelease:
+			var value struct {
+				DeploymentID                domain.DeploymentID `json:"deploymentId"`
+				Alias                       string              `json:"alias"`
+				AgentVersionID              string              `json:"agentVersionId"`
+				DevelopmentDatasetVersionID *string             `json:"developmentDatasetVersionId"`
+				RegressionDatasetVersionID  *string             `json:"regressionDatasetVersionId"`
 			}
 			if err := json.Unmarshal(payload, &value); err != nil {
 				return problem(400, "invalid_release_options", "发布参数无效")
 			}
 			if value.AgentVersionID == "" {
 				value.AgentVersionID = experiment.AgentVersionID
+			}
+			if value.AgentVersionID == "" {
+				return problem(409, "experiment_agent_required", "请先选择 Agent 版本")
 			}
 			candidate, getErr := repo.GetAgentVersion(ctx, value.AgentVersionID)
 			if getErr != nil {
@@ -361,7 +535,10 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 					return listErr
 				}
 				if len(deployments) == 0 {
-					return problem(409, "deployment_required", "当前 Agent 还没有 Deployment")
+					return problem(409, "deployment_required", "当前 Agent 还没有部署，请提供部署名称并创建部署")
+				}
+				if len(deployments) > 1 {
+					return problem(409, "deployment_choice_required", "当前 Agent 有多个部署，请选择发布目标")
 				}
 				value.DeploymentID = deployments[0].ID
 			}
@@ -377,7 +554,7 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 				value.Alias = DeploymentAliasProduction
 			}
 			if value.Alias == DeploymentAliasLatest {
-				return problem(400, "latest_alias_managed", "latest 由 Agent 版本发布自动维护")
+				return problem(400, "latest_alias_managed", "latest 为历史只读别名，请通过部署发布当前版本")
 			}
 			alias, getErr := repo.GetDeploymentAlias(ctx, deployment.ID, value.Alias)
 			if getErr != nil {
@@ -387,6 +564,12 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 			result["deploymentName"] = deployment.Name
 			result["alias"] = value.Alias
 			result["candidateAgentVersionId"] = candidate.ID
+			draft, err := s.releaseDraft(ctx, repo, ReleaseDraftInput{DeploymentID: deployment.ID, Alias: value.Alias, AgentVersionID: candidate.ID, DevelopmentDatasetVersionID: value.DevelopmentDatasetVersionID, RegressionDatasetVersionID: value.RegressionDatasetVersionID})
+			if err != nil {
+				return err
+			}
+			result["developmentDatasetVersionId"] = draft.DevelopmentDatasetVersionID
+			result["regressionDatasetVersionId"] = draft.RegressionDatasetVersionID
 			if alias.CurrentRelease != nil {
 				result["currentAgentVersionId"] = alias.CurrentRelease.AgentVersionID
 				result["currentReleaseRevisionId"] = alias.CurrentRelease.ID
@@ -410,7 +593,7 @@ func (s *Service) ApplyControlCommand(ctx context.Context, input ControlCommandI
 		}
 		created = domain.ControlCommand{ID: newID("cmd"), ExperimentID: input.ExperimentID, ControlSessionID: input.ControlSessionID, IdempotencyKey: input.IdempotencyKey, Type: input.Type, Payload: payload, Result: resultJSON, CreatedAt: now}
 		eventType := "a2ui/" + input.Type
-		if input.Type == ControlCreateDataset || input.Type == ControlAddDatasetCases || input.Type == ControlCreateAgent || input.Type == ControlCreateAgentVersion {
+		if input.Type == ControlCreateDataset || input.Type == ControlAddDatasetCases || input.Type == ControlCreateDatasetVersion || input.Type == ControlCreateAgent || input.Type == ControlCreateAgentVersion || input.Type == ControlCreateDeployment || input.Type == ControlSetReleasePolicy || input.Type == ControlSetEvaluationDefaults || input.Type == ControlReleaseStatus {
 			eventType = "control/" + input.Type
 		}
 		event := domain.ControlEvent{ExperimentID: input.ExperimentID, ControlSessionID: input.ControlSessionID, CommandID: created.ID, Type: eventType, Payload: resultJSON, CreatedAt: now}
@@ -440,10 +623,36 @@ func (s *Service) AppendControlMessages(ctx context.Context, experimentID, contr
 		}
 		clean = append(clean, message)
 	}
-	if err := s.repo.WithinTx(ctx, func(repo domain.Repository) error {
+	if err := s.repo.WithinTx(ctx, func(ctx context.Context, repo domain.Repository) error {
 		return repo.AppendControlMessages(ctx, experimentID, clean...)
 	}); err != nil {
 		return domain.ExperimentView{}, err
 	}
 	return s.GetExperiment(ctx, experimentID)
+}
+
+// prepareControlAgent resolves mutable model defaults before the command's
+// business transaction. The base Agent version is immutable.
+func (s *Service) prepareControlAgent(ctx context.Context, command string, payload json.RawMessage) (CreateAgentInput, string, error) {
+	var input CreateAgentInput
+	var familyID string
+	if command == ControlCreateAgentVersion {
+		var reference struct {
+			BaseAgentVersionID string `json:"baseAgentVersionId"`
+		}
+		if err := json.Unmarshal(payload, &reference); err != nil || strings.TrimSpace(reference.BaseAgentVersionID) == "" {
+			return input, "", problem(400, "invalid_agent_change", "基础 Agent 版本不能为空")
+		}
+		base, err := s.repo.GetAgentVersion(ctx, reference.BaseAgentVersionID)
+		if err != nil {
+			return input, "", mapNotFound(err, "agent_not_found", "基础 Agent 版本不存在")
+		}
+		familyID = base.FamilyID
+		input = CreateAgentInput{RunnerType: base.RunnerType, Model: base.Model, ModelConnectionID: base.ModelConnectionID, Preset: base.Preset, SystemPrompt: base.SystemPrompt, Description: base.Description, Tools: base.Tools, Skills: base.Skills}
+	}
+	if err := json.Unmarshal(payload, &input); err != nil {
+		return input, familyID, problem(400, "invalid_agent", "Agent 参数无效")
+	}
+	input, err := s.resolveAgentConnection(ctx, input)
+	return input, familyID, err
 }

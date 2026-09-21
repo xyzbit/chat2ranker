@@ -203,7 +203,9 @@ func (s *Service) SaveModelConnection(ctx context.Context, id string, input cont
 		}
 		value.HasCredential = true
 	}
-	if !value.HasCredential {
+	if value.HasCredential {
+		value.Status = "unverified"
+	} else {
 		value.Status = "missing_credential"
 	}
 	return value, s.repo.SaveModelConnection(ctx, value)

@@ -1,85 +1,48 @@
 import { SelectField } from "./SelectField.jsx";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "./Modal.jsx";
 import {
   ArrowRight,
+  ArrowLeft,
   BellRinging,
-  CheckCircle,
   CircleNotch,
   Clock,
   Copy,
-  Cube,
   Gauge,
   GitBranch,
   Plus,
   ShieldCheck,
   Users,
   WarningCircle,
-  Wrench,
   X,
 } from "@phosphor-icons/react";
 import { rankApi } from "./api.js";
 import { formatDateTime } from "./i18n.js";
 import { ResponseCenter } from "./ManagementPages.jsx";
-import { ErrorNotice, StatePill } from "./ManagementUI.jsx";
-import { DeploymentForm, DeploymentPolicy, ReleaseHistory, versionLabel } from "./DeploymentDetails.jsx";
+import { ErrorNotice, StatePill, PageHeading } from "./ManagementUI.jsx";
+import { DeploymentForm, ReleaseHistory, versionLabel } from "./DeploymentDetails.jsx";
+import { ReleasePolicyEditor } from "./ReleasePolicy.jsx";
+import { ReleaseWorkflow, ReleaseTaskHistory } from "./ReleaseWorkflow.jsx";
+import { EndpointIntegration } from "./EndpointIntegration.jsx";
 
-const aliasOrder = ["latest", "staging", "production"];
-
-function aliasStatus(alias, t) {
-  if (!alias?.currentRelease) return ["empty", t("unconfigured")];
-  return alias.currentRelease.policyResult === "passed" ? ["evaluated", t("evaluated")] : ["healthy", t("published")];
+function publishedRoute(deployment) {
+  return ["production", "staging", "latest"].map(name => deployment.aliases.find(item => item.name === name)).find(item => item?.currentRelease);
 }
 
-function ReleaseDialog({ deployment, agents, locale, t, onClose, onReleased }) {
-  const versions = useMemo(() => agents
-    .filter((item) => item.familyId === deployment.agentFamilyId)
-    .flatMap((item) => item.versions || [item]), [agents, deployment.agentFamilyId]);
-  const latest = deployment.aliases.find((item) => item.name === "latest")?.currentRelease?.agentVersionId;
-  const [alias, setAlias] = useState("staging");
-  const [agentVersionId, setAgentVersionId] = useState(latest || versions[0]?.id || "");
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const target = deployment.aliases.find((item) => item.name === alias);
-
-  async function submit(event) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await rankApi.promoteDeployment(deployment.id, alias, {
-        agentVersionId,
-        expectedReleaseRevisionId: target?.currentReleaseRevisionId || "",
-        policyResult: "manual_override",
-        actor: "local-operator",
-        reason,
-      });
-      await onReleased();
-      onClose();
-    } catch (releaseError) {
-      setError(releaseError.status === 409 ? t("releaseConflict") : releaseError.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal label={t("releaseVersion")} className="deployment-modal-backdrop" onClose={onClose}>
-      <form className="release-dialog" aria-label={t("releaseVersion")} onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
-        <header><div><small>{t("manualOverride")}</small><h2>{t("releaseTo", { alias })}</h2></div><button type="button" onClick={onClose} aria-label={t("cancel")}><X size={20} /></button></header>
-        <div className="release-dialog-body">
-          <label><span>{t("route")}</span><SelectField value={alias} onValueChange={setAlias} aria-label={t("route")} options={[{ value: "staging", label: "staging" }, { value: "production", label: "production" }]} /></label>
-          <label><span>{t("targetVersion")}</span><SelectField value={agentVersionId} onValueChange={setAgentVersionId} aria-label={t("targetVersion")} options={[...versions.map(version => ({ value: version.id, label: versionLabel(agents, version.id) }))]} /></label>
-          <div className="release-transition"><span>{versionLabel(agents, target?.currentRelease?.agentVersionId)}</span><ArrowRight size={20} /><strong>{versionLabel(agents, agentVersionId)}</strong></div>
-          <label><span>{t("releaseReason")}</span><textarea rows="3" required value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t("releaseReasonPlaceholder")} /></label>
-          <small className="release-cas"><GitBranch size={14} />{target?.currentReleaseRevisionId || "—"}</small>
-          {error && <p className="release-error"><WarningCircle size={15} />{error}</p>}
-        </div>
-        <footer><button type="button" onClick={onClose}>{t("cancel")}</button><button className="primary-action" type="submit" disabled={busy || !agentVersionId || !reason.trim()}>{busy ? <CircleNotch className="spin" size={17} /> : <CheckCircle size={17} />}{t("confirmRelease")}</button></footer>
-      </form>
-    </Modal>
-  );
+function ReleaseDialog({ deployment, agents, datasets, initialVersionId, locale, t, onClose, onReleased }) {
+  const versions = agents.filter(item => item.familyId === deployment.agentFamilyId).flatMap(item => item.versions || [item]).sort((a, b) => b.version - a.version);
+  const [agentVersionId, setAgentVersionId] = useState(initialVersionId || versions[0]?.id || "");
+  return <Modal label={t("releaseVersion")} className="deployment-modal-backdrop" onClose={onClose}>
+    <section className="release-dialog" aria-label={t("releaseVersion")} onMouseDown={event => event.stopPropagation()}>
+      <header><h2>{t("releaseVersion")}</h2><button type="button" onClick={onClose} aria-label={t("close")}><X size={20} /></button></header>
+      <div className="release-dialog-body">
+        {initialVersionId ? <div className="release-agent-target"><strong>{versionLabel(agents, initialVersionId)}</strong></div> : <div className="form-grid">
+          <label>{t("targetVersion")}<SelectField aria-label={t("targetVersion")} value={agentVersionId} onValueChange={setAgentVersionId} options={versions.map(v => ({ value: v.id, label: versionLabel(agents, v.id) }))} /></label>
+        </div>}
+        <ReleaseWorkflow key={agentVersionId} deployment={deployment} alias="production" agentVersionId={agentVersionId} datasets={datasets} agents={agents} locale={locale} t={t} onReleased={onReleased} />
+      </div>
+    </section>
+  </Modal>;
 }
 
 const webhookEvents = ["response.completed", "response.failed", "response.cancelled", "response.requires_action"];
@@ -161,92 +124,127 @@ function WebhookAccess({ deployment, endpoints, busyId, t, onCreate, onToggle })
   </section>;
 }
 
-export function DeploymentCenter({ deployments, agents, tenantId, locale, t, onRefresh }) {
-  const [selectedId, setSelectedId] = useState(deployments[0]?.id || "");
+/** Shared webhook configuration keeps signing secrets in browser-owned forms. */
+export function WebhookSettings({ deployment, t }) {
+  const [endpoints, setEndpoints] = useState([]);
+  const [revision, setRevision] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [busyId, setBusyId] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let stale = false;
+    rankApi.listWebhookEndpoints(deployment.tenantId).then(value => {
+      if (!stale) setEndpoints(value);
+    }).catch(error => { if (!stale) setError(error.message); });
+    return () => { stale = true; };
+  }, [deployment.tenantId, revision]);
+  async function toggle(endpoint) {
+    setBusyId(endpoint.id); setError("");
+    try { await rankApi.setWebhookEndpointEnabled(endpoint.id, !endpoint.enabled); setRevision(value => value + 1); }
+    catch (error) { setError(error.message); }
+    finally { setBusyId(""); }
+  }
+  return <><ErrorNotice error={error}/><WebhookAccess deployment={deployment} endpoints={endpoints} busyId={busyId} t={t} onCreate={() => setCreating(true)} onToggle={toggle}/>{creating && <WebhookDialog deployment={deployment} t={t} onClose={() => setCreating(false)} onCreated={() => setRevision(value => value + 1)}/>}</>;
+}
+
+export function DeploymentCenter({ deployments, agents, datasets = [], tenantId, locale, t, onRefresh }) {
+  const [intent, setIntent] = useState(location.hash);
+  const [selectedId, setSelectedId] = useState("");
+  const [resolvedDeployment, setResolvedDeployment] = useState(null);
+  const [query, setQuery] = useState("");
+  const [resolving, setResolving] = useState(true);
+  const [initialVersionId, setInitialVersionId] = useState("");
   const [tab, setTab] = useState("overview");
   const [releaseOpen, setReleaseOpen] = useState(false);
-  const [webhookOpen, setWebhookOpen] = useState(false);
-  const [webhooks, setWebhooks] = useState([]);
-  const [webhookBusyId, setWebhookBusyId] = useState("");
+  const [integrationOpen, setIntegrationOpen] = useState(false);
   const [error,setError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   useEffect(() => {
-    if (!deployments.some((item) => item.id === selectedId)) setSelectedId(deployments[0]?.id || "");
-  }, [deployments, selectedId]);
-  const deployment = deployments.find((item) => item.id === selectedId);
-
-  async function refreshWebhooks() {
-    if (!deployment) return;
-    setWebhooks(await rankApi.listWebhookEndpoints(deployment.tenantId));
-  }
-
+    const update = () => setIntent(location.hash);
+    window.addEventListener("hashchange", update);
+    return () => window.removeEventListener("hashchange", update);
+  }, []);
   useEffect(() => {
-    if (tab === "access" && deployment) refreshWebhooks().catch((e) => setError(e.message));
-  }, [tab, deployment?.id]);
-
-  async function toggleWebhook(endpoint) {
-    setWebhookBusyId(endpoint.id);
-    try {
-      setError("");
-      await rankApi.setWebhookEndpointEnabled(endpoint.id, !endpoint.enabled);
-      await refreshWebhooks();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setWebhookBusyId("");
+    let stale = false;
+    const params = new URLSearchParams(intent.split("?")[1]);
+    const version = params.get("publish") || "";
+    const reference = params.get("deployment")?.split("@")[0];
+    setError(""); setReleaseOpen(false); setIntegrationOpen(false); setTab("overview"); setInitialVersionId(version); setResolvedDeployment(null);
+    if (version) {
+      setResolving(true); setCreateOpen(false); setSelectedId("");
+      rankApi.agentDeployments(version).then(items => {
+        if (stale) return;
+        setResolvedDeployment(items[0] || null);
+        setSelectedId(items[0]?.id || ""); setCreateOpen(!items.length); setResolving(false);
+        if (items.length) {
+          if (!items[0].aliases.some(alias => alias.currentRelease?.agentVersionId === version)) setTab("releases");
+          window.history.replaceState(null, "", `#/deployments?deploymentId=${encodeURIComponent(items[0].id)}`);
+        }
+      }).catch(e => { if (!stale) { setError(e.message); setResolving(false); } });
+    } else {
+      setSelectedId(params.get("deploymentId") || deployments.find(item => item.name === reference)?.id || "");
+      setCreateOpen(params.has("create")); setResolving(false);
     }
+    return () => { stale = true; };
+  }, [intent]);
+  const deployment = deployments.find((item) => item.id === selectedId) || resolvedDeployment;
+  const initialAgent = agents.flatMap(item => item.versions || [item]).find(item => item.id === initialVersionId);
+  function openDeployment(id) {
+    setSelectedId(id); setTab("overview"); setCreateOpen(false);
+    window.history.replaceState(null, "", `#/deployments?deploymentId=${encodeURIComponent(id)}`);
   }
 
+  if (resolving) return <main className="management-page"><p role="status">{t("loading")}</p></main>;
+  if (createOpen && initialVersionId && !initialAgent) return <main className="management-page"><a className="inline-link" href="#/agents"><ArrowLeft size={15}/>{t("agentLibrary")}</a><ErrorNotice error={t("noMatch")} /></main>;
   if (createOpen) {
-    return <main className="management-page"><DeploymentForm tenantId={tenantId} agents={agents} t={t} onCancel={() => setCreateOpen(false)} onCreated={async (v) => { await onRefresh(); setSelectedId(v.id); setTab("overview"); setCreateOpen(false); }} /></main>;
+    const slug = initialAgent ? initialAgent.handle.replace(/^@/, "").replace(/[^a-z0-9-]+/gi, "-").toLowerCase().replace(/^-+|-+$/g, "").slice(0, 45) || "agent" : "";
+    const baseName = slug && !/^[a-z]/.test(slug) ? `agent-${slug}` : slug;
+    let name = baseName;
+    for (let suffix = 2; name && deployments.some(item => item.name === name); suffix++) name = `${baseName}-${suffix}`;
+    return <main className="management-page"><DeploymentForm tenantId={tenantId} agents={agents} initialAgent={initialAgent} initialName={name} t={t} onCancel={() => { location.hash = initialAgent ? `/agents?agent=${encodeURIComponent(initialAgent.id)}` : "/deployments"; setCreateOpen(false); }} onCreated={async (v) => { await onRefresh(); openDeployment(v.id); setReleaseOpen(true); }} /></main>;
   }
   if (!deployment) {
-    return <main className="deployment-empty"><Cube size={30} /><h1>{t("emptyDeployments")}</h1><p>{t("emptyDeploymentsHint")}</p><button className="primary-action" type="button" onClick={() => setCreateOpen(true)}><Plus size={17} />{t("createDeployment")}</button></main>;
+    const visible = deployments.filter(item => `${item.name} ${agents.find(agent => agent.familyId === item.agentFamilyId)?.name || ""}`.toLowerCase().includes(query.toLowerCase()));
+    return <main className="management-page deployment-list"><PageHeading title={t("deployments")}><a className="primary-action" href="#/deployments?create=1"><Plus size={17} />{t("createDeployment")}</a></PageHeading><ErrorNotice error={error} />
+      {!!deployments.length && <input className="management-search" aria-label={t("findDeployments")} placeholder={t("findDeployments")} value={query} onChange={event => setQuery(event.target.value)} />}
+      <div className="deployment-list-head"><span>{t("name")}</span><span>{t("deployedAgent")}</span><span>{t("agentVersion")}</span><span>{t("status")}</span><span>{t("publishedAt")}</span></div>
+      {visible.map(item => {
+        const current = publishedRoute(item)?.currentRelease;
+        const agent = agents.find(entry => entry.familyId === item.agentFamilyId);
+        const version = agent?.versions?.find(entry => entry.id === current?.agentVersionId) || (agent?.id === current?.agentVersionId ? agent : null);
+        return <a className="deployment-list-row" key={item.id} href={`#/deployments?deploymentId=${encodeURIComponent(item.id)}`}><strong>{item.name}</strong><span>{agent?.name || "—"}</span><span>{version ? `v${version.version}` : "—"}</span><span>{t(current ? "published" : "unpublished")}</span><time>{formatDateTime(locale, current?.createdAt)}</time><ArrowRight size={16}/></a>;
+      })}
+      {!visible.length && <p className="empty-list">{t(deployments.length ? "noMatch" : "emptyDeployments")}</p>}
+    </main>;
   }
 
-  const aliases = aliasOrder.map((name) => deployment.aliases.find((item) => item.name === name) || { name });
-  const publicAlias = aliases.find((item) => item.name === "production" && item.currentRelease) || aliases.find((item) => item.name === "latest" && item.currentRelease);
-  const publicReference = publicAlias ? `${deployment.name}@${publicAlias.name}` : "";
+  const currentRoute = publishedRoute(deployment);
+  const current = currentRoute?.currentRelease;
   return (
     <main className="deployment-page">
       <header className="deployment-heading">
         <div className="deployment-title">
-          {deployments.length > 1 && <SelectField className="deployment-switcher" icon={Cube} aria-label={t("deployments")}
-            value={selectedId} onValueChange={setSelectedId} options={deployments.map(item => ({ value: item.id, label: item.name }))} />}
-          <span className="deployment-breadcrumb">{t("deployments")} <i>/</i> {deployment.name}</span>
-          <div><h1>{deployment.name}</h1><span className="health-badge"><i />{t("configured")}</span></div>
-          <p><span>{t("currentReference")}</span> {publicReference || t("unconfigured")} {publicReference && <button type="button" aria-label={t("copyReference")} onClick={()=>navigator.clipboard.writeText(publicReference).catch((e)=>setError(e.message))}><Copy size={14} /></button>}</p>
+          <a className="inline-link deployment-breadcrumb" href="#/deployments"><ArrowLeft size={15}/>{t("backToDeployments")}</a>
+          <div><h1>{deployment.name}</h1><span className={`deployment-state ${current ? "published" : ""}`}>{t(current ? "published" : "unpublished")}</span></div>
         </div>
-        <div className="management-actions"><button className="secondary-action" onClick={() => setCreateOpen(true)}><Plus size={17} />{t("createDeployment")}</button><button className="primary-action" type="button" onClick={() => setReleaseOpen(true)}><GitBranch size={17} />{t("releaseVersion")}</button></div>
+        <div className="management-actions">{current && <button className="secondary-action" onClick={() => setIntegrationOpen(true)}><Copy size={16}/>{t("integration")}</button>}<button className="primary-action" type="button" onClick={() => { setInitialVersionId(""); setReleaseOpen(true); }}><GitBranch size={17} />{t("releaseVersion")}</button></div>
       </header>
-      <nav className="deployment-tabs" aria-label={t("deployments")}>{["overview", "releases", "traffic", "access", "settings"].map((key) => <button key={key} type="button" className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{t(key)}</button>)}</nav>
+      <nav className="deployment-tabs" aria-label={t("deployments")}>{["overview", "releases", "traffic", "webhooks", "releasePolicy"].map((key) => <button key={key} type="button" className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{t(key)}</button>)}</nav>
       <ErrorNotice error={error}/>
 
       {tab === "overview" ? <>
-        <section className="route-section">
-          <h2>{t("currentRoutes")}</h2>
-          <div className="route-table" role="table">
-            <div className="route-row route-head" role="row"><span>{t("route")}</span><span>{t("agentVersion")}</span><span>{t("releaseRevision")}</span><span>{t("publishedAt")}</span><span>{t("status")}</span></div>
-            {aliases.map((alias) => {
-              const [statusClass, statusLabel] = aliasStatus(alias, t);
-              return <div className="route-row" role="row" key={alias.name}>
-                <strong>{t(alias.name)}</strong>
-                <span>{versionLabel(agents, alias.currentRelease?.agentVersionId)}</span>
-                <code>{alias.currentRelease?.id || "—"}</code>
-                <time>{formatDateTime(locale, alias.currentRelease?.createdAt)}</time>
-                <span className={`route-status ${statusClass}`}><i />{statusLabel}</span>
-              </div>;
-            })}
-          </div>
+        <section className="deployment-current">
+          <h2>{t("currentPublishedVersion")}</h2>
+          {current ? <div><div><a className="inline-link" href={`#/agents?agent=${encodeURIComponent(current.agentVersionId)}`}>{versionLabel(agents, current.agentVersionId)}</a><p>{t("publishedAt")} · {formatDateTime(locale, current.createdAt)}</p></div></div> : <p>{t("publishBeforeIntegration")}</p>}
         </section>
-        <button className="secondary-action" onClick={() => setTab("traffic")}><Gauge size={17} />{t("viewRequests")}</button>
         <section className="policy-section">
           <h2>{t("deploymentPolicy")}</h2>
-          <div><span><Gauge size={17} /><small>{t("requestLimit")}</small><strong>{deployment.policy.requestsPerMinute} RPM</strong></span><span><Users size={17} /><small>{t("concurrencyLimit")}</small><strong>{deployment.policy.maxConcurrentResponses}</strong></span><span><Clock size={17} /><small>{t("timeout")}</small><strong>{Math.round(deployment.policy.executionTimeoutMs / 1000)}s</strong></span><span><GitBranch size={17} /><small>{t("callerInstructions")}</small><strong>{deployment.policy.allowInstructions ? "On" : t("off")}</strong></span><span><Wrench size={17} /><small>{t("callerTools")}</small><strong>{deployment.policy.allowCallerTools ? "On" : t("off")}</strong></span></div>
+          <div><span><Gauge size={17} /><small>{t("requestLimit")}</small><strong>{deployment.policy.requestsPerMinute} RPM</strong></span><span><Users size={17} /><small>{t("concurrencyLimit")}</small><strong>{deployment.policy.maxConcurrentResponses}</strong></span><span><Clock size={17} /><small>{t("timeout")}</small><strong>{Math.round(deployment.policy.executionTimeoutMs / 1000)}s</strong></span></div>
+          <p className="form-hint">{t("fixedDeploymentPolicy")}</p>
         </section>
-      </> : tab === "access" ? <WebhookAccess key={deployment.id} deployment={deployment} endpoints={webhooks} busyId={webhookBusyId} t={t} onCreate={() => setWebhookOpen(true)} onToggle={toggleWebhook} /> : tab === "traffic" ? <ResponseCenter key={deployment.id} tenantId={deployment.tenantId} deployments={[deployment]} agents={agents} locale={locale} t={t} scopedDeploymentId={deployment.id} /> : tab === "releases" ? <ReleaseHistory key={deployment.id} deployment={deployment} agents={agents} locale={locale} t={t} /> : <DeploymentPolicy deployment={deployment} t={t} />}
-      {releaseOpen && <ReleaseDialog deployment={deployment} agents={agents} locale={locale} t={t} onClose={() => setReleaseOpen(false)} onReleased={onRefresh} />}
-      {webhookOpen && <WebhookDialog deployment={deployment} t={t} onClose={() => setWebhookOpen(false)} onCreated={refreshWebhooks} />}
+      </> : tab === "webhooks" ? <WebhookSettings key={deployment.id} deployment={deployment} t={t} /> : tab === "traffic" ? <ResponseCenter key={deployment.id} tenantId={deployment.tenantId} deployments={[deployment]} agents={agents} locale={locale} t={t} scopedDeploymentId={deployment.id} /> : tab === "releases" ? <><ReleaseTaskHistory key={`tasks-${deployment.id}`} deployment={deployment} datasets={datasets} agents={agents} locale={locale} t={t} onReleased={onRefresh} /><ReleaseHistory key={`history-${deployment.id}`} deployment={deployment} agents={agents} locale={locale} t={t} alias={currentRoute?.name || "production"} /></> : <ReleasePolicyEditor key={deployment.id} deployment={deployment} datasets={datasets} t={t} />}
+      {integrationOpen && <EndpointIntegration deployment={deployment} deployments={deployments} locale={locale} t={t} onClose={() => setIntegrationOpen(false)} />}
+      {releaseOpen && <ReleaseDialog deployment={deployment} datasets={datasets} agents={agents} initialVersionId={initialVersionId} locale={locale} t={t} onClose={() => setReleaseOpen(false)} onReleased={onRefresh} />}
     </main>
   );
 }

@@ -1,0 +1,22 @@
+[
+  {
+    "interrupted": "agent",
+    "status": "complete",
+    "validTrials": 1,
+    "candidateExecutions": 1,
+    "judgeExecutions": 1,
+    "completed": 1,
+    "verdicts": 1,
+    "resultAndCostRetained": true
+  },
+  {
+    "interrupted": "judge",
+    "status": "complete",
+    "validTrials": 1,
+    "candidateExecutions": 1,
+    "judgeExecutions": 1,
+    "completed": 1,
+    "verdicts": 1,
+    "resultAndCostRetained": true
+  }
+]

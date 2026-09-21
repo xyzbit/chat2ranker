@@ -61,7 +61,7 @@ func (h *Handler) listOperatorResponses(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	v, err := h.service.ListOperatorResponses(r.Context(), domain.ResponseListFilter{TenantID: q.Get("tenantId"), DeploymentID: domain.DeploymentID(q.Get("deploymentId")), Status: q.Get("status"), Before: domain.ResponseID(q.Get("before")), Limit: limit})
+	v, err := h.service.ListOperatorResponses(r.Context(), domain.ResponseListFilter{TenantID: q.Get("tenantId"), DeploymentID: domain.DeploymentID(q.Get("deploymentId")), Status: q.Get("status"), Query: q.Get("query"), ConversationID: domain.ConversationID(q.Get("conversationId")), Before: domain.ResponseID(q.Get("before")), Limit: limit})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -82,4 +82,14 @@ func (h *Handler) replayWebhookDelivery(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, 202, map[string]bool{"queued": true})
+}
+
+func (h *Handler) captureResponseCase(w http.ResponseWriter, r *http.Request) {
+	var input app.CaptureResponseCaseInput
+	if err := decodeStrict(r, &input); err != nil {
+		writeError(w, err)
+		return
+	}
+	value, err := h.service.CaptureResponseCase(r.Context(), domain.ResponseID(r.PathValue("id")), input)
+	writeResult(w, value, err, http.StatusCreated)
 }

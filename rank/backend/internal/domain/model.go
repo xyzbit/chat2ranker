@@ -12,6 +12,15 @@ type Case struct {
 	Title    string         `json:"title"`
 	Input    string         `json:"input"`
 	Expected map[string]any `json:"expected"`
+	Source   *CaseSource    `json:"source,omitempty"`
+}
+
+// CaseSource retains invocation identity without copying unreviewed request content.
+type CaseSource struct {
+	ResponseID     ResponseID   `json:"responseId"`
+	DeploymentID   DeploymentID `json:"deploymentId"`
+	AgentVersionID string       `json:"agentVersionId"`
+	CapturedAt     time.Time    `json:"capturedAt"`
 }
 
 type DatasetFamily struct {
@@ -55,8 +64,9 @@ type RubricCriterion struct {
 }
 
 type JudgeConfig struct {
-	Harness string `json:"harness"`
-	Model   string `json:"model,omitempty"`
+	ModelConnectionID string `json:"modelConnectionId,omitempty"`
+	Harness           string `json:"harness"`
+	Model             string `json:"model,omitempty"`
 }
 
 type PassPolicy struct {
@@ -110,11 +120,12 @@ type AgentVersion struct {
 }
 
 type RuntimeAvailability struct {
-	Available  bool   `json:"available"`
-	Installed  bool   `json:"installed"`
-	Configured bool   `json:"configured"`
-	Label      string `json:"label,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	StructuredHistory bool   `json:"structuredHistory"`
+	Available         bool   `json:"available"`
+	Installed         bool   `json:"installed"`
+	Configured        bool   `json:"configured"`
+	Label             string `json:"label,omitempty"`
+	Reason            string `json:"reason,omitempty"`
 }
 
 type AgentVersionView struct {
@@ -306,41 +317,50 @@ type RunEvent struct {
 	Reason           string    `json:"reason,omitempty"`
 }
 
+// RunExecutionSettings freezes platform routing and lifetime choices at admission.
+type RunExecutionSettings struct {
+	TenantID  string `json:"tenantId"`
+	TimeoutMs int64  `json:"timeoutMs"`
+}
+
 type Run struct {
-	ID                 string           `json:"id"`
-	ExperimentID       string           `json:"experimentId"`
-	GroupID            string           `json:"groupId,omitempty"`
-	IdempotencyKey     string           `json:"-"`
-	Status             string           `json:"status"`
-	DatasetSnapshot    DatasetVersion   `json:"datasetSnapshot"`
-	AgentSnapshot      AgentVersion     `json:"agentSnapshot"`
-	EvaluatorSnapshot  EvaluatorVersion `json:"evaluatorSnapshot"`
-	TrialCount         int              `json:"trialCount"`
-	Concurrency        int              `json:"concurrency"`
-	CreatedAt          time.Time        `json:"createdAt"`
-	StartedAt          *time.Time       `json:"startedAt,omitempty"`
-	CompletedAt        *time.Time       `json:"completedAt,omitempty"`
-	DurationMs         int64            `json:"durationMs"`
-	Passed             int              `json:"passed"`
-	Total              int              `json:"total"`
-	PassRate           int              `json:"passRate"`
-	ScheduledTrials    int              `json:"scheduledTrials"`
-	CompletedTrials    int              `json:"completedTrials"`
-	ValidTrials        int              `json:"validTrials"`
-	InfraFailures      int              `json:"infraFailures"`
-	GradingFailures    int              `json:"gradingFailures"`
-	ReliableCases      int              `json:"reliableCases"`
-	CaseCount          int              `json:"caseCount"`
-	PassHat3           float64          `json:"passHat3"`
-	EvaluationComplete bool             `json:"evaluationComplete"`
-	Cost               float64          `json:"cost"`
-	CandidateCost      float64          `json:"candidateCost"`
-	EvaluationCost     float64          `json:"evaluationCost"`
-	CostKnown          bool             `json:"costKnown"`
-	CostEstimated      bool             `json:"costEstimated"`
-	Error              string           `json:"error,omitempty"`
-	Results            []CaseResult     `json:"results"`
-	Events             []RunEvent       `json:"events"`
+	ExecutionSettings  RunExecutionSettings `json:"executionSettings"`
+	CancelRequested    bool                 `json:"cancelRequested,omitempty"`
+	ExecutionFormat    int                  `json:"-"`
+	ID                 string               `json:"id"`
+	ExperimentID       string               `json:"experimentId"`
+	GroupID            string               `json:"groupId,omitempty"`
+	IdempotencyKey     string               `json:"-"`
+	Status             string               `json:"status"`
+	DatasetSnapshot    DatasetVersion       `json:"datasetSnapshot"`
+	AgentSnapshot      AgentVersion         `json:"agentSnapshot"`
+	EvaluatorSnapshot  EvaluatorVersion     `json:"evaluatorSnapshot"`
+	TrialCount         int                  `json:"trialCount"`
+	Concurrency        int                  `json:"concurrency"`
+	CreatedAt          time.Time            `json:"createdAt"`
+	StartedAt          *time.Time           `json:"startedAt,omitempty"`
+	CompletedAt        *time.Time           `json:"completedAt,omitempty"`
+	DurationMs         int64                `json:"durationMs"`
+	Passed             int                  `json:"passed"`
+	Total              int                  `json:"total"`
+	PassRate           int                  `json:"passRate"`
+	ScheduledTrials    int                  `json:"scheduledTrials"`
+	CompletedTrials    int                  `json:"completedTrials"`
+	ValidTrials        int                  `json:"validTrials"`
+	InfraFailures      int                  `json:"infraFailures"`
+	GradingFailures    int                  `json:"gradingFailures"`
+	ReliableCases      int                  `json:"reliableCases"`
+	CaseCount          int                  `json:"caseCount"`
+	PassHat3           float64              `json:"passHat3"`
+	EvaluationComplete bool                 `json:"evaluationComplete"`
+	Cost               float64              `json:"cost"`
+	CandidateCost      float64              `json:"candidateCost"`
+	EvaluationCost     float64              `json:"evaluationCost"`
+	CostKnown          bool                 `json:"costKnown"`
+	CostEstimated      bool                 `json:"costEstimated"`
+	Error              string               `json:"error,omitempty"`
+	Results            []CaseResult         `json:"results"`
+	Events             []RunEvent           `json:"events"`
 }
 
 // RunGroup is a comparison request. Each child Run still freezes and executes

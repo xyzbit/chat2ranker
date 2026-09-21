@@ -1,0 +1,58 @@
+{
+  "sandboxImage": "sha256:56cd7d12c4aa4c29c207626a8a26fa6441208378d63b4d61b8ffed005b380331",
+  "serverImage": "sha256:a16bd71c1a8ffabfbcfb620c7186658a9f3c2602c22bd586f1a3889681f7c8f2",
+  "facts": {
+    "uid": 1000,
+    "tokenVisible": false,
+    "rootEnvironmentReadable": false,
+    "canSignalRoot": false,
+    "dockerSocketVisible": false
+  },
+  "detachedWorkloadObserved": true,
+  "lifecycleServerKilled": true,
+  "providerTTLSeconds": 90,
+  "protectedLifetimeSeconds": 25,
+  "stoppedAtDeadline": true,
+  "exitCode": 1,
+  "date": "2026-09-15",
+  "serverVersion": "0.2.3",
+  "execdVersion": "1.1.0",
+  "goVersion": "1.26.0",
+  "sdkCommit": "07f0a68dd230d5498645df2fbd0d5174b3edb5c1",
+  "sqliteSnapshot": "passed",
+  "postgresRiverTwoWorkersSnapshot": "passed",
+  "dshStructuredHistory": "passed with deterministic model",
+  "artifactReadAfterDeletion": "passed with minikube S3 and standalone local storage",
+  "physicalHostScaling": "not tested",
+  "minikubeRemoteAdapter": "passed",
+  "productionDiskAndEgressIsolation": "not established",
+  "minikube": {
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ],
+    "runtime": {
+      "executor": "opensandbox",
+      "image": "sha256:56cd7d12c4aa4c29c207626a8a26fa6441208378d63b4d61b8ffed005b380331",
+      "cleanupPending": false
+    },
+    "images": {
+      "platform": "rank-platform-lab:cbc6411f92e2abb5",
+      "gateway": "rank-gateway-lab:cbc6411f92e2abb5"
+    },
+    "digests": {
+      "platform": "sha256:464c8ecb7ecb2f80ddd67c2e55d720f1b02f0c0e721c56fd6275d2fdfe78c273",
+      "gateway": "sha256:8c01f1630abd82ebf126134ea3a9cc636132208ad656f7a5551cb9082c129b8d"
+    },
+    "startedAt": "2026-09-14T16:42:50.255Z",
+    "completedAt": "2026-09-14T16:43:57.939Z",
+    "recoveredQueuedAttempt": 1
+  },
+  "artifactUploadFailure": "passed: failed result, confirmed sandbox cleanup, no invocation replay",
+  "escapedAndCompressedCredentialRedaction": "passed, including decoded size bounds"
+}

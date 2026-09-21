@@ -35,6 +35,7 @@ func Execute(parent context.Context, request workerprotocol.Request, emit func(w
 	}
 	safeRequest := request
 	safeRequest.Credential = ""
+	safeRequest.ModelQuota = nil
 	if len(safeRequest.Spec.InputAttachments) > 0 {
 		safeRequest.Spec.InputAttachments = append([]contract.InputAttachment(nil), safeRequest.Spec.InputAttachments...)
 		for index := range safeRequest.Spec.InputAttachments {
@@ -64,7 +65,7 @@ func Execute(parent context.Context, request workerprotocol.Request, emit func(w
 			return emit(workerprotocol.Event{Type: event.Type, Message: event.Message, Data: event.Data, At: event.At})
 		}
 	}
-	result, err := registry.Run(ctx, harness.Invocation{ExecutionID: request.ExecutionID, Spec: request.Spec, Workspace: request.WorkspaceDir, ArtifactDir: request.ArtifactDir, HarnessHome: request.HarnessHome, Metadata: request.Metadata, ModelConnection: request.ModelConnection, Credential: request.Credential, Emit: progress})
+	result, err := registry.Run(ctx, harness.Invocation{ModelQuota: request.ModelQuota, MaxModelRequests: request.MaxModelRequests, ExecutionID: request.ExecutionID, Spec: request.Spec, Workspace: request.WorkspaceDir, ArtifactDir: request.ArtifactDir, HarnessHome: request.HarnessHome, Metadata: request.Metadata, ModelConnection: request.ModelConnection, Credential: request.Credential, Emit: progress})
 	pricing.Apply(&result, request.Spec, request.ModelConnection)
 	result.DurationMs = time.Since(started).Milliseconds()
 	if err == nil && request.Spec.StructuredOutput != nil {
@@ -82,14 +83,28 @@ func Execute(parent context.Context, request workerprotocol.Request, emit func(w
 }
 
 func validate(request workerprotocol.Request) error {
+	if q := request.ModelQuota; q != nil {
+		if q.RequestTimeoutMs < 1 || q.RequestTimeoutMs > 60000 || q.Endpoint == "" || q.Token == "" || q.MaxOutputTokens < 1 || request.MaxModelRequests < 1 || request.ModelConnection == nil {
+			return errors.New("invalid model quota runtime configuration")
+		}
+	}
+	if request.MaxModelRequests < 0 || request.MaxModelRequests > contract.MaxModelRequestBudget {
+		return errors.New("invalid model request budget")
+	}
 	if request.ProtocolVersion != workerprotocol.Version || request.Spec.ProtocolVersion != contract.ProtocolVersion {
 		return errors.New("unsupported execution protocol version")
 	}
-	if request.ExecutionID == "" || request.Spec.Prompt == "" || request.Spec.Harness == "" {
-		return errors.New("executionId, harness and prompt are required")
+	if request.ExecutionID == "" || request.Spec.Harness == "" {
+		return errors.New("executionId and harness are required")
 	}
 	if request.Spec.Kind != contract.KindAgent && request.Spec.Kind != contract.KindJudge {
 		return fmt.Errorf("unsupported execution kind %q", request.Spec.Kind)
+	}
+	if err := contract.ValidateInput(request.Spec); err != nil {
+		return err
+	}
+	if err := contract.ValidateModelSelection(request.Spec); err != nil {
+		return err
 	}
 	if err := contract.ValidateStructuredOutput(request.Spec.StructuredOutput); err != nil {
 		return err

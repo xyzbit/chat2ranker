@@ -14,7 +14,7 @@ The source launcher compiled Go services and started Vite from the repository, s
 
 The runtime archive contains three statically compiled Go binaries, the production Web bundle, Rank skills, and the DSH runtime. Keeping DSH out of the thin npm launcher avoids making every user resolve its large dependency graph during `npx`. Execution workers receive the packaged DSH CLI path through `RANK_DSH_BIN`; source runs retain the repository-path fallback.
 
-The packaged DSH runtime is fixed to the complete `0.1.0-rc.8` package family. The release manifest overrides transitive DSH workspace packages to that release and rejects a runtime containing another DSH version, so a later npm pre-release cannot silently create a mixed plugin graph.
+The runtime packages the production dependency closure of the current workspace through `@deepseek-ai/dsh-rank-runtime`. Vendored links become real files, and execution history and model-budget modules travel with the matching DSH build. Staging runs outside the checkout to prevent recursive packaging; development dependencies are restored after deployment.
 
 `pnpm rank:package` builds the current platform runtime, checksum, and npm tarball under `dist/agentkiln/`. It prints local acceptance and external publishing commands but never publishes by itself.
 
@@ -30,4 +30,4 @@ The public product identity is AgentKiln (`agentkiln` in package, repository, la
 
 ## Consequences
 
-Users need Node.js but do not need the source tree, Go, or pnpm. npm cache cleanup cannot delete experiments or credentials. Program upgrades replace immutable runtime versions while SQLite migrations upgrade durable data in place. A DSH upgrade is an explicit release-script change followed by packaged tool-call acceptance, rather than an incidental dependency resolution. Docker remains a separate server deployment option rather than the default local installation path.
+Users need Node.js but do not need the source tree, Go, or pnpm. npm cache cleanup cannot delete experiments or credentials. Program upgrades replace immutable runtime versions while SQLite migrations upgrade durable data in place. DSH source changes require rebuilding the runtime and completing packaged tool-call acceptance. Docker remains a separate server deployment option rather than the default local installation path.

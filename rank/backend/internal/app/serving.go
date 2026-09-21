@@ -114,6 +114,7 @@ type ResponseConversationObject struct {
 }
 
 type ResponseObject struct {
+	CancelRequested    bool                          `json:"cancel_requested,omitempty"`
 	ID                 domain.ResponseID             `json:"id"`
 	Object             string                        `json:"object"`
 	CreatedAt          int64                         `json:"created_at"`
@@ -214,6 +215,9 @@ func (s *Service) AuthenticateServingCredential(ctx context.Context, secret, sco
 	}
 	secretHash := servingSecretHash(secret)
 	credential, err := s.repo.GetAPICredentialBySecretHash(ctx, secretHash)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return domain.APICredential{}, err
+	}
 	if err != nil || subtle.ConstantTimeCompare([]byte(credential.SecretHash), []byte(secretHash)) != 1 || credential.RevokedAt != nil {
 		return domain.APICredential{}, problem(401, "invalid_api_key", "invalid bearer API key")
 	}
@@ -242,6 +246,10 @@ func credentialAllowsDeployment(credential domain.APICredential, deploymentID do
 }
 
 func (s *Service) CreateServingResponse(ctx context.Context, credential domain.APICredential, input CreateServingResponseInput) (domain.ServingResponse, bool, error) {
+	return s.createResponse(ctx, credential, input, nil)
+}
+
+func (s *Service) createResponse(ctx context.Context, credential domain.APICredential, input CreateServingResponseInput, trial *domain.DeploymentResolution) (domain.ServingResponse, bool, error) {
 	if s.execution == nil {
 		return domain.ServingResponse{}, false, problem(503, "execution_service_unavailable", "Execution Service is not configured")
 	}
@@ -288,7 +296,7 @@ func (s *Service) CreateServingResponse(ctx context.Context, credential domain.A
 	if err != nil {
 		return domain.ServingResponse{}, false, err
 	}
-	existing, err := s.repo.GetResponseByIdempotencyKey(ctx, credential.ID, input.IdempotencyKey)
+	existing, err := s.repo.GetResponseByIdempotencyKey(ctx, credential.ID, input.IdempotencyKey, credential.TenantID)
 	if err == nil {
 		if existing.RequestHash != requestHash {
 			return domain.ServingResponse{}, false, problem(409, "idempotency_conflict", "Idempotency-Key was already used with another request")
@@ -298,20 +306,19 @@ func (s *Service) CreateServingResponse(ctx context.Context, credential domain.A
 	if !errors.Is(err, domain.ErrNotFound) {
 		return domain.ServingResponse{}, false, err
 	}
-	resolution, err := s.ResolveDeploymentReference(ctx, credential.TenantID, input.Model)
-	if err != nil {
-		return domain.ServingResponse{}, false, err
-	}
-	if !credentialAllowsDeployment(credential, resolution.Deployment.ID) {
-		return domain.ServingResponse{}, false, problem(403, "deployment_forbidden", "API credential cannot access this Deployment")
+	var resolution domain.DeploymentResolution
+	if trial != nil {
+		resolution = *trial
+	} else {
+		resolution, err = s.ResolveDeploymentReference(ctx, credential.TenantID, input.Model)
+		if err != nil {
+			return domain.ServingResponse{}, false, err
+		}
+		if !credentialAllowsDeployment(credential, resolution.Deployment.ID) {
+			return domain.ServingResponse{}, false, problem(403, "deployment_forbidden", "API credential cannot access this Deployment")
+		}
 	}
 	policy := resolution.Deployment.Policy
-	if len(callerTools) > 0 && !policy.AllowCallerTools {
-		return domain.ServingResponse{}, false, problem(400, "caller_tools_disabled", "this Deployment does not allow caller function tools")
-	}
-	if input.Instructions != "" && !policy.AllowInstructions {
-		return domain.ServingResponse{}, false, problem(400, "instructions_disabled", "this Deployment does not allow caller instructions")
-	}
 	now := s.now().UTC()
 	var conversation *domain.Conversation
 	conversationID := domain.ConversationID("")
@@ -321,7 +328,8 @@ func (s *Service) CreateServingResponse(ctx context.Context, credential domain.A
 			return domain.ServingResponse{}, false, problem(400, "unexpected_function_call_output", "function_call_output requires previous_response_id")
 		}
 		conversation = &domain.Conversation{
-			ID: domain.ConversationID(newServingID("conv")), TenantID: credential.TenantID,
+			Trial: trial != nil,
+			ID:    domain.ConversationID(newServingID("conv")), TenantID: credential.TenantID,
 			DeploymentID: resolution.Deployment.ID, AgentVersionID: resolution.AgentVersion.ID,
 			CreatedAt: now, UpdatedAt: now,
 		}
@@ -334,7 +342,7 @@ func (s *Service) CreateServingResponse(ctx context.Context, credential domain.A
 		if err != nil {
 			return domain.ServingResponse{}, false, err
 		}
-		if previous.Status != domain.ResponseCompleted {
+		if previous.Status != domain.ResponseCompleted && !(trial != nil && (previous.Status == domain.ResponseFailed || previous.Status == domain.ResponseCancelled)) {
 			return domain.ServingResponse{}, false, problem(409, "previous_response_not_completed", "previous_response_id must identify a completed Response")
 		}
 		if previous.ConversationID == "" {
@@ -348,7 +356,7 @@ func (s *Service) CreateServingResponse(ctx context.Context, credential domain.A
 			return domain.ServingResponse{}, false, problem(400, "conversation_deployment_mismatch", "previous_response_id belongs to another Deployment")
 		}
 		if current.LastResponseID != previous.ID {
-			existing, loadErr := s.repo.GetResponseByIdempotencyKey(ctx, credential.ID, input.IdempotencyKey)
+			existing, loadErr := s.repo.GetResponseByIdempotencyKey(ctx, credential.ID, input.IdempotencyKey, credential.TenantID)
 			if loadErr == nil {
 				if existing.RequestHash != requestHash {
 					return domain.ServingResponse{}, false, problem(409, "idempotency_conflict", "Idempotency-Key was already used with another request")
@@ -357,7 +365,7 @@ func (s *Service) CreateServingResponse(ctx context.Context, credential domain.A
 			}
 			return domain.ServingResponse{}, false, problem(409, "conversation_head_changed", "previous_response_id is not the latest Response in its Conversation")
 		}
-		if resolution.Kind == domain.ResolutionExact && resolution.AgentVersion.ID != current.AgentVersionID {
+		if (trial != nil || resolution.Kind == domain.ResolutionExact) && resolution.AgentVersion.ID != current.AgentVersionID {
 			return domain.ServingResponse{}, false, problem(400, "conversation_version_mismatch", "an exact model reference cannot change the Conversation Agent version")
 		}
 		if len(callerTools) == 0 {
@@ -412,10 +420,18 @@ func (s *Service) CreateServingResponse(ctx context.Context, credential domain.A
 	if resolution.ReleaseRevision != nil {
 		response.ReleaseRevisionID = resolution.ReleaseRevision.ID
 	}
+	request, err := s.freezeServingExecution(ctx, response, resolution.AgentVersion, policy)
+	if err != nil {
+		return domain.ServingResponse{}, false, err
+	}
+	response.ExecutionRequest, err = json.Marshal(request)
+	if err != nil {
+		return domain.ServingResponse{}, false, err
+	}
 	created := responseEvent(response.ID, "response.created", map[string]any{"response": ResponseObjectFor(response)}, now)
 	err = s.repo.AdmitResponse(ctx, response, conversation, created, policy.RequestsPerMinute, policy.MaxConcurrentResponses)
 	if err != nil {
-		existing, loadErr := s.repo.GetResponseByIdempotencyKey(ctx, credential.ID, input.IdempotencyKey)
+		existing, loadErr := s.repo.GetResponseByIdempotencyKey(ctx, credential.ID, input.IdempotencyKey, credential.TenantID)
 		if loadErr == nil {
 			if existing.RequestHash != requestHash {
 				return domain.ServingResponse{}, false, problem(409, "idempotency_conflict", "Idempotency-Key was already used with another request")
@@ -517,85 +533,124 @@ func decodeServingJSON(raw json.RawMessage, target any) error {
 	return nil
 }
 
-func (s *Service) servingExecutionInput(ctx context.Context, response domain.ServingResponse) (string, []contract.InputAttachment, error) {
+func (s *Service) servingExecutionInput(ctx context.Context, response domain.ServingResponse) (string, []contract.Message, []contract.InputAttachment, error) {
 	if response.PreviousResponseID == "" {
-		return response.Input, servingInputAttachments(response.InputItems), nil
+		return response.Input, nil, servingInputAttachments(response.InputItems), nil
 	}
 	responses, err := s.repo.ListConversationResponses(ctx, response.ConversationID)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
-	type conversationMessage struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
+	for index, prior := range responses {
+		if prior.ID == response.PreviousResponseID {
+			responses = append(responses[:index+1:index+1], response)
+			break
+		}
 	}
-	messages := make([]conversationMessage, 0, len(responses)*2)
+	messages := []contract.Message{}
 	attachments := []contract.InputAttachment{}
 	found := false
 	for _, item := range responses {
-		messages = append(messages, conversationMessage{Role: "user", Content: servingConversationInput(item)})
+		if item.ID != response.ID && response.CredentialID == "" && (item.Status == domain.ResponseFailed || item.Status == domain.ResponseCancelled) {
+			continue
+		}
+		messages = append(messages, servingConversationMessages(item)...)
 		attachments = append(attachments, servingInputAttachments(item.InputItems)...)
 		if item.ID == response.ID {
 			found = true
 			break
 		}
 		if item.Status != domain.ResponseCompleted {
-			return "", nil, problem(409, "conversation_history_incomplete", "Conversation history contains a non-completed Response")
+			return "", nil, nil, problem(409, "conversation_history_incomplete", "Conversation history contains a non-completed Response")
 		}
-		messages = append(messages, conversationMessage{Role: "assistant", Content: servingConversationOutput(item)})
+		assistant := contract.Message{Role: "assistant", Content: item.OutputText}
+		if item.ToolCall != nil {
+			assistant.Content = ""
+			assistant.ToolCalls = []contract.FunctionCall{{ID: item.ToolCall.ID, Name: item.ToolCall.Name, Arguments: item.ToolCall.Arguments}}
+		}
+		messages = append(messages, assistant)
 	}
 	if !found {
-		return "", nil, domain.ErrNotFound
+		return "", nil, nil, domain.ErrNotFound
 	}
-	payload, err := json.Marshal(messages)
-	if err != nil {
-		return "", nil, err
+	if err := contract.ValidateInput(contract.Spec{Kind: contract.KindAgent, Messages: messages}); err != nil {
+		return "", nil, nil, problem(400, "invalid_conversation_history", err.Error())
 	}
-	return "Continue the conversation in this JSON message history. Respond to the final user message.\n" + string(payload), attachments, nil
+	return "", messages, attachments, nil
 }
 
-func servingConversationInput(response domain.ServingResponse) string {
-	parts := []string{}
+// servingConversationMessages preserves tool outputs and subsequent user input in order.
+func servingConversationMessages(response domain.ServingResponse) []contract.Message {
+	if len(response.InputItems) == 0 {
+		return []contract.Message{{Role: "user", Content: response.Input}}
+	}
+	var messages []contract.Message
+	var parts []string
+	flush := func() {
+		if len(parts) > 0 {
+			messages = append(messages, contract.Message{Role: "user", Content: strings.Join(parts, "\n")})
+			parts = nil
+		}
+	}
 	for _, item := range response.InputItems {
-		if item.Type == "input_text" {
+		switch item.Type {
+		case "function_call_output":
+			flush()
+			messages = append(messages, contract.Message{Role: "tool", ToolCallID: item.CallID, Content: item.Output})
+		case "input_text":
 			parts = append(parts, item.Text)
-			continue
+		default:
+			parts = append(parts, fmt.Sprintf("[%s: %s, %s]", item.Type, item.Name, item.ContentDigest))
 		}
-		if item.Type == "function_call_output" {
-			parts = append(parts, fmt.Sprintf("[function_call_output: %s]\n%s", item.CallID, item.Output))
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("[%s: %s, %s]", item.Type, item.Name, item.ContentDigest))
 	}
-	if len(parts) == 0 {
-		return response.Input
-	}
-	return strings.Join(parts, "\n")
-}
-
-func servingConversationOutput(response domain.ServingResponse) string {
-	if response.ToolCall != nil {
-		return fmt.Sprintf("[function_call: %s %s %s]", response.ToolCall.ID, response.ToolCall.Name, response.ToolCall.Arguments)
-	}
-	return response.OutputText
+	flush()
+	return messages
 }
 
 func (s *Service) dispatchResponse(id domain.ResponseID) {
+	if s.externalDispatch {
+		return
+	}
 	s.mu.Lock()
-	if _, exists := s.responseWorkers[id]; exists {
+	if _, exists := s.responseWorkers[id]; exists || s.responseStopping {
 		s.mu.Unlock()
 		return
 	}
 	s.responseWorkers[id] = struct{}{}
+	s.responseWG.Add(1)
 	s.mu.Unlock()
 	go func() {
+		defer s.responseWG.Done()
 		defer func() {
 			s.mu.Lock()
 			delete(s.responseWorkers, id)
 			s.mu.Unlock()
 		}()
-		_ = s.runServingResponse(context.Background(), id)
+		for s.responseContext.Err() == nil {
+			_ = s.runServingResponse(s.responseContext, id)
+			current, err := s.repo.GetResponse(s.responseContext, id)
+			if err == nil && domain.IsResponseTerminal(current.Status) {
+				return
+			}
+			timer := time.NewTimer(s.dispatchRetryInterval)
+			select {
+			case <-s.responseContext.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
 	}()
+}
+
+// StopServingResponses waits for local observers to exit without cancelling
+// accepted remote executions. A subsequent service resumes from stored requests.
+func (s *Service) StopServingResponses() {
+	s.mu.Lock()
+	s.responseStopping = true
+	s.stopResponses()
+	s.mu.Unlock()
+	s.responseWG.Wait()
 }
 
 func (s *Service) runServingResponse(ctx context.Context, id domain.ResponseID) error {
@@ -603,45 +658,16 @@ func (s *Service) runServingResponse(ctx context.Context, id domain.ResponseID) 
 	if err != nil || domain.IsResponseTerminal(response.Status) {
 		return err
 	}
-	version, err := s.repo.GetAgentVersion(ctx, response.AgentVersionID)
+	if len(response.ExecutionRequest) == 0 || string(response.ExecutionRequest) == "null" {
+		return errors.New("active Response has no frozen Execution request")
+	}
+	var request contract.SubmitRequest
+	if err := json.Unmarshal(response.ExecutionRequest, &request); err != nil {
+		return err
+	}
+	execution, err := s.execution.Submit(ctx, request)
 	if err != nil {
-		return s.failServingResponse(ctx, response, "agent_version_unavailable", err.Error())
-	}
-	deployment, err := s.repo.GetDeployment(ctx, response.DeploymentID)
-	if err != nil {
-		return s.failServingResponse(ctx, response, "deployment_unavailable", err.Error())
-	}
-	systemPrompt := version.SystemPrompt
-	if response.Instructions != "" {
-		systemPrompt = strings.TrimSpace(systemPrompt + "\n\n" + response.Instructions)
-	}
-	prompt, attachments, err := s.servingExecutionInput(ctx, response)
-	if err != nil {
-		return s.failServingResponse(ctx, response, "conversation_history_unavailable", err.Error())
-	}
-	var structuredOutput *contract.StructuredOutput
-	if response.TextFormat.Type == "json_schema" {
-		structuredOutput = &contract.StructuredOutput{
-			Name: response.TextFormat.Name, Description: response.TextFormat.Description, Schema: response.TextFormat.Schema,
-		}
-	}
-	execution, err := s.execution.Submit(ctx, contract.SubmitRequest{
-		IdempotencyKey: "response:" + string(response.ID),
-		Spec: contract.Spec{
-			ProtocolVersion: contract.ProtocolVersion, Kind: contract.KindAgent, Harness: version.RunnerType,
-			ModelConnectionID: version.ModelConnectionID, Model: runtimeModel(version.Model), Preset: version.Preset,
-			SystemPrompt: systemPrompt, Tools: version.Tools, Skills: version.Skills, Prompt: callerToolPrompt(prompt, response.CallerTools),
-			TimeoutMs: deployment.Policy.ExecutionTimeoutMs,
-			Metadata: map[string]string{
-				"responseId": string(response.ID), "deploymentId": string(response.DeploymentID),
-				"agentVersionId": response.AgentVersionID, "releaseRevisionId": string(response.ReleaseRevisionID),
-				"conversationId": string(response.ConversationID), "previousResponseId": string(response.PreviousResponseID),
-			},
-			StructuredOutput: structuredOutput, InputAttachments: attachments,
-		},
-	})
-	if err != nil {
-		return s.failServingResponse(ctx, response, "execution_submit_failed", err.Error())
+		return err
 	}
 	if response.Status == domain.ResponseQueued {
 		now := s.now().UTC()
@@ -649,24 +675,51 @@ func (s *Service) runServingResponse(ctx context.Context, id domain.ResponseID) 
 		started := responseEvent(response.ID, "response.in_progress", map[string]any{"response": ResponseObjectFor(response)}, now)
 		if err := s.repo.UpdateResponse(ctx, response, domain.ResponseQueued, []domain.ResponseEvent{started}); err != nil {
 			if errors.Is(err, domain.ErrConflict) {
-				_, _ = s.execution.Cancel(context.Background(), execution.ID)
 				return nil
 			}
 			return err
 		}
 		s.publishResponse(response.ID)
 	}
-	_, watchErr := s.execution.Watch(ctx, execution.ID, 0, nil)
+	response, err = s.repo.GetResponse(ctx, id)
+	if err != nil || domain.IsResponseTerminal(response.Status) {
+		return err
+	}
+	if response.CancelRequested {
+		execution, err = s.execution.Cancel(ctx, execution.ID)
+		if err != nil {
+			return err
+		}
+	}
+	after, progress, err := s.trialProgress(ctx, response)
+	if err != nil {
+		return err
+	}
+	// A bounded observation allows durable cancellation to be retried even when
+	// the event stream remains connected and silent.
+	watchCtx, stopWatch := context.WithTimeout(ctx, s.executionObserveTimeout)
+	_, watchErr := s.execution.Watch(watchCtx, execution.ID, after, progress)
+	stopWatch()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	execution, getErr := s.execution.Get(ctx, execution.ID)
 	if getErr != nil {
 		if watchErr != nil {
 			getErr = fmt.Errorf("%v; %w", watchErr, getErr)
 		}
-		return s.failServingResponse(ctx, response, "execution_unavailable", getErr.Error())
+		return getErr
 	}
 	current, err := s.repo.GetResponse(ctx, response.ID)
 	if err != nil || domain.IsResponseTerminal(current.Status) {
 		return err
+	}
+	if !contract.IsTerminal(execution.Status) {
+		return watchErr
+	}
+	// Callback persistence failures must be replayed before terminal projection.
+	if watchErr != nil {
+		return watchErr
 	}
 	if execution.Status == contract.StatusCancelled {
 		return s.finishServingResponse(ctx, current, domain.ResponseCancelled, execution, "response_cancelled", "Response was cancelled")
@@ -684,12 +737,49 @@ func (s *Service) runServingResponse(ctx context.Context, id domain.ResponseID) 
 	return s.finishServingResponse(ctx, current, domain.ResponseCompleted, execution, "", "")
 }
 
-func (s *Service) failServingResponse(ctx context.Context, response domain.ServingResponse, code, message string) error {
-	current, err := s.repo.GetResponse(ctx, response.ID)
-	if err != nil || domain.IsResponseTerminal(current.Status) {
-		return err
+func (s *Service) freezeServingExecution(ctx context.Context, response domain.ServingResponse, version domain.AgentVersion, policy domain.DeploymentPolicy) (contract.SubmitRequest, error) {
+	if err := validateFrozenAgentModel(version); err != nil {
+		return contract.SubmitRequest{}, err
 	}
-	return s.finishServingResponse(ctx, current, domain.ResponseFailed, contract.Execution{}, code, message)
+	systemPrompt := version.SystemPrompt
+	if response.Instructions != "" {
+		systemPrompt = strings.TrimSpace(systemPrompt + "\n\n" + response.Instructions)
+	}
+	prompt, messages, attachments, err := s.servingExecutionInput(ctx, response)
+	if err != nil {
+		return contract.SubmitRequest{}, err
+	}
+	var structuredOutput *contract.StructuredOutput
+	if response.TextFormat.Type == "json_schema" {
+		structuredOutput = &contract.StructuredOutput{
+			Name: response.TextFormat.Name, Description: response.TextFormat.Description, Schema: response.TextFormat.Schema,
+		}
+	}
+	if len(messages) > 0 {
+		if !s.probe(ctx, version).StructuredHistory {
+			return contract.SubmitRequest{}, problem(409, "unsupported_history", "此运行环境尚不支持结构化多轮对话，请选择支持的 Agent 版本")
+		}
+		if len(response.CallerTools) > 0 {
+			systemPrompt += "\n\n" + callerToolPrompt("", response.CallerTools)
+		}
+	} else {
+		prompt = callerToolPrompt(prompt, response.CallerTools)
+	}
+	return contract.SubmitRequest{
+		IdempotencyKey: "response:" + string(response.ID),
+		Spec: contract.Spec{
+			ProtocolVersion: contract.ProtocolVersion, Kind: contract.KindAgent, Harness: version.RunnerType,
+			ModelConnectionID: version.ModelConnectionID, Model: runtimeModel(version.Model), Preset: version.Preset,
+			SystemPrompt: systemPrompt, Tools: version.Tools, Skills: version.Skills, Prompt: prompt, Messages: messages,
+			TimeoutMs: policy.ExecutionTimeoutMs,
+			Metadata: map[string]string{
+				"tenantId": response.TenantID, "responseId": string(response.ID), "deploymentId": string(response.DeploymentID),
+				"agentVersionId": response.AgentVersionID, "releaseRevisionId": string(response.ReleaseRevisionID),
+				"conversationId": string(response.ConversationID), "previousResponseId": string(response.PreviousResponseID),
+			},
+			StructuredOutput: structuredOutput, InputAttachments: attachments,
+		},
+	}, nil
 }
 
 func (s *Service) finishServingResponse(ctx context.Context, response domain.ServingResponse, status string, execution contract.Execution, code, message string) error {
@@ -792,7 +882,7 @@ func ResponseObjectFor(response domain.ServingResponse) ResponseObject {
 		format.Name, format.Description, format.Schema, format.Strict = response.TextFormat.Name, response.TextFormat.Description, response.TextFormat.Schema, &strict
 	}
 	result := ResponseObject{
-		ID: response.ID, Object: "response", CreatedAt: response.CreatedAt.Unix(), Status: response.Status,
+		CancelRequested: response.CancelRequested, ID: response.ID, Object: "response", CreatedAt: response.CreatedAt.Unix(), Status: response.Status,
 		Error: response.Failure, IncompleteDetails: nil, Model: response.RequestedReference,
 		Output: []ResponseOutputItem{}, ParallelToolCalls: false, Tools: response.CallerTools, Metadata: response.Metadata,
 		Background: response.Background, Store: true, PreviousResponseID: nil,
@@ -875,38 +965,36 @@ func (s *Service) GetServingResponse(ctx context.Context, credential domain.APIC
 	if err != nil {
 		return response, err
 	}
-	if response.TenantID != credential.TenantID || !credentialAllowsDeployment(credential, response.DeploymentID) {
+	if response.TenantID != credential.TenantID || (response.CredentialID == "") != (credential.ID == "") || (credential.ID != "" && !credentialAllowsDeployment(credential, response.DeploymentID)) {
 		return domain.ServingResponse{}, domain.ErrNotFound
 	}
 	return response, nil
 }
 
+// CancelServingResponse records intent before contacting Execution. Until
+// Execution confirms a terminal outcome, the Response remains active.
 func (s *Service) CancelServingResponse(ctx context.Context, credential domain.APICredential, id domain.ResponseID) (domain.ServingResponse, error) {
 	response, err := s.GetServingResponse(ctx, credential, id)
-	if err != nil {
+	if err != nil || domain.IsResponseTerminal(response.Status) {
 		return response, err
 	}
-	if domain.IsResponseTerminal(response.Status) {
-		return response, nil
+	if err := s.repo.RequestResponseCancellation(ctx, id); err != nil {
+		return response, err
+	}
+	response, err = s.repo.GetResponse(ctx, id)
+	if err != nil || domain.IsResponseTerminal(response.Status) {
+		return response, err
 	}
 	if response.ExecutionID != "" {
-		if _, err := s.execution.Cancel(ctx, response.ExecutionID); err != nil {
-			return response, err
+		execution, cancelErr := s.execution.Cancel(ctx, response.ExecutionID)
+		if cancelErr == nil && execution.Status == contract.StatusCancelled {
+			if err := s.finishServingResponse(ctx, response, domain.ResponseCancelled, execution, "response_cancelled", "Response was cancelled"); err != nil {
+				return response, err
+			}
 		}
 	}
-	now := s.now().UTC()
-	expected := response.Status
-	response.Status, response.CompletedAt = domain.ResponseCancelled, &now
-	response.Failure = &domain.ResponseFailure{Code: "response_cancelled", Message: "Response was cancelled"}
-	event := responseEvent(response.ID, "response.cancelled", map[string]any{"response": ResponseObjectFor(response)}, now)
-	if err := s.updateResponseWithWebhooks(ctx, response, expected, []domain.ResponseEvent{event}); err != nil {
-		if errors.Is(err, domain.ErrConflict) {
-			return s.repo.GetResponse(ctx, response.ID)
-		}
-		return response, err
-	}
-	s.publishResponse(response.ID)
-	return response, nil
+	s.dispatchResponse(id)
+	return s.repo.GetResponse(ctx, id)
 }
 
 func (s *Service) WaitServingResponse(ctx context.Context, id domain.ResponseID) (domain.ServingResponse, error) {
@@ -922,7 +1010,7 @@ func (s *Service) WaitServingResponse(ctx context.Context, id domain.ResponseID)
 		case <-ctx.Done():
 			return domain.ServingResponse{}, ctx.Err()
 		case <-wakeup:
-		case <-time.After(15 * time.Second):
+		case <-time.After(s.eventPollInterval):
 		}
 	}
 }
@@ -934,6 +1022,10 @@ func (s *Service) WaitResponseEvents(ctx context.Context, id domain.ResponseID, 
 	wakeup := make(chan struct{}, 1)
 	s.subscribeResponse(id, wakeup)
 	defer s.unsubscribeResponse(id, wakeup)
+	ticker := time.NewTicker(s.eventPollInterval)
+	defer ticker.Stop()
+	timer := time.NewTimer(heartbeat)
+	defer timer.Stop()
 	for {
 		events, err := s.repo.ListResponseEvents(ctx, id, after)
 		if err != nil || len(events) > 0 {
@@ -947,13 +1039,12 @@ func (s *Service) WaitResponseEvents(ctx context.Context, id domain.ResponseID, 
 			events, err = s.repo.ListResponseEvents(ctx, id, after)
 			return events, len(events) == 0, err
 		}
-		timer := time.NewTimer(heartbeat)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
 			return nil, false, ctx.Err()
 		case <-wakeup:
-			timer.Stop()
+		case <-ticker.C:
 		case <-timer.C:
 			return nil, false, nil
 		}
@@ -969,6 +1060,16 @@ func (s *Service) ResumeActiveResponses(ctx context.Context) error {
 		return err
 	}
 	for _, response := range responses {
+		if len(response.ExecutionRequest) == 0 || string(response.ExecutionRequest) == "null" {
+			return fmt.Errorf("active Response %s predates frozen dispatch; resolve it before starting this version", response.ID)
+		}
+		var request contract.SubmitRequest
+		if err := json.Unmarshal(response.ExecutionRequest, &request); err != nil {
+			return err
+		}
+		if err := contract.ValidateModelSelection(request.Spec); err != nil {
+			return fmt.Errorf("active Response %s: %w", response.ID, err)
+		}
 		s.dispatchResponse(response.ID)
 	}
 	return nil

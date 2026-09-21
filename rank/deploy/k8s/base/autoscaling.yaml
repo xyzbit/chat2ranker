@@ -1,0 +1,51 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: execution-capacity
+  namespace: rank-dev
+spec:
+  secretTargetRef:
+    - parameter: token
+      name: execution-capacity
+      key: token
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: execution-worker
+  namespace: rank-dev
+spec:
+  scaleTargetRef:
+    name: execution-worker
+  minReplicaCount: 1
+  maxReplicaCount: 3
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - {type: Pods, value: 1, periodSeconds: 15}
+        scaleDown:
+          stabilizationWindowSeconds: 45
+          policies:
+            - {type: Pods, value: 1, periodSeconds: 30}
+  triggers:
+    - type: metrics-api
+      metricType: AverageValue
+      metadata:
+        url: http://execution-api.rank-dev.svc.cluster.local:8790/v1/capacity
+        valueLocation: online.demand
+        targetValue: '1'
+        authMode: bearer
+        timeout: '3000'
+      authenticationRef: {name: execution-capacity}
+    - type: metrics-api
+      metricType: AverageValue
+      metadata:
+        url: http://execution-api.rank-dev.svc.cluster.local:8790/v1/capacity
+        valueLocation: evaluation.demand
+        targetValue: '1'
+        authMode: bearer
+        timeout: '3000'
+      authenticationRef: {name: execution-capacity}

@@ -1,0 +1,21 @@
+{
+  "invalidLifecycleConfigurationRefused": true,
+  "unauthenticatedManagement": 401,
+  "operatorIdentity": true,
+  "authoritativeReleaseActor": true,
+  "credentialsCannotCrossPlanes": true,
+  "crossTenantGrant": 400,
+  "crossTenantAndEndpointAccess": 404,
+  "missingScope": 403,
+  "revokedServingKey": 401,
+  "replacementRetainsHistory": true,
+  "unprotectedNonLoopbackRefused": true,
+  "developmentSecretsRefused": true,
+  "operatorRotation": true,
+  "invalidCredentialFileFailsClosed": true,
+  "browserLogin": true,
+  "cookieManagementMutation": true,
+  "cookieCannotServe": true,
+  "logoutInvalidatesSession": true,
+  "credentialRotationRevokesBrowserSession": true
+}

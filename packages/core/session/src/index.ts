@@ -173,6 +173,7 @@ export function adoptSessionEvent<T extends SessionEvent>(event: T): T {
     case 'user/message':
       deepFreeze(event.data)
       break
+    case 'history/message':
     case 'assistant/message':
     case 'tool/result':
       deepFreeze(event.data.message)
@@ -242,6 +243,7 @@ function assertSessionEventEnvelope(value: Record<string, unknown>, index: numbe
   switch (type) {
     case 'request/header':
     case 'user/message':
+    case 'history/message':
     case 'assistant/message':
     case 'tool/result':
       assertCurrentLlmShape(event, index)
@@ -272,7 +274,7 @@ function assertCurrentLlmShape(event: Record<string, unknown>, index: number): v
   }
   const type = event['type']
   if (type !== 'user/message' && type !== 'assistant/message'
-    && type !== 'tool/result') return
+    && type !== 'tool/result' && type !== 'history/message') return
   assertMessageEventShape(event, `seed ${type} at index ${index}`)
 }
 
@@ -301,7 +303,7 @@ function assertAdapterDefaults(
 function assertMessageEventShape(event: Record<string, unknown>, subject: string): void {
   const type = event['type']
   if (type !== 'user/message' && type !== 'assistant/message'
-    && type !== 'tool/result') return
+    && type !== 'tool/result' && type !== 'history/message') return
   const data = event['data']
   const record = typeof data === 'object' && data !== null
     ? data as Record<string, unknown>
@@ -314,8 +316,10 @@ function assertMessageEventShape(event: Record<string, unknown>, subject: string
   }
   const messageRecord = message as Record<string, unknown>
   const expectedRole = type === 'assistant/message' ? 'assistant' : 'user'
-  if (messageRecord['role'] !== expectedRole) {
-    throw new Error(`${subject} message must have role "${expectedRole}"`)
+  const role = messageRecord['role']
+  const validRole = type === 'history/message' ? role === 'user' || role === 'assistant' : role === expectedRole
+  if (!validRole) {
+    throw new Error(`${subject} message must have role "${type === 'history/message' ? 'user or assistant' : expectedRole}"`)
   }
   const source = messageRecord['source']
   if (typeof source !== 'object' || source === null
@@ -333,8 +337,8 @@ function assertMessageEventShape(event: Record<string, unknown>, subject: string
     }
     return
   }
-  if (type !== 'tool/result') return
-  if (sourceRecord['kind'] !== 'tool'
+  if (type !== 'tool/result' && !(type === 'history/message' && sourceRecord['kind'] === 'tool')) return
+  if (role !== 'user' || sourceRecord['kind'] !== 'tool'
     || typeof sourceRecord['callId'] !== 'string'
     || sourceRecord['callId'] === '') {
     throw new Error(`${subject} message must have tool source`)
@@ -737,7 +741,7 @@ export class Session {
       // index by construction. The non-null assertion expresses that invariant.
       // oxlint-disable-next-line typescript/no-non-null-assertion
       const msg = this.deriveEventMessage(this.log[seq]!)
-      // A surface node is one of the five message-producing types, but an
+      // A surface node is a message-producing event, but an
       // empty-content assistant/message (a max-tokens step that hosts only
       // usage) derives to null and must not enter the transcript.
       if (msg) this.derived.push(msg)

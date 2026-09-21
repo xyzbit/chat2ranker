@@ -1,0 +1,168 @@
+{
+  "startedAt": "2026-09-14T19:12:04.861880+00:00",
+  "endedAt": "2026-09-14T19:14:33.891572+00:00",
+  "passed": true,
+  "snapshot": [
+    {
+      "name": "cpu",
+      "maxContainers": 1,
+      "blockedDemandExcluded": true,
+      "blockedAttemptsZero": true,
+      "outcomes": [
+        {
+          "status": "completed",
+          "attempt": 1,
+          "runtimeCleanupPending": false
+        },
+        {
+          "status": "completed",
+          "attempt": 1,
+          "runtimeCleanupPending": false
+        },
+        {
+          "status": "completed",
+          "attempt": 1,
+          "runtimeCleanupPending": false
+        }
+      ]
+    },
+    {
+      "name": "memory",
+      "maxContainers": 1,
+      "blockedDemandExcluded": true,
+      "blockedAttemptsZero": true,
+      "outcomes": [
+        {
+          "status": "completed",
+          "attempt": 1,
+          "runtimeCleanupPending": false
+        },
+        {
+          "status": "completed",
+          "attempt": 1,
+          "runtimeCleanupPending": false
+        },
+        {
+          "status": "completed",
+          "attempt": 1,
+          "runtimeCleanupPending": false
+        }
+      ]
+    }
+  ],
+  "date": "2026-09-15",
+  "images": {
+    "images": {
+      "platform": "rank-platform-lab:7c92a44566c4e445",
+      "gateway": "rank-gateway-lab:7c92a44566c4e445"
+    },
+    "arch": "arm64",
+    "digests": {
+      "platform": "sha256:4b943eb5e05d4e1f19d0a0a1600f3fa7b48751271cdeeac4f016c13501db0ce6",
+      "gateway": "sha256:8c01f1630abd82ebf126134ea3a9cc636132208ad656f7a5551cb9082c129b8d"
+    }
+  },
+  "sandboxImage": {
+    "tag": "rank-sandbox-lab:9de55178e844a389",
+    "image": "sha256:bbc01a791cc6f461357481aedac85410bc4224c50040eb939cf01b3ab81edaf9",
+    "platform": "sha256:4b943eb5e05d4e1f19d0a0a1600f3fa7b48751271cdeeac4f016c13501db0ce6"
+  },
+  "topology": "Two Worker Pods on one minikube node; a separate Docker sandbox service on the same laptop",
+  "provider": "Real DSH with delayed deterministic local model; distinct tenant/model connections",
+  "limits": {
+    "perContainer": {
+      "cpuMillis": 500,
+      "memoryBytes": 536870912
+    },
+    "cpuPhase": {
+      "cpuMillis": 500,
+      "memoryBytes": 2147483648
+    },
+    "memoryPhase": {
+      "cpuMillis": 2000,
+      "memoryBytes": 536870912
+    },
+    "restoredBudget": {
+      "cpuMillis": 2000,
+      "memoryBytes": 2147483648
+    }
+  },
+  "limitations": [
+    "Only allocations sharing the same Execution database spend this budget",
+    "Operator assigns exclusive headroom; no free-host discovery or physical-host provisioning",
+    "No disk/egress enforcement or production HA proof"
+  ],
+  "fullPlatformRegression": {
+    "startedAt": "2026-09-14T19:10:57.243Z",
+    "completedAt": "2026-09-14T19:12:04.696Z",
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ]
+  },
+  "validation": {
+    "executionGoTestsWithPostgres": true,
+    "rankGoTests": true,
+    "runtimeAdmissionAndDemandRaceTests": true,
+    "sqliteRemoteSnapshot": true,
+    "postgresRemoteSnapshot": true,
+    "lint": true,
+    "pythonAndNodeSyntax": true,
+    "gitDiffCheck": true,
+    "documentation": {
+      "passed": 27,
+      "failed": 1,
+      "existingFailure": "AGENTS.md 2398 words exceeds 1950-word ceiling",
+      "finalRelativeLinksPassed": true
+    },
+    "ownerLossFinalImage": true
+  },
+  "ownerLossRegression": {
+    "startedAt": "2026-09-14T19:14:34.018836+00:00",
+    "endedAt": "2026-09-14T19:17:36.535002+00:00",
+    "passed": true,
+    "snapshot": [
+      {
+        "name": "tool-loss",
+        "status": "failed",
+        "attempt": 1,
+        "unknownOutcome": true,
+        "cleanupPending": false,
+        "ownerExitCode": 137,
+        "runningEvents": 1,
+        "effects": 1,
+        "closedEffects": 1,
+        "deniedWrites": 1
+      },
+      {
+        "name": "tool-cancel",
+        "status": "failed",
+        "attempt": 1,
+        "unknownOutcome": true,
+        "cleanupPending": false,
+        "ownerExitCode": 137,
+        "runningEvents": 1,
+        "effects": 1,
+        "closedEffects": 1,
+        "deniedWrites": 1
+      },
+      {
+        "name": "completed",
+        "status": "completed",
+        "attempt": 1,
+        "unknownOutcome": false,
+        "cleanupPending": false,
+        "ownerExitCode": 137,
+        "runningEvents": 1,
+        "effects": 0,
+        "closedEffects": 0,
+        "deniedWrites": 0
+      }
+    ]
+  }
+}

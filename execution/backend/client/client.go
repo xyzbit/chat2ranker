@@ -20,6 +20,14 @@ type Client struct {
 	baseURL string
 	http    *http.Client
 	poll    time.Duration
+	token   string
+}
+
+// WithToken returns an authenticated client copy for private Execution APIs.
+func (client *Client) WithToken(token string) *Client {
+	copy := *client
+	copy.token = token
+	return &copy
 }
 
 func New(baseURL string, timeout time.Duration) *Client {
@@ -38,6 +46,20 @@ func (client *Client) Probe(ctx context.Context, harness string) (contract.Avail
 func (client *Client) ListModelConnections(ctx context.Context) ([]contract.ModelConnection, error) {
 	var result []contract.ModelConnection
 	err := client.call(ctx, http.MethodGet, "/v1/model-connections", nil, &result)
+	return result, err
+}
+
+// DiscoverLocalModels returns credential-free candidates from the execution host.
+func (client *Client) DiscoverLocalModels(ctx context.Context) (contract.LocalModelDiscovery, error) {
+	var result contract.LocalModelDiscovery
+	err := client.call(ctx, http.MethodPost, "/v1/local-model-connections/discover", map[string]any{}, &result)
+	return result, err
+}
+
+// ImportLocalModel imports a candidate identified by the discovery response.
+func (client *Client) ImportLocalModel(ctx context.Context, id, model string) (contract.ModelConnection, error) {
+	var result contract.ModelConnection
+	err := client.call(ctx, http.MethodPost, "/v1/local-model-connections/"+url.PathEscape(id)+"/import", map[string]string{"model": model}, &result)
 	return result, err
 }
 func (client *Client) ListModelCatalog(ctx context.Context) ([]contract.ModelProvider, error) {
@@ -107,7 +129,8 @@ func (client *Client) Run(ctx context.Context, request contract.SubmitRequest) (
 }
 
 // RunWithEvents submits one invocation, consumes its durable event stream,
-// and returns the terminal execution.
+// and returns the terminal execution. Observation errors leave remote work intact;
+// callers that intend cancellation must call Cancel explicitly.
 func (client *Client) RunWithEvents(ctx context.Context, request contract.SubmitRequest, handle func(contract.Event) error) (contract.Execution, error) {
 	execution, err := client.Submit(ctx, request)
 	if err != nil {
@@ -117,7 +140,6 @@ func (client *Client) RunWithEvents(ctx context.Context, request contract.Submit
 	// terminal state before Submit returned. Durable events are the source of
 	// progress callbacks; terminal status alone must not skip them.
 	if _, err = client.Watch(ctx, execution.ID, 0, handle); err != nil {
-		_, _ = client.Cancel(context.Background(), execution.ID)
 		return execution, err
 	}
 	execution, err = client.Get(ctx, execution.ID)
@@ -138,6 +160,9 @@ func (client *Client) Watch(ctx context.Context, id string, after int64, handle 
 		return after, err
 	}
 	request.Header.Set("Accept", "text/event-stream")
+	if client.token != "" {
+		request.Header.Set("Authorization", "Bearer "+client.token)
+	}
 	response, err := client.http.Do(request)
 	if err != nil {
 		return after, err
@@ -149,9 +174,13 @@ func (client *Client) Watch(ctx context.Context, id string, after int64, handle 
 	}
 	scanner := bufio.NewScanner(response.Body)
 	scanner.Buffer(make([]byte, 64<<10), 2<<20)
-	var data string
+	var data, eventType string
 	for scanner.Scan() {
 		line := scanner.Text()
+		if strings.HasPrefix(line, "event: ") {
+			eventType = strings.TrimPrefix(line, "event: ")
+			continue
+		}
 		if strings.HasPrefix(line, "data: ") {
 			data = strings.TrimPrefix(line, "data: ")
 			continue
@@ -159,6 +188,16 @@ func (client *Client) Watch(ctx context.Context, id string, after int64, handle 
 		if line != "" || data == "" {
 			continue
 		}
+		if eventType == "stream.error" {
+			var failure struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal([]byte(data), &failure); err != nil {
+				return after, fmt.Errorf("decode execution stream failure: %w", err)
+			}
+			return after, fmt.Errorf("execution stream failed: %s", failure.Error)
+		}
+		eventType = ""
 		var event contract.Event
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			return after, fmt.Errorf("decode execution event: %w", err)
@@ -200,6 +239,9 @@ func (client *Client) call(ctx context.Context, method, path string, body, targe
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	if client.token != "" {
+		request.Header.Set("Authorization", "Bearer "+client.token)
+	}
 	response, err := client.http.Do(request)
 	if err != nil {
 		return err

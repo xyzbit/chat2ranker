@@ -16,18 +16,25 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/xyzbit/agentkiln/execution/backend/artifacts"
 	"github.com/xyzbit/agentkiln/execution/backend/contract"
 	"github.com/xyzbit/agentkiln/execution/backend/harness"
 	"github.com/xyzbit/agentkiln/execution/backend/internal/domain"
+	"github.com/xyzbit/agentkiln/execution/backend/internal/modelquota"
 	"github.com/xyzbit/agentkiln/execution/backend/internal/workerprotocol"
 )
 
 type LocalConfig struct {
+	ModelQuotaAuthority    *modelquota.Authority
+	Repository             domain.Repository
 	WorkerBinary           string
 	RepositoryRoot         string
 	ArtifactRoot           string
 	SandboxRoot            string
 	Timeout                time.Duration
+	TerminationGrace       time.Duration
+	ArtifactStore          artifacts.Store
+	MaxArtifactBytes       int64
 	Harnesses              *harness.Registry
 	ResolveModelConnection func(context.Context, string) (contract.ModelConnection, string, error)
 }
@@ -37,6 +44,12 @@ type Local struct{ config LocalConfig }
 func NewLocal(config LocalConfig) *Local {
 	if config.Timeout <= 0 {
 		config.Timeout = 10 * time.Minute
+	}
+	if config.TerminationGrace <= 0 {
+		config.TerminationGrace = 5 * time.Second
+	}
+	if config.MaxArtifactBytes <= 0 {
+		config.MaxArtifactBytes = 64 << 20
 	}
 	return &Local{config: config}
 }
@@ -51,14 +64,30 @@ func (executor *Local) Probe(_ context.Context, harness string) contract.Availab
 	if _, err := os.Stat(executor.config.WorkerBinary); err != nil {
 		return contract.Availability{Label: availability.Label, Reason: "execution-worker 尚未构建"}
 	}
+	availability.ModelQuota = availability.ModelQuota && executor.config.ModelQuotaAuthority != nil
 	return availability
 }
 
-func (executor *Local) Run(ctx context.Context, executionID string, spec contract.Spec, emit domain.EventSink) (contract.Result, error) {
+func (executor *Local) Run(ctx context.Context, execution contract.Execution, emit domain.EventSink) (contract.Result, error) {
+	if executor.config.Repository == nil {
+		return contract.Result{}, errors.New("local executor requires an evidence repository")
+	}
+	executionID, spec := execution.ID, execution.Spec
+	timeout := executor.config.Timeout
+	if spec.TimeoutMs > 0 {
+		timeout = min(timeout, time.Duration(spec.TimeoutMs)*time.Millisecond)
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	workspace := filepath.Join(executor.config.SandboxRoot, executionID)
-	defer removePrivateWorkspace(executor.config.SandboxRoot, workspace)
+	cleanupWorkspace := true
+	defer func() {
+		if cleanupWorkspace {
+			removePrivateWorkspace(executor.config.SandboxRoot, workspace)
+		}
+	}()
 	artifactDir := filepath.Join(executor.config.ArtifactRoot, executionID)
-	request := workerprotocol.Request{
+	request := workerprotocol.Request{MaxModelRequests: execution.MaxModelRequests,
 		ProtocolVersion: workerprotocol.Version,
 		ExecutionID:     executionID,
 		Spec:            spec,
@@ -67,6 +96,13 @@ func (executor *Local) Run(ctx context.Context, executionID string, spec contrac
 		HarnessHome:     filepath.Join(artifactDir, "harness-home"),
 		Metadata:        spec.Metadata,
 	}
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = min(timeout, time.Until(deadline))
+	}
+	if timeout < time.Millisecond {
+		return contract.Result{}, context.DeadlineExceeded
+	}
+	request.Spec.TimeoutMs = timeout.Milliseconds()
 	if spec.ModelConnectionID != "" {
 		if executor.config.ResolveModelConnection == nil {
 			return contract.Result{}, errors.New("model connection resolver is not configured")
@@ -77,17 +113,34 @@ func (executor *Local) Run(ctx context.Context, executionID string, spec contrac
 		}
 		request.ModelConnection, request.Credential = &connection, credential
 	}
+	quota, quotaErr := executor.config.ModelQuotaAuthority.Issue(execution)
+	if quotaErr != nil {
+		return contract.Result{}, quotaErr
+	}
+	request.ModelQuota = quota
 	response, err := executor.invoke(ctx, request, emit)
+	if errors.Is(err, domain.ErrRuntimeStopUnconfirmed) {
+		cleanupWorkspace = false
+	}
 	if err != nil {
 		return contract.Result{}, err
 	}
-	if response.ProtocolVersion != workerprotocol.Version || response.ExecutionID != executionID {
-		return contract.Result{}, errors.New("execution-worker returned a mismatched response")
+	if err := workerprotocol.ValidateResponse(response, executionID); err != nil {
+		return contract.Result{}, err
 	}
-	if response.Status != contract.StatusCompleted {
-		return contract.Result{}, errors.New(response.Error)
+	var responseErr error
+	if response.Status == contract.StatusFailed {
+		responseErr = errors.New(response.Error)
 	}
-	return response.Result, nil
+	if executor.config.ArtifactStore != nil {
+		if err := executor.publishArtifacts(ctx, execution, &response.Result); err != nil {
+			return response.Result, errors.Join(responseErr, err)
+		}
+		removePrivateWorkspace(executor.config.ArtifactRoot, artifactDir)
+	} else if err := executor.config.Repository.RecordEvidence(ctx, execution.ID, execution.Attempt, response.Result); err != nil {
+		return response.Result, errors.Join(responseErr, err)
+	}
+	return response.Result, responseErr
 }
 
 func (executor *Local) invoke(ctx context.Context, request workerprotocol.Request, emit domain.EventSink) (workerprotocol.Response, error) {
@@ -155,13 +208,27 @@ func (executor *Local) invoke(ctx context.Context, request workerprotocol.Reques
 	select {
 	case err = <-done:
 	case <-ctx.Done():
+		confirmed := true
 		if runtime.GOOS == "windows" {
 			_ = command.Process.Kill()
+			confirmed = false
+			<-done
 		} else {
-			_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+			_ = syscall.Kill(-command.Process.Pid, syscall.SIGTERM)
+			timer := time.NewTimer(executor.config.TerminationGrace)
+			select {
+			case <-done:
+				timer.Stop()
+			case <-timer.C:
+				confirmed = false
+				_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+				<-done
+			}
 		}
-		<-done
 		<-eventsDone
+		if !confirmed {
+			return workerprotocol.Response{}, fmt.Errorf("%w: %v", domain.ErrRuntimeStopUnconfirmed, ctx.Err())
+		}
 		return workerprotocol.Response{}, ctx.Err()
 	}
 	<-eventsDone
@@ -208,3 +275,8 @@ func removePrivateWorkspace(root, target string) {
 }
 
 var _ domain.Executor = (*Local)(nil)
+
+// Cleanup cannot confirm a lost local process tree from another process owner.
+func (*Local) Cleanup(context.Context, contract.Execution) error {
+	return domain.ErrRuntimeStopUnconfirmed
+}

@@ -1,0 +1,57 @@
+{
+  "verifiedAt": "2026-09-14T20:00:38.351343+00:00",
+  "images": {
+    "platform": "sha256:c355910bdafdd1a4e227105e4e4040993fa995763133913d4ee23b6f516f14c5",
+    "gateway": "sha256:9328cca895438eadbe166daa875227b911607697ccf1eef187a08a5c87c18f97"
+  },
+  "scenarios": [
+    {
+      "name": "database",
+      "status": "failed",
+      "attempt": 1,
+      "unknownOutcome": true,
+      "cleanupPending": false,
+      "effects": 1,
+      "runningEvents": 1,
+      "evidenceRetained": false
+    },
+    {
+      "name": "upload",
+      "status": "failed",
+      "attempt": 1,
+      "unknownOutcome": false,
+      "cleanupPending": false,
+      "effects": 1,
+      "runningEvents": 1,
+      "evidenceRetained": true
+    }
+  ],
+  "uploadProxy": {
+    "interrupted": 10,
+    "receivedBytes": 13528,
+    "forwardedBytes": 160,
+    "completedKeys": [
+      "/rank-artifacts/exec-97af24eb810d760e61849118c53809a9/sha256/a48b29e0f182bd326a5f025a99c2ffa31e1d67b38abf269353f9ebbbe9e6402a/session.jsonl.zstd"
+    ]
+  },
+  "outageRead": "TimeoutError",
+  "cleanupComplete": true,
+  "platformRegression": {
+    "passed": true,
+    "privateReport": "platform-verification-1789416127151.json"
+  },
+  "sourceSHA256": {
+    "rank/deploy/k8s/verify-dependencies.py": "366c605d75a9827445912b0c7186bcee7465eb3bb5035d674f319d5fbbf65bae",
+    "rank/deploy/k8s/fixtures/fault-model.mjs": "4a0026a34a653f4380793be924c5c6a08486d2c45f7aa8f5f08e46e2b8759c13",
+    "rank/deploy/k8s/fixtures/fault-s3.mjs": "138ebc0123d01031468be69a6af37941fe163491f4a8a83f9f1bdc823bde208b",
+    "rank/deploy/k8s/fixtures/dependencies.snapshot.json": "56f487fcf18f297892a394872c6e1deefcfbb665356ac84463b80646a59820d8",
+    "execution/backend/internal/executor/opensandbox.go": "b67a4455405150f316ee47e3490b083d81f9082437a6d978d3c6cc2010bdf8c0",
+    "execution/backend/internal/executor/opensandbox_command.go": "8ff96630214263877e5fb70edd12a359cd017fa2bc1301d83f208aeded7ce58e",
+    "execution/backend/internal/executor/local.go": "aaa79716e333f7fce2a30ce165a3250483599f1d7c12c5861bd29c81327a1941",
+    "execution/backend/internal/executor/artifacts.go": "2c3cdf1a0001dbf46473a8c48e8fd4a58e12ce280e70bfacc2d7aef43cf3faa9",
+    "execution/backend/internal/app/service.go": "fcab9be838fc99f4342deac3785dee36214c8b29c502bf49020460341f39565f",
+    "execution/backend/internal/postgres/store.go": "eaffde555f28b7a27ac9f9f0cc08355fb1e512ae12fa09dc1e3b8ea79ac9c080",
+    "execution/backend/internal/sqlite/store.go": "5c98d9f5c65b0e695c17ca01a6d51d6413ed7ac7813552ac6050413a1b8cb197",
+    "apps/rank-web/src/App.jsx": "6a84b1fa80d990e184c58b71eca3ca0bf800c50d2ad7fc25b6978a9525c85d25"
+  }
+}

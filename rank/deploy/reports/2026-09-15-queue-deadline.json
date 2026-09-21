@@ -1,0 +1,67 @@
+{
+  "startedAt": "2026-09-14T18:12:34.099065+00:00",
+  "checks": {
+    "expiresWithZeroWorkersAfterAPIReplacement": true,
+    "durableFailureReplay": true,
+    "restoredWorkersRunOnlyFreshInvocation": true,
+    "sqliteAndPostgresPackagedSnapshot": true,
+    "postgresLockWaitRejectsStaleStart": true,
+    "goTestsWithPostgres": true,
+    "lint": true
+  },
+  "images": {
+    "images": {
+      "platform": "rank-platform-lab:47e4b01faadd80bf",
+      "gateway": "rank-gateway-lab:47e4b01faadd80bf"
+    },
+    "arch": "arm64",
+    "digests": {
+      "platform": "sha256:c272f2dae1fcd9e9ccb327aba83e0b7e621936667764e7faec14b431ec6bbf14",
+      "gateway": "sha256:8c01f1630abd82ebf126134ea3a9cc636132208ad656f7a5551cb9082c129b8d"
+    }
+  },
+  "executionId": "exec-bcb01564a50c64b6c054d2e5359c5b38",
+  "queueExpiresAt": "2026-09-14T18:12:36.068Z",
+  "outcomes": [
+    {
+      "id": "exec-bcb01564a50c64b6c054d2e5359c5b38",
+      "status": "failed",
+      "attempt": 0,
+      "cleanupPending": false
+    },
+    {
+      "id": "exec-349966708abb540a13068f3351c37147",
+      "status": "completed",
+      "attempt": 1,
+      "cleanupPending": false
+    }
+  ],
+  "endedAt": "2026-09-14T18:12:54.549140+00:00",
+  "date": "2026-09-15",
+  "topology": "One minikube node and separate Docker Sandbox service on the same laptop",
+  "provider": "Real DSH with deterministic local model",
+  "limitations": [
+    "Not a total Rank request deadline",
+    "No provider RPM/TPM or sandbox-host capacity enforcement",
+    "No physical-host or production HA proof"
+  ],
+  "fullPlatformRegression": {
+    "startedAt": "2026-09-14T18:13:23.918Z",
+    "completedAt": "2026-09-14T18:14:35.801Z",
+    "checks": [
+      "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+      "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+      "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+      "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+      "Configured Rank control host runs a separate persistent native conversation",
+      "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+      "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+    ],
+    "recoveredQueuedAttempt": 1
+  },
+  "documentationGates": {
+    "passed": 27,
+    "failed": 1,
+    "existingFailure": "Root AGENTS.md 2398 words exceeds ceiling 1950"
+  }
+}

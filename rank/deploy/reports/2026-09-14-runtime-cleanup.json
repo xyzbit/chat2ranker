@@ -1,0 +1,41 @@
+{
+  "startedAt": "2026-09-14T15:28:22.242Z",
+  "completedAt": "2026-09-14T15:28:37.068Z",
+  "checks": [
+    "Gateway protects management, leaves public API bearer authentication to Rank, and hides internal commands",
+    "Existing daily-news client and two-turn OpenAI SDK chat cross gateway, Rank, PostgreSQL/River, DSH workers and local provider",
+    "Structured roles survive durable admission; S3-backed stdout and cursor-based terminal SSE replay remain readable",
+    "Direct Agent trial completes through DSH and PostgreSQL history filters return the same conversation",
+    "Configured Rank control host runs a separate persistent native conversation",
+    "Rank and control Pod replacement retains serving lineage and control history; a fresh invocation continues the conversation",
+    "Worker scale-to-zero queues accepted work; Rank restart and scale-up complete the same request once, retaining old S3 evidence"
+  ],
+  "executionId": "exec-1d6759f390e2098677cd35f09c30a7ee",
+  "artifact": {
+    "path": "exec-1d6759f390e2098677cd35f09c30a7ee/sha256/cd1b579b20a8d4c11eabbde9e6140f02e1b54f82d1674251531cbd9f252ae41d/stdout.txt",
+    "sha256": "cd1b579b20a8d4c11eabbde9e6140f02e1b54f82d1674251531cbd9f252ae41d"
+  },
+  "recoveredQueuedResponse": {
+    "responseId": "resp_01a0a088-c9fb-7cc5-bcd3-c5e6acc2396f",
+    "executionId": "exec-de271dc1921b87b35096b79c463fcf42",
+    "attempt": 1
+  },
+  "images": {
+    "images": {
+      "platform": "rank-platform-lab:eb245a5c12b33e11",
+      "gateway": "rank-gateway-lab:eb245a5c12b33e11"
+    },
+    "arch": "arm64",
+    "digests": {
+      "platform": "sha256:bf27b25289b543ac045abb78f6766d4e1af4d8f1fb46f2eb3360506f4026689e",
+      "gateway": "sha256:8c01f1630abd82ebf126134ea3a9cc636132208ad656f7a5551cb9082c129b8d"
+    }
+  },
+  "upgrade": {
+    "executionSchemaBefore": 1,
+    "executionSchemaAfter": 2,
+    "procedure": "Stop old producers, drain workers, migrate Execution then Rank, restart application writers",
+    "runtimeCleanupOnCompletedExecution": false
+  },
+  "scope": "Trusted single-operator minikube lab, deterministic model responses; no new browser interaction or remote sandbox acceptance in this run."
+}

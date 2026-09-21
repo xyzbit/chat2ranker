@@ -1,0 +1,33 @@
+{
+  "configuration": {
+    "model": "demo-integration",
+    "kind": "chat",
+    "platformURL": "https://rank.example.test"
+  },
+  "turns": [
+    [
+      {
+        "type": "delta",
+        "text": "收到。"
+      },
+      {
+        "type": "completed",
+        "id": "resp_1",
+        "text": "收到。",
+        "status": "completed"
+      }
+    ],
+    [
+      {
+        "type": "delta",
+        "text": "小林每天读10分钟。"
+      },
+      {
+        "type": "completed",
+        "id": "resp_2",
+        "text": "小林每天读10分钟。",
+        "status": "completed"
+      }
+    ]
+  ]
+}

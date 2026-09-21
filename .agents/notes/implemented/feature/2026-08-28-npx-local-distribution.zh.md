@@ -14,7 +14,7 @@
 
 runtime 压缩包包含三个静态编译的 Go 二进制、生产 Web 资源、Rank Skills 和 DSH 运行时。DSH 不进入轻量 npm 启动器，避免每个用户执行 `npx` 时重新解析庞大的依赖图。Execution Worker 通过 `RANK_DSH_BIN` 获得已打包 DSH CLI 的绝对路径；源码运行仍保留仓库路径回退。
 
-打包的 DSH runtime 固定使用完整的 `0.1.0-rc.8` 包族。发布清单把传递依赖中的 DSH workspace 包统一覆盖为该版本，并拒绝包含其他 DSH 版本的 runtime，避免 npm 后续预发布版本静默形成混装的插件依赖图。
+runtime 通过 `@deepseek-ai/dsh-rank-runtime` 打包当前 workspace 的生产依赖闭包。vendored 链接转换为实际文件，执行历史和模型预算模块与对应的 DSH 构建一起分发。暂存目录位于 checkout 外，避免递归打包；部署完成后恢复开发依赖。
 
 `pnpm rank:package` 在 `dist/agentkiln/` 中生成当前平台 runtime、校验文件和 npm 压缩包。脚本只打印本机验收与外部发布命令，不会自行发布。
 
@@ -30,4 +30,4 @@ runtime 压缩包包含三个静态编译的 Go 二进制、生产 Web 资源、
 
 ## 结果
 
-用户仍需 Node.js，但不再需要源码、Go 或 pnpm。清理 npm 缓存不会删除实验或凭据。程序升级替换不可变 runtime 版本，SQLite 迁移继续原地升级持久数据。DSH 升级必须显式修改发布脚本并完成发布包工具调用验收，不再由依赖解析顺带发生。Docker 仍是独立的服务端部署方式，不作为本地默认安装路径。
+用户仍需 Node.js，但不再需要源码、Go 或 pnpm。清理 npm 缓存不会删除实验或凭据。程序升级替换不可变 runtime 版本，SQLite 迁移继续原地升级持久数据。DSH 源码变更需要重新构建 runtime 并完成发布包工具调用验收。Docker 仍是独立的服务端部署方式，不作为本地默认安装路径。

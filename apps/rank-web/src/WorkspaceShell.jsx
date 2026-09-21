@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ScrollRegion } from "./ScrollRegion.jsx";
 import {
   ChatsCircle,
+  BookOpen,
   ClockCounterClockwise,
   Cube,
   Gear,
@@ -9,7 +10,6 @@ import {
   MagnifyingGlass,
   NotePencil,
   Stack,
-  Translate,
   UserCircle,
 } from "@phosphor-icons/react";
 
@@ -30,15 +30,10 @@ function conversationTitle(item, t) {
   return !item?.title || item.title === "未命名实验" ? t("untitledConversation") : item.title;
 }
 
-function LanguageControl({ onChange, t }) {
-  return <button className="locale-control" type="button" onClick={onChange} aria-label={t("switchLanguage")} title={t("switchLanguage")}><Translate size={19} aria-hidden="true" /></button>;
-}
-
 export function WorkspaceShell({
   route,
   onNavigate,
   locale,
-  onLocaleChange,
   experiments,
   activeExperimentId,
   onOpenConversation,
@@ -107,7 +102,7 @@ export function WorkspaceShell({
         </nav>
 
         <section className="recent-conversations" aria-label={t("recentConversations")}>
-          <div className="recent-heading"><h2>{t("recent")}</h2></div>
+          <div className="recent-heading"><h2>{t("assistant")}</h2></div>
           {searchOpen && <label className="conversation-search">
             <MagnifyingGlass size={15} />
             <span className="sr-only">{t("searchConversations")}</span>
@@ -131,15 +126,11 @@ export function WorkspaceShell({
         </section>
 
         <footer className="sidebar-footer">
-          <button className={route === "settings" ? "sidebar-settings active" : "sidebar-settings"} type="button" onClick={() => onNavigate("settings")}>
+          <button className={route === "settings" ? "sidebar-settings active" : "sidebar-settings"} type="button" aria-label={t("settings")} title={t("settings")} onClick={() => onNavigate("settings")}>
             <Gear size={19} weight={route === "settings" ? "fill" : "regular"} />
-            <span>{t("settings")}</span>
+            <span>Local</span>
           </button>
-          <div className="sidebar-account">
-            <span className="product-avatar" aria-label="Z">Z</span>
-            <span><strong>Local</strong><small><Stack size={12} />{t("localEnvironment")}</small></span>
-            <LanguageControl onChange={onLocaleChange} t={t} />
-          </div>
+          <a className="sidebar-docs" href="#/docs" title={t("documentation")} aria-label={t("documentation")}><BookOpen size={19}/></a>
         </footer>
       </aside>
 
@@ -147,8 +138,7 @@ export function WorkspaceShell({
         <button className="product-brand" type="button" onClick={() => onNavigate("agent")} aria-label="AgentKiln">AgentKiln</button>
         <div className="product-topbar-actions">
           <button className="mobile-history-action" type="button" onClick={onOpenHistory} aria-label={t("recentConversations")} title={t("recentConversations")}><ClockCounterClockwise size={20} /></button>
-          <LanguageControl onChange={onLocaleChange} t={t} />
-          <span className="product-avatar" aria-label="Z">Z</span>
+          <a className="sidebar-docs" href="#/docs" title={t("documentation")} aria-label={t("documentation")}><BookOpen size={19}/></a>
         </div>
       </header>
 

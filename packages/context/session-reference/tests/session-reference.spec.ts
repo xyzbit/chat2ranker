@@ -317,6 +317,26 @@ describe('session reference discovery and preparation', () => {
     readTitles.mockRestore()
   })
 
+  it('projects imported human and assistant text while excluding recalled tool results', async () => {
+    const ctx = await harness()
+    const target = ctx.sessions.create(SessionId('target'))
+    const source = ctx.sessions.create(SessionId('source'))
+    for (const message of [
+      createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Question' }] }),
+      createMessage({ role: 'assistant', source: { kind: 'plugin', plugin: 'import' }, content: [
+        { type: 'text', text: 'Answer' }, { type: 'tool-call', id: CallId('external'), name: 'lookup', arguments: '{}' },
+      ] }),
+      createToolResultMessage({ callId: CallId('external'), content: [{ type: 'text', text: 'private tool output' }], isError: false }),
+      createUserMessage({ source: { kind: 'plugin', plugin: 'import' }, content: [{ type: 'text', text: 'private context' }] }),
+    ]) source.append('history/message', { message }, { surfaceOp: 'append' })
+    const prepared = await ctx.sessionReferenceResolver.prepare(fakeAgent(target), [{ type: 'text', text: 'Use source' }], [{ sessionId: source.id }])
+    const text = prepared.additionalContext?.content[0]
+    if (text?.type !== 'text') throw new Error('expected reference text')
+    expect(promptData(text.text)).toMatchObject([{ conversation: [
+      { role: 'user', text: 'Question' }, { role: 'assistant', text: 'Answer' },
+    ] }])
+  })
+
   it('projects only the current user/assistant surface and records snapshot metadata', async () => {
     const ctx = await harness()
     const target = ctx.sessions.create(SessionId('target'), { meta: { cwd: '/target' } })

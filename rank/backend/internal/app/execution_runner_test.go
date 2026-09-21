@@ -16,26 +16,20 @@ func TestRuntimeModelOmitsDisplayOnlyDefaults(t *testing.T) {
 	}
 }
 
-func TestExecutionEventEmitterLeavesCompletionToBusinessControlFlow(t *testing.T) {
+func TestExecutionEventEmitterPreservesDurableInvocationSequence(t *testing.T) {
 	t.Parallel()
 	events := []RunnerEvent{}
 	emit := executionEventEmitter(func(event RunnerEvent) error {
 		events = append(events, event)
 		return nil
-	}, "judge")
-	if err := emit(contract.Event{Type: "execution.running", Status: contract.StatusRunning}); err != nil {
+	}, "judge", "logical-judge")
+	if err := emit(contract.Event{Sequence: 1, Type: "execution.running", Status: contract.StatusRunning}); err != nil {
 		t.Fatal(err)
 	}
-	if err := emit(contract.Event{Type: "execution.completed", Status: contract.StatusCompleted}); err != nil {
+	if err := emit(contract.Event{Sequence: 2, Type: "execution.completed", Status: contract.StatusCompleted}); err != nil {
 		t.Fatal(err)
 	}
-	if err := emitExecutionCompleted(func(event RunnerEvent) error {
-		events = append(events, event)
-		return nil
-	}, "judge"); err != nil {
-		t.Fatal(err)
-	}
-	if len(events) != 2 || events[0].Type != "judge.running" || events[1].Type != "judge.completed" {
+	if len(events) != 2 || events[0].Type != "judge.running" || events[1].Type != "judge.completed" || events[1].InvocationID != "logical-judge" || events[1].Sequence != 2 {
 		t.Fatalf("unexpected mapped events: %#v", events)
 	}
 }

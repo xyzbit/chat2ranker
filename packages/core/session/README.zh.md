@@ -66,6 +66,8 @@
 
 `tool/result` 持久保存一条带标识、user-role 的工具结果消息，以及可选内部失败标识和可选呈现元数据。工具成功时的规范 `value` 和便于人类阅读的规范失败消息只存在于执行本地；渲染后的错误内容是回放权威消息。
 
+`history/message` 在原生轮次之间导入外部用户、助手或工具结果消息。它提供模型上下文，但不创建原生轮次、步骤、工具执行或用量记录。导入方验证消息顺序及调用与结果的对应关系。助手历史可使用插件来源；原生 `assistant/message` 仍要求 Provider/Model 来源。压缩会保持导入历史与当前输入中的工具配对。
+
 ### 会话事件词汇（`types.ts`）
 
 生成的[持久化日志事件目录](../../../docs/persistence-catalog.md)逐成员列举仅追加日志的事件类型、载荷、surface 标记与声明位置。Token 记账读取每个步骤的 `assistant/chunk { type: 'usage' }` 记录；如果没有用量分片，则将 `assistant/message.usage` 作为已提交步骤的后备。失败的模型请求尝试没有 assistant 消息。每条 `assistant/message` 都会记录提供方、模型和可选回放状态。
@@ -98,7 +100,7 @@
 
 #### 模型看到的内容
 
-模型会原样接收 `user/message`、`assistant/message` 和 `tool/result` surface 条目中的完整消息。其标识、角色、来源和内容块都与创建时确定的值相同；投影不会生成标识。提示词封装只改变面向人的呈现；其前缀上下文和请求分隔符已经位于事件内容中。工具调用包含在 assistant 消息内。分片、边界、用量、钩子记录、todo 记录以及其他仅日志事件不会添加消息。
+模型会原样接收 `user/message`、`history/message`、`assistant/message` 和 `tool/result` surface 条目中的完整消息。其标识、角色、来源和内容块都与创建时确定的值相同；投影不会生成标识。提示词封装只改变面向人的呈现；其前缀上下文和请求分隔符已经位于事件内容中。工具调用包含在 assistant 消息内。分片、边界、用量、钩子记录、todo 记录以及其他仅日志事件不会添加消息。
 
 #### Token 影响
 

@@ -7,7 +7,7 @@ import { managementCopy } from "../src/management-copy.js";
 test("control-plane copy switches between Chinese and English", () => {
   assert.equal(createTranslator("zh")("releaseTo", { alias: "production" }), "发布到 production");
   assert.equal(createTranslator("en")("releaseTo", { alias: "production" }), "Release to production");
-  assert.equal(createTranslator("en")("openDeployment"), "Open Deployment page");
+  assert.equal(createTranslator("en")("openDeployment"), "Open Endpoint page");
   assert.equal(createTranslator("zh")("newConversation"), "新对话");
   assert.equal(createTranslator("en")("recentConversations"), "Recent chats");
   assert.equal(createTranslator("zh")("untitledConversation"), "新对话");

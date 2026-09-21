@@ -18,10 +18,11 @@ async (page) => {
   await page.waitForFunction(() => !document.querySelector(".rank-signal").dataset.following);
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileSignal = await signal.boundingBox();
-  check(mobileSignal.width === 54 && mobileSignal.height === 54, "Mobile companion must stay 54px square");
+  check(mobileSignal.width === 28 && mobileSignal.height === 28 && mobileSignal.y < 60, "Mobile companion must fit the top toolbar");
+  check(await launcher.evaluate(el => { const rect = el.getBoundingClientRect(); return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest(".companion-launcher") === el; }), "Toolbar blocks the mobile assistant entrance");
   await page.screenshot({ path: "output/playwright/rank-companion-mobile.png" });
   await launcher.click();
-  await page.locator(".assistant-route .conversation").waitFor({ state: "visible" });
+  await page.locator(".conversation-dock .conversation").waitFor({ state: "visible" });
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${origin}/#/settings`);
   await page.reload();

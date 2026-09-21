@@ -24,16 +24,18 @@ type ProgressEvent struct {
 // Invocation contains the immutable execution specification and the private
 // directories materialized for one worker attempt.
 type Invocation struct {
-	ExecutionID     string
-	Spec            contract.Spec
-	Workspace       string
-	ArtifactDir     string
-	HarnessHome     string
-	Metadata        map[string]string
-	ModelConnection *contract.ModelConnection
-	Credential      string
-	Environment     map[string]string
-	Emit            func(ProgressEvent) error
+	ModelQuota       *contract.ModelQuotaRuntime
+	MaxModelRequests int
+	ExecutionID      string
+	Spec             contract.Spec
+	Workspace        string
+	ArtifactDir      string
+	HarnessHome      string
+	Metadata         map[string]string
+	ModelConnection  *contract.ModelConnection
+	Credential       string
+	Environment      map[string]string
+	Emit             func(ProgressEvent) error
 }
 
 // Adapter executes one invocation using a specific agent harness.
@@ -72,11 +74,26 @@ func (registry *Registry) Probe(ctx context.Context, id string) contract.Availab
 
 // Run resolves and invokes one adapter.
 func (registry *Registry) Run(ctx context.Context, invocation Invocation) (contract.Result, error) {
+	if err := contract.ValidateModelSelection(invocation.Spec); err != nil {
+		return contract.Result{}, err
+	}
 	adapter := registry.adapters[invocation.Spec.Harness]
 	if adapter == nil {
 		return contract.Result{}, fmt.Errorf("unknown harness %q", invocation.Spec.Harness)
 	}
+	if err := contract.ValidateInput(invocation.Spec); err != nil {
+		return contract.Result{}, err
+	}
 	availability := adapter.Probe(ctx)
+	if invocation.ModelQuota != nil && !availability.ModelQuota {
+		return contract.Result{}, fmt.Errorf("harness cannot enforce shared model quota")
+	}
+	if (availability.ModelRequestBudget && invocation.MaxModelRequests <= 0) || invocation.MaxModelRequests < 0 || (invocation.MaxModelRequests > 0 && !availability.ModelRequestBudget) {
+		return contract.Result{}, fmt.Errorf("harness %q cannot enforce this model request budget", invocation.Spec.Harness)
+	}
+	if len(invocation.Spec.Messages) > 0 && !availability.StructuredHistory {
+		return contract.Result{}, fmt.Errorf("harness %q does not support structured history", invocation.Spec.Harness)
+	}
 	if !availability.Available && invocation.ModelConnection == nil {
 		return contract.Result{}, fmt.Errorf("harness %q unavailable: %s", invocation.Spec.Harness, availability.Reason)
 	}

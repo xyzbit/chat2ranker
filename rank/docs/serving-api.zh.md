@@ -4,17 +4,21 @@
 
 本参考文档定义已实现的本地 Agent 对外服务数据平面。机器可读约定见 [OpenAPI 3.1](openapi.yaml)；更完整的生命周期设计仍记录在 [Agent 生命周期对外服务提案](../../.agents/notes/proposed/feature/2026-09-08-agent-lifecycle-serving.md)中。
 
+多轮调用要求 Harness 支持结构化历史。DSH 支持用户与助手历史以及已关联的外部函数结果；当前原生 Codex、Claude Code 和 Hermes 适配器只接受首轮提示词。不支持的续聊返回 `409 unsupported_history`，不会接纳新的 Response。历史恢复的是消息，不是先前进程或工作区。
+
 ## Deployment 引用
 
-`model` 字段采用 `<deployment>@<selector>`。`v3` 这样的选择器解析为该 Deployment 所属 Agent 家族的第 3 个不可变 Agent 版本；`latest`、`staging` 与 `production` 解析到当前 DeploymentAlias 指针。请求受理时会持久化精确 AgentVersion；如果使用 Alias，还会持久化对应 ReleaseRevision，因此后续发布不会改变已受理或回放的 Response。
+`model` 推荐使用部署名称，例如 `research-public`，解析到当前发布目标；未发布部署返回 `409 deployment_unpublished`。已有安装按 `production`、`staging`、`latest` 顺序解析首个已发布别名。新部署只创建一个空的 `production` 别名；新建 Agent 版本不会推进发布。
 
-`research-public@v3` 中的版本是 Agent 版本，不是 ReleaseRevision 序号。ReleaseRevision 是一次 Alias 移动的审计标识符，只有使用 Alias 时才会出现在返回值的 `deployment.release_revision_id` 中。
+显式 `<deployment>@<selector>` 引用仍然可用。`v3` 这样的选择器预览该 Deployment 所属 Agent 家族的第 3 个不可变 Agent 版本，不依赖发布状态。`latest`、`staging` 与 `production` 解析已有 DeploymentAlias 指针。请求受理时持久化精确 AgentVersion；发布目标还会保存对应 ReleaseRevision，因此后续发布不会改变已受理或回放的 Response。
+
+`research-public@v3` 中的版本是 Agent 版本，不是 ReleaseRevision 序号。ReleaseRevision 审计发布目标的变更；使用部署名称或显式别名时出现在 `deployment.release_revision_id` 中，精确版本预览不包含该字段。
 
 ## 认证与准入
 
 每个数据平面请求都使用 `Authorization: Bearer rnk_live_...`。凭据显式持有 `responses:create`、`responses:read`、`responses:cancel` 与 `responses:approve` scope，并包含可访问的 Deployment 标识符列表。跨租户或超出访问范围的资源会在暴露其存在性可能泄漏其他租户数据时返回 `404`。
 
-Deployment 策略负责限制每分钟请求数、活跃 Response 并发数、执行超时，以及是否允许调用方传入 `instructions`。准入检查与 Response 创建位于同一个 SQLite 事务中，因此被拒请求不会启动 Execution，也不会占用未记录的排队名额。
+端点策略负责限制每分钟请求数、活跃 Response 并发数和执行超时。每个端点都支持追加指令和调用方函数。准入检查与 Response 创建位于同一个 SQLite 事务中，因此被拒请求不会启动 Execution，也不会占用未记录的排队名额。
 
 `Idempotency-Key` 的作用域是 API 凭据。使用相同规范化请求重复调用时返回原 Response，并设置 `X-Idempotent-Replayed: true`；同一键配合不同内容会返回 `409 idempotency_conflict`。
 
@@ -41,11 +45,11 @@ Deployment 策略负责限制每分钟请求数、活跃 Response 并发数、�
 | `stream` | 返回持久化的 Responses 兼容 SSE 事件。 |
 | `background` | 持久化并派发后立即返回，不等待终止状态。 |
 | `metadata` | 最多 16 个字符串条目；键最长 64 个字符，值最长 512 个字符。 |
-| `instructions` | 仅在 Deployment 策略开启时接受，并追加到版本化系统提示词。 |
+| `instructions` | 追加到本次请求的版本化系统提示词，续聊不会自动继承。 |
 | `store` | 省略或设为 `true`；已受理 Response 始终持久化。 |
 | `previous_response_id` | 从同一 Conversation 中最新且已完成的 Response 继续。 |
 | `text.format` | 普通 `text`，或带名称及 Draft 2020-12 Schema 的严格 `json_schema`。 |
-| `tools` | Deployment 策略允许时，最多接受 16 个严格的调用方 Function 定义。 |
+| `tools` | 最多接受 16 个严格的调用方 Function 定义。 |
 | `max_output_tokens` | 当前版本拒绝。 |
 | 其他字段 | 明确拒绝，不会静默忽略。 |
 
@@ -75,7 +79,7 @@ Rank 会在受理 Response 前解码内联内容或下载每个远程来源，�
 
 ## 调用方 Function 与审批
 
-每个 `tools` 条目采用 Responses Function 形式，包含 `type`、`name`、可选 `description`、对象 `parameters` 与 `strict: true`。Deployment 必须设置 `allowCallerTools`。Rank 会持久化规范化定义，并把它们加入不可变的模型可见执行提示词。Agent 选择 Function 后，Rank 会根据冻结定义校验函数名与参数对象，并返回 `function_call` 输出条目；Rank 绝不执行调用方代码。
+每个 `tools` 条目采用 Responses Function 形式，包含 `type`、`name`、可选 `description`、对象 `parameters` 与 `strict: true`。Rank 会持久化规范化定义，并把它们加入不可变的模型可见执行提示词。Agent 选择 Function 后，Rank 会根据冻结定义校验函数名与参数对象，并返回 `function_call` 输出条目；Rank 绝不执行调用方代码。
 
 续接该 Response 时，需要发送一个顶层 `function_call_output` 条目；其中 `call_id` 必须匹配前一轮调用，`output` 必须是非空字符串。续接继承相同工具定义，并拒绝替换它们。Conversation 会按顺序记录调用及其结果，因此重启或重试仍能重建同一次往返。
 
@@ -95,6 +99,10 @@ curl http://127.0.0.1:8787/v1/responses \
 
 请求中的 `model` 必须指向同一个 Deployment。续接时 Alias 的后续移动不参与版本选择：新 Response 继承 Conversation 固定的 AgentVersion 和 ReleaseRevision，并返回 `deployment.resolution_kind: conversation`。精确选择器如果指定其他 AgentVersion，会返回 `400 conversation_version_mismatch`；前序 Response 尚未结束时返回 `409 previous_response_not_completed`；前序 Response 已不是 Conversation 当前指针时返回 `409 conversation_head_changed`。
 
+## 取消
+
+`POST /v1/responses/{id}/cancel` 先记录持久取消请求，再联系 Execution。返回的 Response 可能仍为 `queued` 或 `in_progress`，并带有 `cancel_requested: true`。继续读取事件或查询回复，直到得到终态。`cancelled` 表示 Execution 已确认取消；已经完成的执行仍可返回 `completed`。网络失败或 Rank 重启会保留取消请求以便核对，不能证明远端已经停止。取消不会撤销外部副作用。
+
 ## 流与恢复
 
 创建时设置 `stream: true`，或调用 `GET /v1/responses/{id}?stream=true`。每条 SSE 记录包含整数 `id`、Responses 事件名和 JSON `sequence_number`。使用 `starting_after=<id>` 或 `Last-Event-ID` 重连时，只会发送后续持久化事件。
@@ -105,7 +113,7 @@ Rank 重启后会从 Repository 恢复排队中和执行中的 Response。提交
 
 ## 签名 Webhook
 
-Webhook 在控制平面按 Deployment 配置，不由单次 `/v1/responses` 请求临时指定。`POST /api/webhook-endpoints` 接受租户、名称、公开 HTTPS 地址、一个或多个 Deployment 标识符，以及 `response.completed`、`response.failed`、`response.cancelled`、`response.requires_action` 的子集。返回的 `whsec_...` 签名密钥只展示一次。Rank 在 SQLite 中只保存它的凭据存储引用；本地进程 Provider 把密钥写入权限为 `0700` 的私有目录，文件权限为 `0600`。
+Webhook 在控制平面按 Deployment 配置，不由单次 `/v1/responses` 请求临时指定。`POST /api/webhook-endpoints` 接受租户、名称、公开 HTTPS 地址、一个或多个 Deployment 标识符，以及 `response.completed`、`response.failed`、`response.cancelled`、`response.requires_action` 的子集。返回的 `whsec_...` 签名密钥只展示一次。Rank 在业务存储中只保存它的凭据存储引用；本地进程 Provider 把密钥写入权限为 `0700` 的私有目录，文件权限为 `0600`。
 
 每个事件都是薄载荷，接收方使用自己的受限 API 凭据获取当前 Response：
 

@@ -32,13 +32,13 @@ All three operations are **abstract** — the backend owns trigger policy, reten
 
 ## Tool-pairing boundaries
 
-The Service Definition exports `toolPairingBalancedBefore(session, seq)` and `toolPairingBalancedAfter(session, seq)` for snapping and validating compaction edges. A safe edge has no unanswered assistant tool call crossing it. Each helper validates that the event sequence is in the current surface and answers from balances cached per cut in surface order.
+The Service Definition exports `toolPairingBalancedBefore(session, seq)` and `toolPairingBalancedAfter(session, seq)` for snapping and validating compaction edges. A safe edge has no unanswered assistant tool call crossing it. Each helper validates that the event sequence is in the current surface and answers from balances cached per cut in surface order. Balance follows derived message blocks, including imported history and tool results submitted as current user input.
 
 The private per-session cache is keyed by `session.surface.replaceGeneration` and the processed surface-entry count. An unchanged generation extends the fold with unseen tail entries only; a log-only append with no new surface entry does no event reads, while a replacement generation rebuilds current membership and balances. Missing event seqs and a `tool/result` without a preceding open call reject as corrupt surface state.
 
 ## Surface contract
 
-`SurfaceEventType` is a closed union — only `user/message`, `assistant/message`, and `tool/result` may carry `surfaceOp`. A `compaction/*` event therefore **cannot** appear on the surface. A successful compaction instead:
+`SurfaceEventType` is a closed union — only `user/message`, `history/message`, `assistant/message`, and `tool/result` may carry `surfaceOp`. A `compaction/*` event therefore **cannot** appear on the surface. A successful compaction instead:
 
 1. appends `compaction/start` (log-only) — acquires the lock,
 2. summarizes the range,

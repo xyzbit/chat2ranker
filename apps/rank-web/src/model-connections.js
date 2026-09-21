@@ -3,9 +3,6 @@ export function modelOptions(templateModels = [], discoveredModels = []) {
   return [...official.values(), ...discoveredModels.filter((id) => id && !official.has(id)).map((id) => ({ id, name: id, source: "discovered" }))];
 }
 
-export function isManualModel(value, options) {
-  return Boolean(value) && !options.some((item) => item.id === value);
-}
 /** Wire protocols supported by provider connection forms. */
 export const protocolOptions = [
   { value: "openai-chat-completions", label: "Chat Completions" },

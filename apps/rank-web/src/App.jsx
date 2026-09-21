@@ -1,4 +1,5 @@
 import { SelectField } from "./SelectField.jsx";
+import { ModelField } from "./ModelField.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -37,10 +38,16 @@ import { ModelConnectionCenter } from "./ModelConnectionCenter.jsx";
 import { AssistantAvatar } from "./AssistantAvatar.jsx";
 import { ScrollRegion } from "./ScrollRegion.jsx";
 import { Modal } from "./Modal.jsx";
+import { ConfigurationPanel, configurationLabel } from "./ConfigurationPanel.jsx";
 import { DeploymentCenter } from "./DeploymentCenter.jsx";
+import { ReleaseWorkflow } from "./ReleaseWorkflow.jsx";
 import { WorkspaceShell } from "./WorkspaceShell.jsx";
+import { TrialCenter } from "./TrialCenter.jsx";
+import { ConversationDock } from "./ConversationDock.jsx";
 import { AgentCenter, ResponseCenter, CredentialCenter } from "./ManagementPages.jsx";
+import { DocumentationCenter } from "./DocumentationCenter.jsx";
 import { SettingsCenter } from "./SettingsCenter.jsx";
+import { SystemModelSetup } from "./SystemModelSetup.jsx";
 import { useCompanion, CompanionLauncher, CompanionSettings } from "./Companion.jsx";
 import "./management.css";
 import { createTranslator, initialLocale } from "./i18n.js";
@@ -49,12 +56,19 @@ const ACTIVE_STATES = new Set(["queued", "preparing", "running", "scoring"]);
 const runnerLabels = { dsh: "DeepSeek Harness", pi: "Pi", "claude-code": "Claude Code", codex: "Codex", hermes: "Hermes", mock: "Demo" };
 const defaultModelSources = { dsh: "运行环境 DeepSeek", pi: "Pi Adapter 配置", "claude-code": "Execution Service · Claude Code 登录", codex: "Execution Service · Codex 登录", hermes: "Hermes 运行环境", mock: "Demo 内置模型" };
 
-const knownRoutes = new Set(["agent", "agents", "deployments", "responses", "credentials", "settings"]);
+const knownRoutes = new Set(["agent", "agents", "deployments", "responses", "credentials", "settings", "docs"]);
 
 function routeFromLocation() {
   const route = globalThis.location?.hash?.replace(/^#\/?/, "").split(/[?&]/)[0] || "agent";
   if (route === "experiments") return "agent";
+  if (route === "trials") return "agents";
   return knownRoutes.has(route) ? route : "agent";
+}
+
+function trialFromLocation() {
+  const params = new URLSearchParams(location.hash.split("?")[1]);
+  if (!["agents", "deployments"].includes(routeFromLocation()) || (!params.has("conversation") && !params.has("trial"))) return null;
+  return { agentVersionId: params.get("agent") || "", deploymentReference: params.get("deployment") || "", conversationId: params.get("conversation") || "", nonce: crypto.randomUUID() };
 }
 
 function modelSource(item, connections = []) {
@@ -75,49 +89,6 @@ function modelSourceHint(runnerType, custom) {
 
 function conversationTitle(item, t) {
   return !item?.title || item.title === "未命名实验" ? t("untitledConversation") : item.title;
-}
-
-function SystemModelSetup({ catalog, connections, onComplete }) {
-  const verified = connections.filter((item) => item.status === "verified");
-  const [existingId, setExistingId] = useState(verified[0]?.id || "");
-  const [provider, setProvider] = useState(catalog[0]?.id || "");
-  const template = catalog.find((item) => item.id === provider) || catalog[0];
-  const [model, setModel] = useState(template?.models[0]?.id || "");
-  const [apiKey, setAPIKey] = useState("");
-  const [adding, setAdding] = useState(!verified.length);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  function chooseProvider(value) {
-    const next = catalog.find((item) => item.id === value);
-    setProvider(value); setModel(next?.models[0]?.id || "");
-  }
-
-  async function submit(event) {
-    event.preventDefault(); setBusy(true); setError("");
-    try {
-      let connection = verified.find((item) => item.id === existingId);
-      if (adding) {
-        connection = await rankApi.createModelConnection({ name: template.name, provider: template.id, protocol: template.protocol, baseUrl: template.baseUrl, apiKey, defaultModel: model });
-        connection = await rankApi.verifyModelConnection(connection.id);
-      }
-      const selectedModel = adding ? model : connection.defaultModel;
-      await rankApi.setSystemModel("control", { connectionId: connection.id, model: selectedModel });
-      await rankApi.setSystemModel("judge", { connectionId: connection.id, model: selectedModel });
-      await onComplete();
-    } catch (setupError) { setError(setupError.message); }
-    finally { setBusy(false); }
-  }
-
-  return <main className="system-setup"><form onSubmit={submit}>
-    <span className="eyebrow">WELCOME TO RANK</span><h1>连接一个模型</h1><p>用于对话与评审。之后可分别切换，不会影响已完成的实验。</p>
-    {!adding && <label><span>已有连接</span><SelectField value={existingId} onValueChange={setExistingId} aria-label={"已有连接"} options={[...verified.map(item => ({ value: item.id, label: <>{item.name} · {item.defaultModel}</> }))]} /></label>}
-    {adding && <><label><span>Provider</span><SelectField value={provider} onValueChange={chooseProvider} aria-label={"Provider"} options={[...catalog.map(item => ({ value: item.id, label: item.name }))]} /></label><label><span>模型</span><SelectField value={model} onValueChange={setModel} aria-label={"模型"} options={[...(template?.models.map(item => ({ value: item.id, label: item.name })) ?? [])]} /></label><label><span>API Key</span><input type="password" autoComplete="new-password" required value={apiKey} onChange={(event) => setAPIKey(event.target.value)} placeholder="只保存在本机 Execution Service" /></label></>}
-    {error && <div className="setup-error"><WarningCircle size={16} />{error}</div>}
-    <button className="primary-action" type="submit" disabled={busy || (adding ? !apiKey || !model : !existingId)}>{busy ? <CircleNotch className="spin" size={17} /> : <CheckCircle size={17} />}验证并开始</button>
-    {verified.length > 0 && <button className="setup-switch" type="button" onClick={() => setAdding((value) => !value)}>{adding ? "使用已有连接" : "添加新连接"}</button>}
-    <small>Base URL 与默认价格来自内置官方目录；高级配置进入应用后再修改。</small>
-  </form></main>;
 }
 
 function formatTime(value, withDate = false) {
@@ -161,7 +132,7 @@ function a2uiPayload(event) {
 
 function eventLabel(type) {
   const labels = {
-    "run.created": "创建运行", "run.status": "运行状态", "run.recovered": "恢复运行", "run.completed": "运行完成",
+    "run.created": "创建运行", "run.status": "运行状态", "run.cancel_requested": "请求停止运行", "run.recovered": "恢复运行", "run.completed": "运行完成",
     "trial.started": "开始 Trial", "trial.retry": "重试 Trial", "trial.completed": "Trial 完成", "trial.invalid": "Trial 无效",
     "case.started": "开始用例", "candidate.queued": "Agent 排队", "candidate.running": "Agent 启动", "candidate.harness.started": "Harness 启动",
     "candidate.harness.output": "Agent 输出", "candidate.harness.stdout": "Agent 输出", "candidate.harness.stderr": "Agent 日志", "candidate.completed": "Agent 完成", "candidate.failed": "Agent 失败",
@@ -392,7 +363,7 @@ function RunCard({ run, onCancel, onInspect, t }) {
   const completedTrials = multiTrial ? (run.completedTrials || 0) : run.results.length;
   const progress = scheduled ? Math.round((completedTrials / scheduled) * 100) : 0;
   const latestProgress = [...run.events].reverse().find((event) => event.caseId || event.status || eventDetail(event));
-  const statusLabel = t(run.status);
+  const statusLabel = t(run.cancelRequested && active ? "stoppingRun" : run.status);
   return (
     <A2UIRow>
       <div className="run-result-stack">
@@ -414,7 +385,7 @@ function RunCard({ run, onCancel, onInspect, t }) {
           <RunSteps run={run} t={t} />
           {complete && multiTrial && run.evaluationComplete === false && <div className="run-warning"><WarningCircle size={15} />{t("excludedTrials", { count: run.infraFailures + run.gradingFailures })}</div>}
           {active && latestProgress && <div className="live-event"><CircleNotch size={13} className="spin" /><code>{eventLabel(latestProgress.type)}</code><span>{eventDetail(latestProgress)}</span></div>}
-          {active && <div className="run-controls"><button type="button" onClick={() => onCancel(run.id)}><Stop size={15} weight="fill" />{t("stopRun")}</button></div>}
+          {active && <div className="run-controls"><button type="button" disabled={run.cancelRequested} onClick={() => onCancel(run.id)}><Stop size={15} weight="fill" />{t(run.cancelRequested ? "stoppingRun" : "stopRun")}</button></div>}
           {(run.status === "failed" || run.status === "cancelled") && <div className="run-error">{run.error || t("runStopped")}</div>}
         </section>
         {complete && (
@@ -428,7 +399,7 @@ function RunCard({ run, onCancel, onInspect, t }) {
   );
 }
 
-const toolLabels = { rank_list_assets: "读取测试集和 Agent", rank_create_dataset: "创建测试集", rank_add_dataset_cases: "创建测试集新版本", rank_create_agent: "创建 Agent", rank_create_agent_version: "创建 Agent 新版本", rank_create_model_connection: "创建模型连接", rank_update_model_connection: "更新模型连接", rank_select_dataset: "选择测试集", rank_select_agent: "选择 Agent", rank_prepare_run: "准备运行", rank_show_experiment_results: "读取实验表现" };
+const toolLabels = { rank_list_assets: "读取测试集和 Agent", rank_create_dataset: "创建测试集", rank_add_dataset_cases: "创建测试集新版本", rank_create_dataset_version: "更新测试集", rank_create_agent: "创建 Agent", rank_create_agent_version: "创建 Agent 新版本", rank_create_model_connection: "创建模型连接", rank_update_model_connection: "更新模型连接", rank_select_dataset: "选择测试集", rank_select_agent: "选择 Agent", rank_prepare_run: "准备运行", rank_show_experiment_results: "读取实验表现", rank_open_configuration: "准备配置表单", rank_set_release_policy: "更新发布门槛", rank_set_system_model: "设置系统模型", rank_create_deployment: "创建端点", rank_set_evaluation_defaults: "设置默认测试集", rank_prepare_release: "准备发布", rank_release_status: "读取发布进度", rank_open_trial: "准备试用" };
 const runStatusLabels = { queued: "排队中", preparing: "准备中", running: "运行中", scoring: "评分中", complete: "完成", failed: "失败", cancelled: "已停止" };
 
 function TurnActivity({ turn, t }) {
@@ -466,7 +437,7 @@ function PanelDetail({ target, modelConnections, onInspect, onAddCase, onEditCas
     <>
           {kind === "dataset" && <>
             <section className="detail-summary"><span><small>用例</small><strong>{data.caseCount}</strong></span><span><small>版本</small><strong>v{data.version}</strong></span><span><small>来源</small><strong>{data.source || "—"}</strong></span></section>
-            <section><div className="detail-section-head"><h3>用例列表</h3><button type="button" onClick={() => onAddCase(data)}><Plus size={14} />新增用例</button></div><div className="detail-list">{data.cases.map((item, index) => <article key={item.id}><span>{index + 1}</span><div><strong>{item.title}</strong><p>{item.input}</p><small>{Object.values(item.expected || {}).join(" · ")}</small></div><button type="button" className="edit-case" onClick={() => onEditCase(data, item)} aria-label={`编辑用例 ${item.title}`}><PencilSimple size={14} /></button></article>)}</div></section>
+            <section><div className="detail-section-head"><h3>用例列表</h3><button type="button" onClick={() => onAddCase(data)}><Plus size={14} />新增用例</button></div><div className="detail-list">{data.cases.map((item, index) => <article key={item.id}><span>{index + 1}</span><div><strong>{item.title}</strong><p>{item.input}</p><small>{Object.values(item.expected || {}).join(" · ")}</small>{item.source?.responseId && <a className="inline-link" href={`#/responses?responseId=${encodeURIComponent(item.source.responseId)}`}>来源调用 <ArrowUpRight size={12}/></a>}</div><button type="button" className="edit-case" onClick={() => onEditCase(data, item)} aria-label={`编辑用例 ${item.title}`}><PencilSimple size={14} /></button></article>)}</div></section>
           </>}
           {kind === "agent" && <>
             <section className="detail-summary"><span><small>运行方式</small><strong>{runnerLabels[data.runnerType] || data.runnerType}</strong></span><span><small>模型</small><strong>{data.model || "运行环境默认"}</strong></span><span><small>状态</small><strong>{data.runtime?.available ? "可运行" : "未连接"}</strong></span></section>
@@ -483,7 +454,7 @@ function PanelDetail({ target, modelConnections, onInspect, onAddCase, onEditCas
             <section><h3>结论</h3><p className="detail-copy">{data.reason}</p></section>
             {data.trials?.length > 0 && <section><h3>多次运行</h3><div className="trial-list">{data.trials.map((trial) => <article key={trial.id}><strong>#{trial.trialIndex} · {trial.valid ? trial.passed ? "通过" : "失败" : "无效"}</strong><p>{trial.reason}</p></article>)}</div></section>}
             {data.artifacts?.length > 0 && <section><h3>轨迹与产物</h3><div className="artifact-list">{data.artifacts.map((item) => <button type="button" key={item.path} onClick={() => openArtifact(item)}><span>{artifactRole(item)} · {item.kind}</span><small>{item.path.split("/").at(-1)}</small></button>)}</div></section>}
-            {artifact && <section className="artifact-content"><h3>{artifact.title}</h3>{artifact.loading ? <span>正在读取…</span> : artifact.error ? <span>{artifact.error}</span> : <pre>{artifact.content}{artifact.truncated ? "\n…内容已截断" : ""}</pre>}</section>}
+            {artifact && <section className="artifact-content"><h3>{artifact.title}</h3>{artifact.loading ? <span>正在读取…</span> : artifact.error ? <span>{artifact.error}</span> : <>{artifact.encoding === "base64" ? <p>二进制产物无法预览。{artifact.truncated ? "文件超过预览上限，未提供截断文件下载。" : <a href={`data:application/octet-stream;base64,${artifact.content}`} download={artifact.path.split("/").at(-1)}>下载文件</a>}</p> : <pre>{artifact.content}{artifact.truncated ? "\n…内容已截断" : ""}</pre>}</>}</section>}
           </>}
     </>
   );
@@ -689,7 +660,7 @@ function AgentForm({ family, baseVersion, initialForm, toolOptions, skillOptions
     modelConnectionId: baseVersion?.modelConnectionId || "",
     preset: (baseVersion?.runnerType || "dsh") === "dsh" ? "headless" : "",
     systemPrompt: baseVersion?.systemPrompt || "",
-    tools: baseVersion?.tools || ["web_search", "browser"],
+    tools: baseVersion?.tools || [],
     skills: baseVersion?.skills || [],
     description: baseVersion ? baseVersion.description || "" : t("customAgentDescription"),
   });
@@ -699,6 +670,7 @@ function AgentForm({ family, baseVersion, initialForm, toolOptions, skillOptions
   const selectedConnection = modelConnections.find((item) => item.id === form.modelConnectionId);
   const customConnections = ["dsh", "codex", "hermes"].includes(form.runnerType);
   const runtimeAvailable = runtimes?.[form.runnerType]?.installed !== false && (selectedConnection?.status === "verified" || runtimes?.[form.runnerType]?.available);
+  const needsConnection = customConnections && runtimes?.[form.runnerType]?.installed && !runtimeAvailable;
   return (
     <Modal label={t(isNewVersion ? "newVersion" : "newAgent")} onClose={onClose}>
       <form className="agent-form" aria-label={t(isNewVersion ? "newVersion" : "newAgent")} onSubmit={(event) => { event.preventDefault(); onSubmit(form); }} onMouseDown={(event) => event.stopPropagation()}>
@@ -709,9 +681,9 @@ function AgentForm({ family, baseVersion, initialForm, toolOptions, skillOptions
         <div className="form-fields">
           <label><span>{t("name")}</span><input required disabled={isNewVersion} value={form.name} onChange={(event) => update("name", event.target.value)} placeholder="Research Agent" /></label>
           <label><span>Handle</span><input disabled={isNewVersion} value={form.handle} onChange={(event) => update("handle", event.target.value)} placeholder="@team/research" /></label>
-          <label className="wide"><span>{t("runner")}</span><SelectField aria-label={t("runner")} value={form.runnerType} onValueChange={selectRunner} options={[...Object.entries(runnerLabels).map(([id, label]) => ({ value: id, label: <>{label}{runtimes?.[id]?.installed === false ? ` · ${t("notInstalled")}` : runtimes?.[id]?.available === false && !(id === form.runnerType && runtimeAvailable) ? ` · ${t("notConfiguredRuntime")}` : ""}</> }))]} /><small title={runtimeAvailable ? undefined : runtimes?.[form.runnerType]?.reason}>{t(runtimeAvailable ? "runtimeReady" : "runtimeUnavailable")}</small></label>
+          <label className="wide"><span>{t("runner")}</span><SelectField aria-label={t("runner")} value={form.runnerType} onValueChange={selectRunner} options={[...Object.entries(runnerLabels).map(([id, label]) => ({ value: id, label: <>{label}{runtimes?.[id]?.installed === false ? ` · ${t("notInstalled")}` : ""}</> }))]} /><small title={runtimeAvailable || needsConnection ? undefined : runtimes?.[form.runnerType]?.reason}>{t(needsConnection ? "chooseVerifiedConnection" : runtimeAvailable ? "runtimeReady" : "runtimeUnavailable")}</small></label>
           <label className="model-source-field"><span>{t("modelSourceLabel")}{customConnections && <button type="button" onClick={() => onManageConnections(form)}><Plus size={13} />{t("addModelConnection")}</button>}</span>{customConnections ? <SelectField aria-label={t("modelSourceLabel")} value={form.modelConnectionId} onValueChange={nextValue => { const connection = modelConnections.find(item => item.id === nextValue); setForm(current => ({ ...current, modelConnectionId: nextValue, model: connection?.defaultModel || "" })); }} options={[{ value: "", label: t(`modelSource_${form.runnerType}`) }, ...compatibleConnections.map(item => ({ value: item.id, label: <>{item.name} · {t(item.status === "verified" ? "verified" : "unverified")}</>, disabled: item.status !== "verified" }))]} /> : <div className="readonly-field">{t(`modelSource_${form.runnerType}`)}</div>}<small>{t(`modelHint_${selectedConnection ? "verified" : form.runnerType}`)}</small></label>
-          <label><span>{t("useModel")}</span><input list="agent-models" value={form.model} onChange={(event) => update("model", event.target.value)} placeholder={selectedConnection?.defaultModel || t("runtimeModel")} /><datalist id="agent-models">{(selectedConnection?.models || []).map((model) => <option key={model} value={model} />)}</datalist><small>{form.model ? t("modelWillUse", { model: form.model }) : t("modelUnspecified", { source: t(`modelSource_${form.runnerType}`) })}</small></label>
+          <label><span>{t("useModel")}</span><ModelField label={t("useModel")} value={form.model} options={[selectedConnection?.defaultModel, ...(selectedConnection?.models || [])].filter(Boolean)} onChange={model => update("model", model)} placeholder={selectedConnection?.defaultModel || t("runtimeModel")} required={false} /><small>{form.model ? t("modelWillUse", { model: form.model }) : t("modelUnspecified", { source: t(`modelSource_${form.runnerType}`) })}</small></label>
           <label className="wide"><span>{t("description")}</span><input value={form.description} onChange={(event) => update("description", event.target.value)} placeholder={t("versionNotesPlaceholder")} /></label>
           <label className="wide"><span>{t("systemPrompt")}</span><textarea rows="3" value={form.systemPrompt} onChange={(event) => update("systemPrompt", event.target.value)} placeholder={t("systemPromptPlaceholder")} /></label>
           <CapabilitySelect label="Runner Tools" kind="Tool" value={form.tools} options={toolOptions} onChange={(value) => update("tools", value)} t={t} />
@@ -739,7 +711,7 @@ function CaseEditor({ dataset, item, onClose, onSave, busy, saveError }) {
       const expected = JSON.parse(form.expected || "{}");
       if (!expected || Array.isArray(expected) || typeof expected !== "object") throw new Error("期望结果必须是 JSON 对象");
       setError("");
-      onSave({ id: form.id.trim(), title: form.title.trim(), input: form.input.trim(), expected });
+      onSave({ id: form.id.trim(), title: form.title.trim(), input: form.input.trim(), expected, ...(item?.source ? { source: item.source } : {}) });
     } catch (parseError) { setError(parseError.message); }
   }
   return (
@@ -781,66 +753,63 @@ function HistoryPanel({ experiments, currentId, onClose, onOpen, onNew, t }) {
   );
 }
 
-function ReleaseComparisonCard({ payload, deployments, agents, runs, t, onOpenDeployment, onReleased }) {
-  const deployment = deployments.find((item) => item.id === payload.deploymentId);
-  const target = deployment?.aliases.find((item) => item.name === payload.alias);
-  const versions = agents.flatMap((item) => item.versions || [item]);
-  const current = versions.find((item) => item.id === payload.currentAgentVersionId);
-  const candidate = versions.find((item) => item.id === payload.candidateAgentVersionId);
-  const evidence = [...runs].reverse().find((run) => run.status === "complete" && run.evaluationComplete && run.agentSnapshot?.id === candidate?.id);
-  const currentEvidence = [...runs].reverse().find((run) => run.status === "complete" && run.evaluationComplete && run.agentSnapshot?.id === current?.id);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [released, setReleased] = useState(false);
-  const [error, setError] = useState("");
-
-  if (!deployment || !candidate) return null;
-
-  async function release() {
-    setBusy(true);
-    setError("");
-    try {
-      await rankApi.promoteDeployment(deployment.id, payload.alias, {
-        agentVersionId: candidate.id,
-        expectedReleaseRevisionId: target?.currentReleaseRevisionId || "",
-        evidenceRunId: evidence?.id || "",
-        policyResult: evidence ? "passed" : "manual_override",
-        actor: "local-operator",
-        reason: evidence ? "evaluated release from AgentKiln conversation" : reason.trim(),
-      });
-      await onReleased();
-      setReleased(true);
-    } catch (releaseError) {
-      setError(releaseError.status === 409 ? t("releaseConflict") : releaseError.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const versionTitle = (version) => version ? `${version.handle || version.name} v${version.version}` : t("unconfigured");
-  const score = (run) => run ? `${Math.round((run.passRate || 0) * 100)}%` : "—";
-  return <A2UIRow>
-    <article className="release-comparison-card">
-      <header><div><small>{t("releaseCandidate")}</small><h2>{deployment.name}@{payload.alias}</h2></div><span className={evidence ? "release-evidence passed" : "release-evidence manual"}>{evidence ? t("evaluationPassed") : t("manualOverride")}</span></header>
-      <div className="release-version-comparison">
-        <section><small>{t("currentVersion")}</small><strong>{versionTitle(current)}</strong><dl><div><dt>{t("passRate")}</dt><dd>{score(currentEvidence)}</dd></div><div><dt>{t("totalCost")}</dt><dd>{currentEvidence ? displayedCost(currentEvidence) : "—"}</dd></div></dl></section>
-        <ArrowRight size={24} weight="bold" />
-        <section className="candidate"><small>{t("candidateVersion")}</small><strong>{versionTitle(candidate)}</strong><dl><div><dt>{t("passRate")}</dt><dd>{score(evidence)}</dd></div><div><dt>{t("totalCost")}</dt><dd>{evidence ? displayedCost(evidence) : "—"}</dd></div></dl></section>
-      </div>
-      {!evidence && !released && <label className="release-card-reason"><span>{t("releaseReason")}</span><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t("releaseReasonPlaceholder")} /></label>}
-      {error && <p className="release-error"><WarningCircle size={15} />{error}</p>}
-      <footer><button type="button" className="open-deployment-action" onClick={() => onOpenDeployment(deployment.id)}>{t("openDeployment")}<ArrowRight size={14} /></button><button type="button" className="primary-action" disabled={busy || released || (!evidence && !reason.trim())} onClick={release}>{busy ? <CircleNotch size={17} className="spin" /> : <CheckCircle size={17} />}{released ? t("releaseSuccess") : t("confirmRelease")}</button></footer>
-    </article>
-  </A2UIRow>;
+function ReleaseComparisonCard({ payload, deployments, agents, datasets, experimentId, reviewCommandId, locale, t, onOpenDeployment, onReleased }) {
+  const deployment = deployments.find(item => item.id === payload.deploymentId);
+  if (!deployment) return null;
+  return <A2UIRow><article className="release-comparison-card">
+    <header><h2>{deployment.name}</h2><button type="button" onClick={() => onOpenDeployment(deployment.id)}>{t("openDeployment")}<ArrowRight size={14} /></button></header>
+    <ReleaseWorkflow deployment={deployment} alias={payload.alias} agentVersionId={payload.candidateAgentVersionId} datasets={datasets} agents={agents} locale={locale} t={t} experimentId={experimentId} reviewCommandId={reviewCommandId} initialSelection={Object.fromEntries(["developmentDatasetVersionId", "regressionDatasetVersionId"].filter(key => payload[key] !== undefined).map(key => [key, payload[key]]))} onReleased={onReleased} />
+  </article></A2UIRow>;
 }
 
 export function App() {
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  const [compactAssistant, setCompactAssistant] = useState(() => matchMedia("(max-width: 640px)").matches);
+  const [trialLaunch, setTrialLaunch] = useState(trialFromLocation);
+  const [trialOpen, setTrialOpen] = useState(Boolean(trialLaunch) && !new URLSearchParams(location.hash.split("?")[1]).has("assistant"));
+  const [selectedAgentId, setSelectedAgentId] = useState(() => new URLSearchParams(location.hash.split("?")[1]).get("agent") || "");
+  function trialLocation(target, conversationId = "") {
+    const page = target.deploymentReference ? "deployments" : "agents";
+    const params = new URLSearchParams({ trial: "1" });
+    if (target.agentVersionId) params.set("agent", target.agentVersionId);
+    if (target.deploymentReference) params.set("deployment", target.deploymentReference);
+    if (conversationId) params.set("conversation", conversationId);
+    window.history.replaceState(null, "", `#/${page}?${params}`);
+    setRoute(page);
+  }
+  function openTrial(target) {
+    setAssistantOpen(false);
+    setTrialOpen(true);
+    if (target.agentVersionId) setSelectedAgentId(target.agentVersionId);
+    const same = trialLaunch && !target.draft && trialLaunch.agentVersionId === target.agentVersionId && (trialLaunch.deploymentReference || "") === (target.deploymentReference || "");
+    if (!same) setTrialLaunch({ ...target, nonce: crypto.randomUUID() });
+    trialLocation(target, same ? trialLaunch.conversationId : "");
+  }
+  function closeTrial() {
+    setTrialOpen(false);
+    setAssistantOpen(false);
+    const params = new URLSearchParams(location.hash.split("?")[1]);
+    for (const key of ["trial", "conversation", "assistant"]) params.delete(key);
+    window.history.replaceState(null, "", `#/${route}${params.size ? `?${params}` : ""}`);
+  }
+  function openRank() {
+    setTrialOpen(false); setAssistantOpen(true);
+    const params = new URLSearchParams(location.hash.split("?")[1]);
+    params.set("assistant", "1");
+    window.history.replaceState(null, "", `#/${route}?${params}`);
+  }
+  function selectAgent(id) {
+    setSelectedAgentId(id);
+    if (id && trialOpen) openTrial({ agentVersionId: id });
+    else {
+      setTrialOpen(false); setTrialLaunch(null);
+      window.history.replaceState(null, "", id ? `#/agents?agent=${encodeURIComponent(id)}` : "#/agents");
+    }
+  }
+  const [assistantOpen, setAssistantOpen] = useState(() => new URLSearchParams(location.hash.split("?")[1]).has("assistant"));
   const companion = useCompanion();
   const [route, setRoute] = useState(routeFromLocation);
   const [locale, setLocale] = useState(initialLocale);
   const [bootstrap, setBootstrap] = useState(null);
+  const [setupDismissed, setSetupDismissed] = useState(() => localStorage.getItem("rank.modelSetupDismissed") === "true");
   const [experiment, setExperiment] = useState(null);
   const [composer, setComposer] = useState("");
   const [mentions, setMentions] = useState([]);
@@ -849,6 +818,7 @@ export function App() {
   const [pendingMessage, setPendingMessage] = useState(null);
   const [controlTurn, setControlTurn] = useState(null);
   const [inspector, setInspector] = useState(null);
+  const [configurationRequest, setConfigurationRequest] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState("config");
   const [panelExpanded, setPanelExpanded] = useState(false);
@@ -879,7 +849,7 @@ export function App() {
       ...experiment.messages.map((message) => ({ type: "message", at: message.createdAt, data: message })),
       ...(pendingMessage ? [{ type: "message", at: pendingMessage.createdAt, data: pendingMessage }] : []),
       ...experiment.runs.map((run) => ({ type: "run", at: run.createdAt, data: run })),
-      ...experiment.controlEvents.filter((event) => ["a2ui/prepare_run", "a2ui/show_experiment_results", "a2ui/prepare_release"].includes(event.type)).map((event) => ({ type: "a2ui", at: event.createdAt, data: event })),
+      ...experiment.controlEvents.filter((event) => ["a2ui/prepare_run", "a2ui/show_experiment_results", "a2ui/prepare_release", "a2ui/open_trial", "a2ui/open_configuration"].includes(event.type)).map((event) => ({ type: "a2ui", at: event.createdAt, data: event })),
     ].sort((a, b) => {
       const elapsed = new Date(a.at).getTime() - new Date(b.at).getTime();
       if (Math.abs(elapsed) >= 750) return elapsed;
@@ -900,7 +870,15 @@ export function App() {
   useEffect(() => setMentionIndex(0), [composer, mentionPicker]);
 
   useEffect(() => {
-    const onHashChange = () => setRoute(routeFromLocation());
+    if (/^#\/?trials(?:\?|$)/.test(location.hash)) window.history.replaceState(null, "", location.hash.replace("trials", "agents"));
+    const onHashChange = () => {
+      const next = routeFromLocation();
+      setRoute(next);
+      const launch = trialFromLocation();
+      const rankOpen = new URLSearchParams(location.hash.split("?")[1]).has("assistant");
+      setTrialLaunch(launch); setTrialOpen(Boolean(launch) && !rankOpen); setAssistantOpen(rankOpen);
+      setSelectedAgentId(new URLSearchParams(location.hash.split("?")[1]).get("agent") || "");
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -918,40 +896,6 @@ export function App() {
     if (nextRoute === "agent") setAssistantOpen(false);
   }
 
-  useEffect(() => {
-    if (!assistantOpen) return;
-    const previousFocus = document.activeElement;
-    document.getElementById("task-input")?.focus();
-    const close = (event) => { if (event.key === "Escape" && !panelOpen && !agentFormOpen && !picker) setAssistantOpen(false); };
-    window.addEventListener("keydown", close);
-    return () => { window.removeEventListener("keydown", close); if (previousFocus?.isConnected) previousFocus.focus(); };
-  }, [assistantOpen, panelOpen, agentFormOpen, picker]);
-
-  useEffect(() => {
-    const media = matchMedia("(max-width: 640px)");
-    const update = () => setCompactAssistant(media.matches);
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-
-  useEffect(() => {
-    if (!assistantOpen || !compactAssistant) return;
-    const drawer = document.querySelector(".assistant-route");
-    if (!drawer) return;
-    const background = [...document.querySelectorAll(".product-sidebar, .product-topbar, .mobile-navigation, .product-content > :not(.assistant-route)")];
-    const prior = background.map((el) => el.inert);
-    background.forEach((el) => { el.inert = true; });
-    const trap = (event) => {
-      if (event.key !== "Tab" || panelOpen || agentFormOpen || picker) return;
-      const targets = [...drawer.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary')].filter((el) => el.getClientRects().length);
-      if (!targets.length) return;
-      const first = targets[0], last = targets.at(-1);
-      if (event.shiftKey && (document.activeElement === first || !drawer.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && (document.activeElement === last || !drawer.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
-    };
-    window.addEventListener("keydown", trap);
-    return () => { background.forEach((el, i) => { el.inert = prior[i]; }); window.removeEventListener("keydown", trap); };
-  }, [assistantOpen, compactAssistant, panelOpen, agentFormOpen, picker]);
 
   async function refreshBootstrap() {
     const next = await rankApi.bootstrap();
@@ -985,6 +929,27 @@ export function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function prepareAgentEvaluation(agent, dataset) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const created = await rankApi.createExperiment({ title: `${agent.name} · v${agent.version}` });
+      let result = await rankApi.executeCommand(created.id, created.a2ui.actions.select_agent, { agentVersionId: agent.id });
+      if (dataset) {
+        result = await rankApi.executeCommand(created.id, result.experiment.a2ui.actions.select_dataset, { datasetVersionId: dataset.id });
+        result = await rankApi.executeCommand(created.id, result.experiment.a2ui.actions.prepare_run, { trialCount });
+      }
+      await refreshBootstrap();
+      setExperiment(result.experiment);
+      localStorage.setItem("rank.activeExperiment", created.id);
+      setComposer(`${agent.handle} ${locale === "en" ? "Start an evaluation" : "开始评测"}${dataset ? ` · ${dataset.name} v${dataset.version}` : ""}`);
+      setMentions([{ kind: "agent", id: agent.id, label: `${agent.handle} v${agent.version}` }]);
+      setMentionPicker(null); setPendingMessage(null); setControlTurn(null); setInspector(null);
+      navigate("agent");
+      requestAnimationFrame(() => document.getElementById("task-input")?.focus());
+    } finally { setBusy(false); }
   }
 
   useEffect(() => {
@@ -1032,7 +997,7 @@ export function App() {
 		finally { refreshing = false; }
 	  };
 	  stream.onmessage = () => void refreshRun();
-    const eventNames = ["run.created", "run.status", "run.recovered", "trial.started", "trial.retry", "trial.completed", "trial.invalid", "case.started", "candidate.queued", "candidate.running", "candidate.harness.started", "candidate.harness.output", "candidate.harness.stdout", "candidate.harness.stderr", "candidate.completed", "candidate.failed", "judge.queued", "judge.running", "judge.harness.started", "judge.harness.output", "judge.harness.stdout", "judge.harness.stderr", "judge.completed", "judge.failed", "judge.verdict", "agent.message", "artifact.available", "case.completed", "run.completed"];
+    const eventNames = ["run.created", "run.status", "run.cancel_requested", "run.recovered", "trial.started", "trial.retry", "trial.completed", "trial.invalid", "case.started", "candidate.queued", "candidate.running", "candidate.harness.started", "candidate.harness.output", "candidate.harness.stdout", "candidate.harness.stderr", "candidate.completed", "candidate.failed", "judge.queued", "judge.running", "judge.harness.started", "judge.harness.output", "judge.harness.stdout", "judge.harness.stderr", "judge.completed", "judge.failed", "judge.verdict", "agent.message", "artifact.available", "case.completed", "run.completed"];
     for (const name of eventNames) stream.addEventListener(name, () => void refreshRun());
 	  stream.onerror = () => { if (!closed && stream.readyState === EventSource.CLOSED) void refreshRun(); };
 	  return stream;
@@ -1123,7 +1088,9 @@ export function App() {
       }).catch(() => {});
     }
     try {
-      const turn = await rankApi.sendMessage(experiment.id, text, mentions);
+      const contextAgent = route === "agents" && assistantOpen ? bootstrap.agents.flatMap(item => item.versions || [item]).find(item => item.id === selectedAgentId) : null;
+      const contextMentions = contextAgent && !mentions.some(item => item.kind === "agent") ? [...mentions, { kind: "agent", id: contextAgent.id, label: `${contextAgent.handle} v${contextAgent.version}` }] : mentions;
+      const turn = await rankApi.sendMessage(experiment.id, text, contextMentions);
       setMentions([]);
       setControlTurn({ id: turn.turnId, events: [] });
     } catch (messageError) {
@@ -1162,7 +1129,8 @@ export function App() {
   }
 
   async function cancelRun(runId) {
-    await rankApi.cancelRun(runId);
+    const nextRun = await rankApi.cancelRun(runId);
+    setExperiment(current => current ? { ...current, runs: current.runs.map(run => run.id === nextRun.id ? nextRun : run) } : current);
   }
 
   async function handleFile(event, versionFamily = null) {
@@ -1199,6 +1167,12 @@ export function App() {
         ? await rankApi.createAgentVersion(agentVersionTarget.familyId, form)
         : await rankApi.createAgent(form);
       await refreshBootstrap();
+      if (route === "agents") {
+        setAgentFormOpen(false); setAgentVersionTarget(null); setAgentDraft(null);
+        setSelectedAgentId(agent.id);
+        window.location.hash = `/agents?agent=${encodeURIComponent(agent.id)}`;
+        return;
+      }
       const action = experiment.a2ui?.actions?.select_agent;
       if (!action) throw new Error("实验操作已过期，请刷新后重试");
       const selected = await rankApi.executeCommand(experiment.id, action, { agentVersionId: agent.id });
@@ -1219,6 +1193,19 @@ export function App() {
     const saved = id ? await rankApi.updateModelConnection(id, input) : await rankApi.createModelConnection(input);
     try { return input.apiKey || saved.hasCredential ? await rankApi.verifyModelConnection(saved.id) : saved; }
     finally { await refreshBootstrap(); }
+  }
+
+  async function importLocalConnection(candidate) {
+    const connection = await rankApi.importLocalModel(candidate.id);
+    await refreshBootstrap();
+    return connection;
+  }
+
+  async function finishModelSetup() {
+    await refreshBootstrap();
+    localStorage.setItem("rank.modelSetupDismissed", "true");
+    setSetupDismissed(true);
+    navigate("agent");
   }
 
   async function deleteModelConnection(id) {
@@ -1315,6 +1302,12 @@ export function App() {
     }
     if (item.type === "run") return <RunCard run={item.data} onCancel={cancelRun} onInspect={inspect} key={item.data.id} t={t} />;
     const payload = a2uiPayload(item.data);
+    if (item.data.type === "a2ui/open_configuration") {
+      return <A2UIRow key={item.data.id}><button type="button" className="configuration-action" onClick={() => setConfigurationRequest(payload)}><span>{configurationLabel(payload.section, t)}{payload.deploymentName && <small>{payload.deploymentName}</small>}</span><ArrowRight size={16}/></button></A2UIRow>;
+    }
+    if (item.data.type === "a2ui/open_trial") {
+      return <A2UIRow key={item.data.id}><div className="management-actions"><span>{payload.label}</span><button onClick={() => openTrial({ agentVersionId: payload.agentVersionId, draft: payload.draft })}><Robot size={17}/>{t("openTrial")}</button></div></A2UIRow>;
+    }
     if (item.data.type === "a2ui/show_experiment_results") {
       const ids = new Set((payload.runs || []).map((run) => run.id));
       const runs = ids.size ? experiment.runs.filter((run) => ids.has(run.id)) : experiment.runs;
@@ -1326,9 +1319,12 @@ export function App() {
         payload={payload}
         deployments={bootstrap.deployments || []}
         agents={bootstrap.agents}
-        runs={experiment.runs}
+        datasets={bootstrap.datasets}
+        experimentId={experiment.id}
+        reviewCommandId={item.data.commandId}
+        locale={locale}
         t={t}
-        onOpenDeployment={() => navigate("deployments")}
+        onOpenDeployment={id => { window.location.hash = `/deployments?deploymentId=${encodeURIComponent(id)}`; }}
         onReleased={refreshBootstrap}
       />;
     }
@@ -1348,23 +1344,9 @@ export function App() {
   const configuredRoles = new Set((bootstrap.systemModels || []).filter((item) => item.connection?.status === "verified").map((item) => item.role));
   const demoMode = !configuredRoles.has("control") || !configuredRoles.has("judge");
   const agentRoute = route === "agent";
-
-  return (
-    <div className={`app-shell ${panelOpen ? "panel-open" : ""} ${panelOpen && panelExpanded ? "panel-expanded" : ""}`}>
-      <WorkspaceShell
-        route={route}
-        onNavigate={navigate}
-        locale={locale}
-        onLocaleChange={() => setLocale((value) => value === "zh" ? "en" : "zh")}
-        experiments={bootstrap.experiments}
-        activeExperimentId={experiment.id}
-        onOpenConversation={openExperiment}
-        onNewConversation={createExperiment}
-        onOpenHistory={() => setHistoryOpen(true)}
-        t={t}
-      >
-        {(agentRoute || assistantOpen) && <div className={agentRoute ? "agent-route" : "assistant-route"} role={agentRoute ? undefined : compactAssistant ? "dialog" : "complementary"} aria-modal={!agentRoute && compactAssistant ? true : undefined} aria-label={agentRoute ? undefined : t("assistant")}>
-          {!agentRoute && <header className="assistant-drawer-heading"><div><strong>{t("assistant")}</strong><small>{t("currentPage", { page: t(route) })}</small></div><button type="button" onClick={() => navigate("agent")} title={t("fullConversation")} aria-label={t("fullConversation")}><ArrowsOutSimple size={18}/></button><button type="button" onClick={() => setAssistantOpen(false)} aria-label={t("closeAssistant")}><X size={20}/></button></header>}
+  const trialTarget = route === "agents" && selectedAgentId ? { agentVersionId: selectedAgentId } : route === "deployments" ? trialLaunch : null;
+  const rankConversation = (
+    <div className={agentRoute ? "agent-route" : "assistant-route"} id={agentRoute ? undefined : "dock-rank"} role={agentRoute ? undefined : "tabpanel"} aria-labelledby={agentRoute ? undefined : "dock-rank-tab"} hidden={!agentRoute && !assistantOpen}>
           <main className="workspace agent-workspace" id="top">
             <section className="experiment-heading">
               <h1>{conversationTitle(experiment, t)}</h1>
@@ -1400,15 +1382,50 @@ export function App() {
               <input ref={versionFileInputRef} hidden type="file" accept=".json,.jsonl,.csv,.txt" onChange={(event) => handleFile(event, datasetVersionTarget)} />
             </section>
           </main>
-        </div>}
-        {route === "deployments" && <DeploymentCenter tenantId={bootstrap.tenantId} deployments={bootstrap.deployments || []} agents={bootstrap.agents} locale={locale} t={t} onRefresh={refreshBootstrap} />}
-        {route === "agents" && <AgentCenter agents={bootstrap.agents} deployments={bootstrap.deployments || []} experiments={bootstrap.experiments} t={t} onCreate={() => { setAgentVersionTarget(null); setAgentDraft(null); setAgentFormOpen(true); }} onVersion={(agent) => { setAgentVersionTarget(agent); setAgentDraft(null); setAgentFormOpen(true); }} onUse={(agent) => { navigate("agent"); void updateSelection({ agentVersionId: agent.id }); }} onEvaluation={async (run) => { await openExperiment(run.experimentId); navigate("agent"); inspect({ kind: "run", data: run }); }} />}
-        {route === "responses" && <ResponseCenter tenantId={bootstrap.tenantId} deployments={bootstrap.deployments || []} agents={bootstrap.agents} locale={locale} t={t} />}
+    </div>
+  );
+
+  if (!setupDismissed && !(bootstrap.systemModels || []).length) {
+    return <SystemModelSetup catalog={bootstrap.modelCatalog || []} t={t} onComplete={finishModelSetup} onSkip={() => { localStorage.setItem("rank.modelSetupDismissed", "true"); setSetupDismissed(true); }} />;
+  }
+
+  return (
+    <div className={`app-shell ${panelOpen ? "panel-open" : ""} ${panelOpen && panelExpanded ? "panel-expanded" : ""}`}>
+      <WorkspaceShell
+        route={route}
+        onNavigate={navigate}
+        locale={locale}
+        onLocaleChange={() => setLocale((value) => value === "zh" ? "en" : "zh")}
+        experiments={bootstrap.experiments}
+        activeExperimentId={experiment.id}
+        onOpenConversation={openExperiment}
+        onNewConversation={createExperiment}
+        onOpenHistory={() => setHistoryOpen(true)}
+        t={t}
+      >
+        <div className={!agentRoute && (trialOpen || assistantOpen) ? "workspace-layout with-dock" : "workspace-layout"}>
+        <div className="workspace-context">
+        {agentRoute && rankConversation}
+        {route === "deployments" && <DeploymentCenter onTrial={openTrial} tenantId={bootstrap.tenantId} deployments={bootstrap.deployments || []} agents={bootstrap.agents} datasets={bootstrap.datasets} locale={locale} t={t} onRefresh={refreshBootstrap} />}
+        {route === "agents" && <AgentCenter selectedId={selectedAgentId} onSelect={selectAgent} onTrial={agent => openTrial({ agentVersionId: agent.id })} datasets={bootstrap.datasets} locale={locale} agents={bootstrap.agents} experiments={bootstrap.experiments} t={t} onCreate={() => { setAgentVersionTarget(null); setAgentDraft(null); setAgentFormOpen(true); }} onVersion={(agent) => { setAgentVersionTarget(agent); setAgentDraft(null); setAgentFormOpen(true); }} onUse={prepareAgentEvaluation} onEvaluation={async (run) => { await openExperiment(run.experimentId); navigate("agent"); inspect({ kind: "run", data: run }); }} />}
+        {route === "responses" && <ResponseCenter tenantId={bootstrap.tenantId} deployments={bootstrap.deployments || []} agents={bootstrap.agents} locale={locale} t={t} onEvaluate={prepareAgentEvaluation} />}
         {route === "credentials" && <CredentialCenter tenantId={bootstrap.tenantId} deployments={bootstrap.deployments || []} locale={locale} t={t} />}
-        {route === "settings" && <SettingsCenter connections={bootstrap.modelConnections || []} catalog={bootstrap.modelCatalog || []} systemModels={bootstrap.systemModels || []} onSave={saveModelConnection} onBind={bindSystemModel} onDelete={deleteModelConnection} onUseConnection={agentDraft ? useModelConnection : undefined} locale={locale} onLocale={setLocale} t={t} companionSettings={<CompanionSettings companion={companion} t={t}/>} />}
-        {!agentRoute && !assistantOpen && <CompanionLauncher companion={companion} working={Boolean(controlTurn) || activeRuns.length > 0} onOpen={() => setAssistantOpen(true)} t={t} />}
+        {route === "docs" && <DocumentationCenter locale={locale} t={t} />}
+        {route === "settings" && <SettingsCenter connections={bootstrap.modelConnections || []} catalog={bootstrap.modelCatalog || []} systemModels={bootstrap.systemModels || []} onSave={saveModelConnection} onBind={bindSystemModel} onDelete={deleteModelConnection} onImportLocal={importLocalConnection} onUseConnection={agentDraft ? useModelConnection : undefined} locale={locale} onLocale={setLocale} t={t} companionSettings={<CompanionSettings companion={companion} t={t}/>} />}
+        </div>
+        {!agentRoute && <ConversationDock open={trialOpen || assistantOpen} mode={trialOpen ? "trial" : "rank"} canTrial={Boolean(trialTarget)} onMode={mode => mode === "rank" ? openRank() : openTrial(trialTarget)} onClose={closeTrial} onExpand={() => navigate("agent")} modalActive={Boolean(panelOpen || agentFormOpen || picker || caseEditor || historyOpen)} t={t}>
+          {rankConversation}
+          {trialLaunch && ["agents", "deployments"].includes(route) && <div className="dock-trial" id="dock-trial" role="tabpanel" aria-labelledby="dock-trial-tab" hidden={!trialOpen}><TrialCenter key={trialLaunch.nonce} launch={trialLaunch} visible={trialOpen} onLocation={(agentVersionId, conversationId, deploymentReference) => {
+            if (agentVersionId && route === "agents") setSelectedAgentId(agentVersionId);
+            setTrialLaunch(value => ({ ...value, agentVersionId, conversationId, deploymentReference }));
+            if (trialOpen) trialLocation({ ...trialLaunch, agentVersionId, deploymentReference }, conversationId);
+          }} agents={bootstrap.agents} t={t} renderContent={content => <MessageContent content={content} t={t}/>}/></div>}
+        </ConversationDock>}
+        </div>
+        {!agentRoute && !trialOpen && !assistantOpen && <CompanionLauncher companion={companion} working={Boolean(controlTurn) || activeRuns.length > 0} onOpen={openRank} t={t} />}
       </WorkspaceShell>
 
+      {configurationRequest && <ConfigurationPanel request={configurationRequest} bootstrap={bootstrap} locale={locale} t={t} onClose={() => setConfigurationRequest(null)} settingsProps={{ connections: bootstrap.modelConnections || [], catalog: bootstrap.modelCatalog || [], systemModels: bootstrap.systemModels || [], onSave: saveModelConnection, onBind: bindSystemModel, onDelete: deleteModelConnection, onImportLocal: importLocalConnection, locale, onLocale: setLocale, t, companionSettings: <CompanionSettings companion={companion} t={t}/> }} />}
       {picker && <Picker
 		type={picker}
         datasets={bootstrap.datasets}

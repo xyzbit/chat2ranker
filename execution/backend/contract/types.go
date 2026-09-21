@@ -12,31 +12,37 @@ const (
 	KindAgent = "agent"
 	KindJudge = "judge"
 
-	StatusQueued    = "queued"
-	StatusRunning   = "running"
-	StatusCompleted = "completed"
-	StatusFailed    = "failed"
-	StatusCancelled = "cancelled"
+	StatusQueued     = "queued"
+	StatusRunning    = "running"
+	StatusCancelling = "cancelling"
+	StatusCompleted  = "completed"
+	StatusFailed     = "failed"
+	StatusCancelled  = "cancelled"
 )
 
 // Spec is an immutable request for one harness invocation.
 type Spec struct {
-	ProtocolVersion   int               `json:"protocolVersion"`
-	Kind              string            `json:"kind"`
-	Harness           string            `json:"harness"`
-	ModelConnectionID string            `json:"modelConnectionId,omitempty"`
-	Model             string            `json:"model,omitempty"`
-	Preset            string            `json:"preset,omitempty"`
-	SystemPrompt      string            `json:"systemPrompt,omitempty"`
-	Tools             []string          `json:"tools,omitempty"`
-	Skills            []string          `json:"skills,omitempty"`
-	Prompt            string            `json:"prompt"`
-	Expected          map[string]any    `json:"expected,omitempty"`
-	CandidateOutput   string            `json:"candidateOutput,omitempty"`
-	TimeoutMs         int64             `json:"timeoutMs,omitempty"`
-	Metadata          map[string]string `json:"metadata,omitempty"`
-	StructuredOutput  *StructuredOutput `json:"structuredOutput,omitempty"`
-	InputAttachments  []InputAttachment `json:"inputAttachments,omitempty"`
+	// MaxModelRequests optionally tightens the service's DSH invocation budget.
+	MaxModelRequests  int            `json:"maxModelRequests,omitempty"`
+	ProtocolVersion   int            `json:"protocolVersion"`
+	Kind              string         `json:"kind"`
+	Harness           string         `json:"harness"`
+	ModelConnectionID string         `json:"modelConnectionId,omitempty"`
+	Model             string         `json:"model,omitempty"`
+	Preset            string         `json:"preset,omitempty"`
+	SystemPrompt      string         `json:"systemPrompt,omitempty"`
+	Tools             []string       `json:"tools,omitempty"`
+	Skills            []string       `json:"skills,omitempty"`
+	Prompt            string         `json:"prompt,omitempty"`
+	Messages          []Message      `json:"messages,omitempty"`
+	Expected          map[string]any `json:"expected,omitempty"`
+	CandidateOutput   string         `json:"candidateOutput,omitempty"`
+	// QueueTimeoutMs shortens the service queue-wait limit; zero uses its default.
+	QueueTimeoutMs   int64             `json:"queueTimeoutMs,omitempty"`
+	TimeoutMs        int64             `json:"timeoutMs,omitempty"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
+	StructuredOutput *StructuredOutput `json:"structuredOutput,omitempty"`
+	InputAttachments []InputAttachment `json:"inputAttachments,omitempty"`
 }
 
 // StructuredOutput requires one JSON value matching Schema. Execution
@@ -76,6 +82,7 @@ type ArtifactRef struct {
 	ExecutionID string `json:"executionId"`
 	Path        string `json:"path"`
 	Size        int64  `json:"size"`
+	SHA256      string `json:"sha256,omitempty"`
 }
 
 type Result struct {
@@ -96,18 +103,42 @@ type Result struct {
 	Structured       json.RawMessage  `json:"structured,omitempty"`
 }
 
+// RuntimeAllocation records creation intent before contacting a remote service.
+// Handle remains empty if the creation response was lost. It never holds credentials.
+type RuntimeAllocation struct {
+	Endpoint  string    `json:"endpoint"`
+	Scope     string    `json:"scope"`
+	Image     string    `json:"image"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Handle    string    `json:"handle,omitempty"`
+}
+
 // Execution is the durable control-plane record for one harness invocation.
 type Execution struct {
-	ID             string     `json:"id"`
-	IdempotencyKey string     `json:"-"`
-	Status         string     `json:"status"`
-	Executor       string     `json:"executor"`
-	Attempt        int        `json:"attempt"`
-	ExternalHandle string     `json:"externalHandle,omitempty"`
-	WorkerVersion  string     `json:"workerVersion"`
-	Spec           Spec       `json:"spec"`
-	Result         *Result    `json:"result,omitempty"`
-	Error          string     `json:"error,omitempty"`
+	ModelQuota *ModelQuotaPlan `json:"modelQuota,omitempty"`
+	// MaxModelRequests is frozen at admission; zero means the adapter lacks support.
+	MaxModelRequests int          `json:"maxModelRequests,omitempty"`
+	RuntimePlan      *RuntimePlan `json:"runtimePlan,omitempty"`
+	// RuntimeCleanupPending retains capacity until the executor confirms shutdown;
+	// a failed business outcome alone does not release this obligation.
+	Runtime               *RuntimeAllocation `json:"runtime,omitempty"`
+	RuntimeCleanupPending bool               `json:"runtimeCleanupPending,omitempty"`
+	ID                    string             `json:"id"`
+	IdempotencyKey        string             `json:"-"`
+	Status                string             `json:"status"`
+	Executor              string             `json:"executor"`
+	Attempt               int                `json:"attempt"`
+	ExternalHandle        string             `json:"externalHandle,omitempty"`
+	WorkerVersion         string             `json:"workerVersion"`
+	RuntimeTimeoutMs      int64              `json:"runtimeTimeoutMs"`
+	CleanupGraceMs        int64              `json:"cleanupGraceMs"`
+	Spec                  Spec               `json:"spec"`
+	// Result can contain observed output, usage and confirmed artifacts before
+	// terminal success, including on failure. Status alone determines completion.
+	Result *Result `json:"result,omitempty"`
+	Error  string  `json:"error,omitempty"`
+	// QueueExpiresAt is frozen at admission and never extended by delivery retries.
+	QueueExpiresAt time.Time  `json:"queueExpiresAt"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	StartedAt      *time.Time `json:"startedAt,omitempty"`
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
@@ -127,11 +158,14 @@ type Event struct {
 }
 
 type Availability struct {
-	Available  bool   `json:"available"`
-	Installed  bool   `json:"installed"`
-	Configured bool   `json:"configured"`
-	Label      string `json:"label,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	ModelQuota         bool   `json:"modelQuota,omitempty"`
+	ModelRequestBudget bool   `json:"modelRequestBudget,omitempty"`
+	StructuredHistory  bool   `json:"structuredHistory"`
+	Available          bool   `json:"available"`
+	Installed          bool   `json:"installed"`
+	Configured         bool   `json:"configured"`
+	Label              string `json:"label,omitempty"`
+	Reason             string `json:"reason,omitempty"`
 }
 
 const (
@@ -240,8 +274,10 @@ type SystemModelRuntime struct {
 }
 
 type ArtifactContent struct {
-	Path      string `json:"path"`
-	Content   string `json:"content"`
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	// Encoding is utf-8 for text, or base64 when the returned bytes are not valid UTF-8.
+	Encoding  string `json:"encoding"`
 	Truncated bool   `json:"truncated"`
 }
 

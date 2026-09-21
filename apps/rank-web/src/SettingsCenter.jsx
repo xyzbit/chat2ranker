@@ -1,9 +1,12 @@
+import { AccountSettings } from "./Authentication.jsx";
 import { SelectField } from "./SelectField.jsx";
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Plus } from "@phosphor-icons/react";
 import { ErrorNotice, PageHeading, StatePill, InlineConfirmation } from "./ManagementUI.jsx";
 import { languageOptions } from "./i18n.js";
 import { protocolOptions, providerOptions } from "./model-connections.js";
+import { LocalModelDiscovery } from "./LocalModelDiscovery.jsx";
+import { ModelField } from "./ModelField.jsx";
 
 /** System bindings and provider secrets are edited through explicit forms. */
 export function SettingsCenter({
@@ -13,11 +16,14 @@ export function SettingsCenter({
   onSave,
   onBind,
   onDelete,
+  onImportLocal,
   onUseConnection,
   locale,
   onLocale,
   t,
   companionSettings,
+  section = "all",
+  initialConnectionId = "",
 }) {
   const [draft, setDraft] = useState(null);
   const [error, setError] = useState("");
@@ -25,6 +31,8 @@ export function SettingsCenter({
   const [saved, setSaved] = useState(false);
   const [removing, setRemoving] = useState(null);
   const [bindings, setBindings] = useState({});
+  const [connectionTab, setConnectionTab] = useState(section === "local_connections" ? "local" : "saved");
+  const tabId = useId();
   function begin(value) {
     const template =
       catalog.find((p) => p.id === value?.provider) || catalog[0];
@@ -46,6 +54,12 @@ export function SettingsCenter({
   function update(key, value) {
     setDraft((d) => ({ ...d, [key]: value }));
   }
+  useEffect(() => {
+    if (!initialConnectionId) return;
+    const connection = connections.find(item => item.id === initialConnectionId);
+    if (connection) begin(connection);
+    else setError(t("noMatch"));
+  }, [initialConnectionId]);
   async function run(action) {
     setBusy(true);
     setError("");
@@ -75,15 +89,16 @@ export function SettingsCenter({
     });
   }
   return (
-    <main className="management-page">
-      <PageHeading title={t("settings")} hint={t("settingsHint")} />
+    <main className="management-page settings-page">
+      {section === "all" && <PageHeading title={t("settings")} />}
+      {["all", "preferences"].includes(section) && <AccountSettings locale={locale} />}
       <ErrorNotice error={error} />
       {saved && (
         <p className="saved-notice" role="status">
           {t("saved")}
         </p>
       )}
-      <section className="management-section">
+      <section className="management-section settings-language" hidden={!["all", "preferences"].includes(section)}>
         <h2>{t("language")}</h2>
         <SelectField
           aria-label={t("language")}
@@ -92,15 +107,28 @@ export function SettingsCenter({
           options={languageOptions}
         />
       </section>
-      <section className="management-section">
+      <section className="management-section settings-connections" hidden={!["all", "model_connections", "local_connections"].includes(section)}>
         <div className="detail-title">
-          <h2>{t("modelConnections")}</h2>
-          <button disabled={busy} onClick={() => begin(null)}>
+          {section === "all" && <h2>{t("connection")}</h2>}
+          {connectionTab === "saved" && <button disabled={busy} onClick={() => begin(null)}>
             <Plus size={16} />
             {t("addConnection")}
-          </button>
+          </button>}
         </div>
-        {!connections.length && <p>{t("noConnections")}</p>}
+        <div className="settings-connection-tabs" role="tablist" aria-label={t("connection")}>
+          {[{ id: "saved", label: "modelConnections" }, { id: "local", label: "localConnections" }].map(item => <button type="button" role="tab" key={item.id} id={`${tabId}-${item.id}`} aria-selected={connectionTab === item.id} aria-controls={`${tabId}-${item.id}-panel`} tabIndex={connectionTab === item.id ? 0 : -1} disabled={busy} onClick={() => setConnectionTab(item.id)} onKeyDown={event => {
+            if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+              event.preventDefault();
+              const next = event.key === "Home" ? "saved" : event.key === "End" ? "local" : connectionTab === "saved" ? "local" : "saved";
+              setConnectionTab(next); document.getElementById(`${tabId}-${next}`).focus();
+            }
+          }}>{t(item.label)}</button>)}
+        </div>
+        <div role="tabpanel" id={`${tabId}-local-panel`} aria-labelledby={`${tabId}-local`} hidden={connectionTab !== "local"}>
+          <LocalModelDiscovery onSelect={onImportLocal} disabled={busy} t={t} />
+        </div>
+        <div role="tabpanel" id={`${tabId}-saved-panel`} aria-labelledby={`${tabId}-saved`} hidden={connectionTab !== "saved"}>
+        {!connections.length && <p className="form-hint">{t("noConnections")}</p>}
         {connections.map((c) => (
           <div className="settings-connection-row" key={c.id}>
             <button
@@ -167,25 +195,14 @@ export function SettingsCenter({
               </label>
               <label>
                 {t("model")}
-                <input
-                  required
-                  list="settings-models"
+                <ModelField
+                  label={t("model")}
+                  placeholder={t("modelNamePlaceholder")}
+                  disabled={busy}
                   value={draft.defaultModel}
-                  onChange={(e) => update("defaultModel", e.target.value)}
+                  onChange={(value) => update("defaultModel", value)}
+                  options={[...(catalog.find(p => p.id === draft.provider)?.models || []), ...(draft.models || [])]}
                 />
-                <datalist id="settings-models">
-                  {[
-                    ...new Set([
-                      ...(
-                        catalog.find((p) => p.id === draft.provider)?.models ||
-                        []
-                      ).map((m) => m.id),
-                      ...(draft.models || []),
-                    ]),
-                  ].map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
               </label>
               <label>
                 API Key
@@ -251,15 +268,17 @@ export function SettingsCenter({
             }
           />
         )}
+        </div>
       </section>
-      <section className="management-section">
-        <p>{t("systemModelsHint")}</p>
+      <section className="management-section settings-models" hidden={!["all", "system_models"].includes(section)}>
+        {section === "all" && <h2>{t("systemModels")}</h2>}
         {["control", "judge"].map((role) => {
           const current = systemModels.find((b) => b.role === role);
           const value = bindings[role] || {
             connectionId: current?.connectionId || "",
             model: current?.model || "",
           };
+          const connection = connections.find(item => item.id === value.connectionId);
           return (
             <form
               key={role}
@@ -297,13 +316,16 @@ export function SettingsCenter({
               </label>
               <label>
                 {t("model")}
-                <input
-                  required
+                <ModelField
+                  label={t("model")}
+                  placeholder={t("modelNamePlaceholder")}
+                  disabled={busy}
                   value={value.model}
-                  onChange={(e) =>
+                  options={[...(catalog.find(item => item.id === connection?.provider)?.models || []), ...(connection?.models || []), connection?.defaultModel || ""]}
+                  onChange={(model) =>
                     setBindings((b) => ({
                       ...b,
-                      [role]: { ...value, model: e.target.value },
+                      [role]: { ...value, model },
                     }))
                   }
                 />
@@ -315,9 +337,8 @@ export function SettingsCenter({
           );
         })}
       </section>
-      <section className="management-section">
+      <section className="management-section settings-companion" hidden={!["all", "preferences"].includes(section)}>
         <h2>{t("companion")}</h2>
-        <p>{t("companionHint")}</p>
         {companionSettings}
       </section>
     </main>

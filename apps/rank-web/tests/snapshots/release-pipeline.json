@@ -1,0 +1,15 @@
+{
+  "defaults": { "development": true, "regression": true },
+  "comparison": { "versions": 2, "comparable": true, "currentPassed": 2, "candidatePassed": 2 },
+  "pipeline": ["published", "published", "blocked", "published", "published"],
+  "regressionDefault": true,
+  "duplicateSuppressed": true,
+  "failurePreservesAlias": true,
+  "continuationPinned": true,
+  "chat": {
+    "created": true,
+    "prepared": "confirmation_required",
+    "events": ["control/create_deployment", "control/set_evaluation_defaults", "a2ui/prepare_release", "control/release_status"],
+    "datasetUnchanged": true
+  }
+}

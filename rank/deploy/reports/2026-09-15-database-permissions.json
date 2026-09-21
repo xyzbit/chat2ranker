@@ -1,0 +1,48 @@
+{
+  "verifiedAt": "2026-09-14T19:33:24.458575+00:00",
+  "images": {
+    "platform": "sha256:4b943eb5e05d4e1f19d0a0a1600f3fa7b48751271cdeeac4f016c13501db0ce6",
+    "gateway": "sha256:8c01f1630abd82ebf126134ea3a9cc636132208ad656f7a5551cb9082c129b8d"
+  },
+  "checks": [
+    {
+      "schema": "execution",
+      "authenticatedDML": true,
+      "futureTableDefaults": true,
+      "crossSchemaDenied": true,
+      "migrationMetadataReadOnly": true,
+      "ddlAndPrivilegeEscalationDenied": true
+    },
+    {
+      "schema": "rank",
+      "authenticatedDML": true,
+      "futureTableDefaults": true,
+      "crossSchemaDenied": true,
+      "migrationMetadataReadOnly": true,
+      "ddlAndPrivilegeEscalationDenied": true
+    },
+    {
+      "controlHasNoDatabaseOrActionSecret": true,
+      "migrationSecretsDatabaseOnly": true,
+      "applicationPodsHaveNoMigrationSecretOrServiceAccountToken": true
+    }
+  ],
+  "sourceSHA256": {
+    "database_roles.py": "356b44e9743914a41a8ecd3eba54e122325dcd2e534d0aed75f8202075112357",
+    "verify-database-roles.py": "06c77e5575d2339d14566d4e6ada67798f816f24b4bf628d759798b303404ddb",
+    "platform-lab.py": "73721058a13b46289a66c5ddd16e66ad141ebdc073e8a8fd67cff0f66374a5cd",
+    "lab.py": "95be6d55a8f25a12c6fc3150d55ab73dc7013b1c607e333058c1374961120ce5",
+    "base/platform.yaml": "1e116609e46fb26d8425d3a59c33a5c7a9fc90ee4a85baf2e79fa35541240d24",
+    "fixtures/database-roles.snapshot.json": "2b629ae8b5e3934962845ed7bc9390b9cf1c51403409f8764ca90e6777df0fba"
+  },
+  "platformRegression": {
+    "passed": true,
+    "privateReport": "platform-verification-1789414278510.json"
+  },
+  "migration": "Existing execution v5 / rank v3, explicit owner-role maintenance Job",
+  "limits": [
+    "One local minikube node; remote Docker Sandbox on the same laptop",
+    "Deterministic model provider; no live provider quality or throughput claim",
+    "No production TLS, identity, credential rotation or tenant row-level authorization verification"
+  ]
+}

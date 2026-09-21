@@ -19,7 +19,7 @@ func NewMock() Adapter { return mockAdapter{} }
 func (mockAdapter) ID() string { return "mock" }
 
 func (mockAdapter) Probe(context.Context) contract.Availability {
-	return contract.Availability{Available: true, Installed: true, Configured: true, Label: "隔离 Demo Harness"}
+	return contract.Availability{StructuredHistory: true, Available: true, Installed: true, Configured: true, Label: "隔离 Demo Harness"}
 }
 
 func (mockAdapter) Run(ctx context.Context, invocation Invocation) (contract.Result, error) {
@@ -53,6 +53,13 @@ func (mockAdapter) Run(ctx context.Context, invocation Invocation) (contract.Res
 			}
 		}
 		return result, nil
+	}
+	if len(invocation.Spec.Messages) > 0 {
+		parts := make([]string, 0, len(invocation.Spec.Messages))
+		for _, message := range invocation.Spec.Messages {
+			parts = append(parts, message.Content)
+		}
+		invocation.Spec.Prompt = strings.Join(parts, "\n")
 	}
 	summary := stringValue(invocation.Spec.Expected["summary"])
 	if summary == "" {

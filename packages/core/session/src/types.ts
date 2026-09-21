@@ -5,6 +5,7 @@ import type {
   LlmCallConfig,
   LlmCallConfigAdapterDefaults,
   LlmFailure,
+  Message,
   StreamChunk,
   TokenUsage,
   ToolResultMessage,
@@ -262,6 +263,12 @@ export interface SessionEventMap {
    * project their `content` verbatim; `source` tells them apart.
    */
   'user/message': UserMessage
+  /**
+   * A normalized message imported from an external conversation. It contributes
+   * model history without claiming a native turn, model request, or tool execution.
+   * The importing consumer validates ordering and tool-result correlation.
+   */
+  'history/message': { message: Message }
   /** Raw stream chunk — token-level replay fidelity. */
   'assistant/chunk': { turn: number; step: number; chunk: StreamChunk }
   /**
@@ -342,6 +349,7 @@ export type SessionEventType = keyof SessionEventMap
  */
 export type SurfaceEventType =
   | 'user/message'
+  | 'history/message'
   | 'assistant/message'
   | 'tool/result'
 
@@ -395,7 +403,7 @@ export interface SurfaceIntent {
  * unions), so `switch (event.type)` narrows `event.data` without casts.
  *
  * The {@link sourceEventSeqs} and {@link surfaceOp} fields are conditional:
- * they only exist on {@link SurfaceEventType} variants (`user/message`,
+ * they only exist on {@link SurfaceEventType} variants (`user/message`, `history/message`,
  * `assistant/message`, `tool/result`).
  * Non-surface events (boundary markers, chunks, usage, errors) never carry
  * surface metadata — the compiler enforces this at `Session.append()`

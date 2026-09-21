@@ -45,7 +45,7 @@ func TestOperatorReleaseHistoryPagesOneAlias(t *testing.T) {
 		}
 	}
 	status, payload = requestJSON(t, client, http.MethodGet, server.URL+"/api/deployments/"+string(deployment.ID)+"/aliases/staging/releases", nil, nil)
-	if status != 200 || len(decodeBody[domain.ReleaseHistoryPage](t, payload).Items) != 0 {
+	if status != 404 {
 		t.Fatalf("cross-alias history: %s", payload)
 	}
 	status, _ = requestJSON(t, client, http.MethodGet, server.URL+"/api/deployments/missing/aliases/production/releases", nil, nil)

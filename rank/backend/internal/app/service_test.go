@@ -10,7 +10,8 @@ import (
 
 	"github.com/xyzbit/agentkiln/rank/backend/internal/app"
 	"github.com/xyzbit/agentkiln/rank/backend/internal/domain"
-	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlite"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/sqlstore"
+	"github.com/xyzbit/agentkiln/rank/backend/internal/testdb"
 )
 
 func TestControlCommandsAreSessionBoundStructuredAndIdempotent(t *testing.T) {
@@ -227,10 +228,10 @@ func TestControlTranscriptReconciliationIsIdempotent(t *testing.T) {
 	}
 }
 
-func testService(t *testing.T, workers bool) (*app.Service, *sqlite.Store, string) {
+func testService(t *testing.T, workers bool) (*app.Service, *sqlstore.Store, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "rank.db")
-	store, err := sqlite.Open(context.Background(), path)
+	store, err := testdb.Open(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +358,7 @@ func TestStartComparisonCreatesIndependentIdempotentRuns(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := sqlite.Open(context.Background(), path)
+	reopened, err := testdb.Open(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,7 +426,7 @@ func TestQueuedRunRecoversAfterRepositoryRestart(t *testing.T) {
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := sqlite.Open(context.Background(), path)
+	reopened, err := testdb.Open(t, path)
 	if err != nil {
 		t.Fatal(err)
 	}
