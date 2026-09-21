@@ -4,22 +4,47 @@
 
 [English](README.md) | 中文
 
-AgentKiln 是一个覆盖 Agent 准备、版本管理、评测、发布和对外服务的全生命周期平台。本地产品会把一个目标变成版本化测试集、可比较的 Agent 运行、可追溯证据、受控发布 Alias 和经过认证的文本服务端点。
+AgentKiln 是一个 Agent 开发与交付平台：创建 Agent，直接对话试用，用评测比较版本，发布为端点，再接入自己的应用。实验负责验证质量，是这条工作流中的一环。
 
-产品让评测与生产沿用同一条版本链：平台评测一个精确的 Agent 版本，将其晋级到 `production` 等环境别名，在受理请求时只解析一次，并把解析结果保留在调用记录中。已实现子集见 [Agent 对外服务 API](rank/docs/serving-api.md)，后续阶段见 [Agent 生命周期与对外服务提案](.agents/notes/proposed/feature/2026-09-08-agent-lifecycle-serving.md)。
+模型、系统指令、工具和 Skill 随 Agent 版本一起固定；试用、评测与发布围绕同一个版本展开，便于复现行为、定位问题和决定发布哪个版本。
 
-## 可以比较什么？
+## 66 秒看完核心流程
 
-- **最新模型效果**：固定测试集、Harness、工具和评审规则，从通过率、成本、耗时与稳定性比较模型版本。
-- **不同 Harness**：让同一个模型在 DeepSeek Harness、Codex、Claude Code 或 Hermes 中运行相同用例，测出运行时差异。
-- **不同 Agent 配置**：自由组合模型、System Prompt、工具和 Skill，在一个实验中比较冻结后的 Agent 版本。
-- **版本回归**：发布前重复运行，定位不稳定用例，并查看失败原因与执行轨迹。
+[![AgentKiln：创建、试用、测评对比、发布与接入](rank/docs/assets/agentkiln-lifecycle-poster.jpg)](rank/docs/assets/agentkiln-lifecycle.mp4)
 
-## 看一次完整实验
+点击封面观看 1080p 视频。视频采用实际产品界面和中文短字幕，无旁白。对比画面中的“演示数据”来自确定性 Demo Runner，用于展示操作流程，不代表模型基准成绩。
 
-[![创建、运行并查看 AgentKiln 实验](rank/docs/assets/agentkiln-demo-poster.jpg)](rank/docs/assets/agentkiln-demo.mp4)
+## 从创建到接入
 
-描述一个目标，让 AgentKiln 准备可复用的数据与 Agents，确认运行，用成本或时延对照质量；需要细节时再展开侧边工作区。点击图片可查看 1080p 视频。
+### 1. 创建 Agent
+
+选择运行方式与模型，配置系统指令、工具和 Skill，保存为可追溯的 Agent 版本。也可以通过对话描述需求，让 AgentKiln 准备配置。
+
+![创建 Agent](rank/docs/assets/lifecycle/01-create.jpg)
+
+### 2. 直接对话试用
+
+从 Agent 详情打开试用面板，发起多轮对话、查看执行详情，重新打开时继续已有记录。试用会话独立保存，无需先创建测试集或运行实验。详见[Agent 试用](rank/docs/agent-playground.md)。
+
+![Agent 对话试用](rank/docs/assets/lifecycle/02-trial.jpg)
+
+### 3. 测评与对比
+
+选定同一测试集，比较多个 Agent 版本的通过率、成本和耗时；再进入具体用例，检查输出、评分和执行证据。一个对比组为每个 Agent 版本创建独立 Run。
+
+![多 Agent 测评对比，示例数据](rank/docs/assets/lifecycle/03-comparison.jpg)
+
+### 4. 发布为端点
+
+选择 Agent 版本，结合回归评测与发布门槛决定是否发布。端点保留发布版本和记录，支持版本更新与回滚。详见[发布规则](rank/docs/release-policy.md)。
+
+![发布 Agent](rank/docs/assets/lifecycle/04-publish.jpg)
+
+### 5. 接入应用
+
+打开端点的接入面板，配置 API Key，通过 cURL 或 JavaScript SDK 调用 Responses 兼容接口。支持流式输出、多轮上下文及调用记录追溯。详见[服务 API](rank/docs/serving-api.md)与[可运行客户端](rank/examples/responses-client/README.md)。
+
+![接入自己的应用](rank/docs/assets/lifecycle/05-integrate.jpg)
 
 <a id="run"></a>
 
@@ -33,24 +58,15 @@ AgentKiln 是一个覆盖 Agent 准备、版本管理、评测、发布和对外
 npx -y @xyzbit/agentkiln@latest start
 ```
 
-首次打开时选择 Provider 和模型，再填写 API Key。随后直接描述目标，例如“整理一组 Web 研究用例，对比两个 Agent 的准确率和成本”。AgentKiln 只会询问缺少的信息，并在运行确认卡中等待你明确开始。
+首次打开时选择 Provider 和模型，再填写 API Key。随后直接描述目标，例如“创建一个图片提示词助手，先让我试用”。AgentKiln 只会询问缺少的信息；需要评测时，再准备测试集并确认运行。
 
 完整的首次使用、后台运行和独立数据目录说明见[一分钟上手](rank/docs/quickstart.md)。
-
-## 从对话到生产证据
-
-- **准备**：通过对话创建或选择版本化的测试集与 Agent 配置。
-- **运行**：每个 Trial 使用独立上下文；一个运行组可同时比较多个 Agent 版本。
-- **评审**：优先使用确定性规则，只有需要语义判断时才调用 Rubric 与 LLM Judge。
-- **分析**：汇总通过率、稳定用例、成本、耗时、失败原因和原始执行产物。
-- **发布**：把通过评测的不可变版本晋级到 `staging` 或 `production`，通过 Compare-and-Swap 保留 Alias 历史，并记录评测证据或人工覆盖原因。
-- **服务**：通过经过认证的 Responses 兼容 API 调用精确版本或 Alias，支持文本、图片、文件、Function 与审批交互，发送签名 Webhook 通知，并记录输出、用量、成本和发布来源。
 
 ## Harness 与架构
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 是第一方运行时和控制对话基础。Pi、Claude Code、Codex 与 Hermes 通过平级 Runner Adapter 接入，未安装或未配置的 Runner 不会显示为可运行。
 
-Go Rank 服务负责实验、版本冻结、调度和结果聚合；Execution Service 在隔离的进程或 Sandbox 中执行 Candidate 与 Judge。更多内容见[系统架构](rank/docs/architecture.md)和[核心数据流](rank/docs/core-data-flow.md)。
+Go Rank 服务管理 Agent 版本、试用会话、评测任务和发布端点；Execution Service 在隔离的进程或 Sandbox 中执行 Agent 与 Judge。更多内容见[系统架构](rank/docs/architecture.md)和[核心数据流](rank/docs/core-data-flow.md)。
 
 ## 从源码运行
 
